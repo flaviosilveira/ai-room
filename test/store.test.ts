@@ -8,10 +8,12 @@ import {
   roomJoin,
   roomLeave,
   roomListen,
+  roomList,
   roomSend,
+  roomSetStatus,
   roomWho,
 } from "../src/store.js";
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
 
 describe("ai-room store", () => {
   let db: Database.Database;
@@ -26,10 +28,36 @@ describe("ai-room store", () => {
 
   it("creates/joins a room and returns room + participant info", () => {
     const result = roomJoin(db, { room: "backend-auth", agent: "claude", role: "implementer" });
+    expect(result.created).toBe(true);
     expect(result.room.name).toBe("backend-auth");
     expect(result.participant.agent).toBe("claude");
     expect(result.participant.role).toBe("implementer");
     expect(result.participant.active).toBe(true);
+  });
+
+  it("preserves legacy room_join creation and can reject accidental room creation", () => {
+    expect(roomJoin(db, { room: "existing", agent: "claude" }).created).toBe(true);
+    expect(roomJoin(db, { room: "existing", agent: "codex", createIfMissing: false }).created).toBe(
+      false
+    );
+    expect(() =>
+      roomJoin(db, { room: "exsiting", agent: "codex", createIfMissing: false })
+    ).toThrow(/does not exist/i);
+    expect(roomList(db, {}).map((room) => room.name)).toEqual(["existing"]);
+  });
+
+  it("lists persistent workspaces and filters by case-insensitive query tokens", () => {
+    roomJoin(db, { room: "Sylvan-client-refund-review", agent: "claude" });
+    roomJoin(db, { room: "backend-auth", agent: "codex" });
+    roomSend(db, { room: "Sylvan-client-refund-review", agent: "claude", message: "plan" });
+
+    const matches = roomList(db, { query: "sylvan refund" });
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      name: "Sylvan-client-refund-review",
+      participantCount: 1,
+      activeParticipantCount: 1,
+    });
   });
 
   it("supports two agents joining the same room", () => {
@@ -135,12 +163,66 @@ describe("ai-room store", () => {
     const history = roomHistory(db2, { room: "r" });
     expect(history).toHaveLength(1);
     expect(history[0].content).toBe("persisted message");
+    expect(history[0].origin).toBe("agent");
 
     // codex's cursor was also persisted -> no new messages on restart
     const codexAfterRestart = roomListen(db2, { room: "r", agent: "codex" });
     expect(codexAfterRestart).toHaveLength(0);
     db2.close();
 
+    fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+  });
+
+  it("stores observable participant status", () => {
+    roomJoin(db, { room: "r", agent: "agy" });
+    roomSetStatus(db, {
+      room: "r",
+      agent: "agy",
+      status: "approval_required",
+      detail: "Waiting for approval: run integration command",
+    });
+
+    expect(roomWho(db, { room: "r" })[0]).toMatchObject({
+      status: "approval_required",
+      statusDetail: "Waiting for approval: run integration command",
+    });
+
+    roomLeave(db, { room: "r", agent: "agy" });
+    expect(roomWho(db, { room: "r" })[0]).toMatchObject({ status: "done", active: false });
+  });
+
+  it("migrates a v0.0.1 database without losing data", () => {
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ai-room-migration-")), "db.sqlite");
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      CREATE TABLE rooms (name TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
+      CREATE TABLE participants (
+        room TEXT NOT NULL REFERENCES rooms(name), agent TEXT NOT NULL, role TEXT,
+        joined_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (room, agent)
+      );
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, room TEXT NOT NULL REFERENCES rooms(name),
+        agent TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE cursors (
+        room TEXT NOT NULL REFERENCES rooms(name), agent TEXT NOT NULL,
+        last_message_id INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (room, agent)
+      );
+      INSERT INTO rooms VALUES ('legacy', 1);
+      INSERT INTO participants VALUES ('legacy', 'claude', NULL, 1, 1, 1);
+      INSERT INTO messages (room, agent, content, created_at) VALUES ('legacy', 'claude', 'kept', 1);
+      INSERT INTO cursors VALUES ('legacy', 'claude', 0);
+    `);
+    legacy.close();
+
+    const migrated = openDb(dbPath);
+    expect(roomHistory(migrated, { room: "legacy" })[0]).toMatchObject({
+      content: "kept",
+      origin: "agent",
+    });
+    expect(roomWho(migrated, { room: "legacy" })[0]).toMatchObject({ status: "working" });
+    migrated.close();
     fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
   });
 });

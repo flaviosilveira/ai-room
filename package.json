@@ -1,6 +1,6 @@
 {
   "name": "ai-room",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Local shared message bus for multiple AI coding agents (Claude Code, Codex CLI, AGY) via MCP.",
   "main": "dist/index.js",
   "bin": {

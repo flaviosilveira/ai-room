@@ -40,6 +40,14 @@ describe("ai-room MCP over Streamable HTTP", () => {
   });
 
   it("supports the Claude -> Codex/AGY validation flow over real MCP tool calls", async () => {
+    const healthResponse = await fetch(new URL("/health", baseUrl));
+    expect(healthResponse.status).toBe(200);
+    await expect(healthResponse.json()).resolves.toMatchObject({
+      ok: true,
+      version: "0.0.2",
+      database: "ok",
+    });
+
     const claude = await makeClient(baseUrl);
     const codex = await makeClient(baseUrl);
     const agy = await makeClient(baseUrl);
@@ -47,6 +55,11 @@ describe("ai-room MCP over Streamable HTTP", () => {
     await claude.callTool({ name: "room_join", arguments: { room: "backend-auth", agent: "claude" } });
     await codex.callTool({ name: "room_join", arguments: { room: "backend-auth", agent: "codex" } });
     await agy.callTool({ name: "room_join", arguments: { room: "backend-auth", agent: "agy" } });
+
+    const tools = await claude.listTools();
+    expect(tools.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["room_join", "room_listen", "room_wait", "room_list", "room_set_status"])
+    );
 
     await claude.callTool({
       name: "room_send",
@@ -62,6 +75,7 @@ describe("ai-room MCP over Streamable HTTP", () => {
     ) as Array<{ agent: string; content: string }>;
     expect(codexListen).toHaveLength(1);
     expect(codexListen[0].agent).toBe("claude");
+    expect(codexListen[0]).toMatchObject({ origin: "agent" });
 
     await codex.callTool({
       name: "room_send",
@@ -76,6 +90,33 @@ describe("ai-room MCP over Streamable HTTP", () => {
       await agy.callTool({ name: "room_history", arguments: { room: "backend-auth" } })
     ) as Array<{ agent: string }>;
     expect(agyHistory.map((m) => m.agent)).toEqual(["claude", "codex"]);
+
+    const roomList = toolResult(
+      await agy.callTool({ name: "room_list", arguments: { query: "backend auth" } })
+    ) as Array<{ name: string }>;
+    expect(roomList.map((room) => room.name)).toEqual(["backend-auth"]);
+
+    await agy.callTool({
+      name: "room_set_status",
+      arguments: {
+        room: "backend-auth",
+        agent: "agy",
+        status: "approval_required",
+        detail: "Waiting for approval",
+      },
+    });
+
+    const waiting = codex.callTool({
+      name: "room_wait",
+      arguments: { room: "backend-auth", agent: "codex", timeoutMs: 1_000 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await claude.callTool({
+      name: "room_send",
+      arguments: { room: "backend-auth", agent: "claude", message: "Final validation" },
+    });
+    const waitResult = toolResult(await waiting) as Array<{ content: string }>;
+    expect(waitResult).toMatchObject([{ content: "Final validation" }]);
 
     await claude.close();
     await codex.close();
