@@ -35,10 +35,8 @@ pnpm serve
 In another terminal:
 
 ```bash
-pnpm exec ai-room status
+node dist/cli.js status
 ```
-
-(Or install the CLI globally: `pnpm add -g .` from the repo, then run `ai-room status` directly.)
 
 Expected checks:
 
@@ -57,7 +55,7 @@ MCP:    http://127.0.0.1:49375/mcp
 
 Data defaults to `~/.ai-room/ai-room.sqlite`. Override with `AI_ROOM_DB_PATH`. Override port with `AI_ROOM_PORT`.
 
-Everywhere else below, `ai-room <command>` assumes the CLI is on `PATH` (global install). Prefix with `pnpm exec` otherwise.
+Everywhere else below, `ai-room <command>` is shorthand for `node dist/cli.js <command>` run from the repo root, unless you've installed the CLI globally so it's on `PATH`.
 
 Configure each client below, restart it, then confirm tool discovery by calling `room_list`.
 
