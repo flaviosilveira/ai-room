@@ -2,9 +2,12 @@ import type Database from "better-sqlite3";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { VERSION } from "./version.js";
+import { CONVENTION_PRESETS, TOOL_PRESETS } from "./presets.js";
 import {
+  roomCharter,
   roomHistory,
   roomJoin,
+  roomSetCharter,
   roomLeave,
   roomListen,
   roomList,
@@ -33,7 +36,7 @@ export function createAiRoomServer(
     "room_join",
     {
       description:
-        "Join a room, identifying yourself as an agent. Creates the room if it doesn't exist.",
+        "Join a room, identifying yourself as an agent. Creates the room if it doesn't exist. The response carries the room's briefing when one is set: read `briefing.brief` for what the room is for, `briefing.you` for your own role and instructions, `briefing.teammates` for who else is expected, `briefing.conventions` for how to write, and `briefing.tools` for the tooling this room uses. Follow all of it without waiting to be told again. Then call room_wait.",
       inputSchema: {
         room: z.string().describe("Room name"),
         agent: z.string().describe("Agent identifier, e.g. claude, codex, agy"),
@@ -134,6 +137,81 @@ export function createAiRoomServer(
                 },
         }
       );
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.registerTool(
+    "room_set_charter",
+    {
+      description:
+        "Define, once, what a room is for and who is in it, so every agent that joins is briefed automatically instead of being told by a human each time. Set `roster` with one entry per expected agent, including agents that have not joined yet; each agent receives its own entry as `briefing.you` on join. Fields left undefined keep their current value.",
+      inputSchema: {
+        room: z.string(),
+        brief: z.string().nullable().optional().describe("What this room is for."),
+        conventionPreset: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            `Named style contract applied to every agent. Available: ${Object.keys(CONVENTION_PRESETS).join(", ")}. Pass null to clear.`
+          ),
+        conventions: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("Literal convention text. Overrides conventionPreset when both are given."),
+        tools: z
+          .array(
+            z.union([
+              z.string(),
+              z.object({
+                name: z.string(),
+                purpose: z.string().optional(),
+                howToUse: z.string().optional(),
+              }),
+            ])
+          )
+          .optional()
+          .describe(
+            `Tooling this room expects agents to use. Known names expand automatically: ${Object.keys(TOOL_PRESETS).join(", ")}. ai-room only declares these; each agent runs them itself.`
+          ),
+        roster: z
+          .array(
+            z.object({
+              agent: z.string(),
+              role: z.string().optional(),
+              instructions: z.string().optional(),
+            })
+          )
+          .optional()
+          .describe("Expected participants and what each one is there to do."),
+      },
+    },
+    async ({ room, brief, conventionPreset, conventions, tools, roster }) => {
+      const result = roomSetCharter(db, {
+        room,
+        brief,
+        conventionPreset,
+        conventions,
+        tools,
+        roster,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.registerTool(
+    "room_charter",
+    {
+      description:
+        "Read a room's charter: its brief, conventions, declared tooling and expected roster. Returns null when the room has no charter.",
+      inputSchema: {
+        room: z.string(),
+      },
+    },
+    async ({ room }) => {
+      const result = roomCharter(db, room);
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     }
   );

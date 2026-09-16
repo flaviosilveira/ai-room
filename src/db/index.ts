@@ -51,6 +51,17 @@ function migrate(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room, id);
 
+    CREATE TABLE IF NOT EXISTS room_profiles (
+      room TEXT PRIMARY KEY REFERENCES rooms(name),
+      brief TEXT,
+      conventions TEXT,
+      convention_preset TEXT,
+      tools TEXT,
+      roster TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS cursors (
       room TEXT NOT NULL REFERENCES rooms(name),
       agent TEXT NOT NULL,

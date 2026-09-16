@@ -1,7 +1,9 @@
 import { openDb, defaultDbPath } from "./db/index.js";
 import { VERSION } from "./version.js";
 import { createHttpApp } from "./http.js";
-import { roomHistory, roomList, roomWho } from "./store.js";
+import { roomHistory, roomJoin, roomList, roomSetCharter, roomWho } from "./store.js";
+import { invite } from "./invite.js";
+import type { RosterEntry } from "./types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -83,6 +85,95 @@ function who(room: string): void {
   console.log(JSON.stringify(roomWho(db, { room }), null, 2));
 }
 
+
+interface OpenFlags {
+  brief?: string;
+  convention?: string;
+  tools: string[];
+  invite: string[];
+  roles: Map<string, string>;
+  dryRun: boolean;
+}
+
+function parseOpenFlags(argv: string[]): OpenFlags {
+  const flags: OpenFlags = {
+    tools: [],
+    invite: [],
+    roles: new Map(),
+    dryRun: false,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const value = () => argv[++i] ?? "";
+    if (arg === "--brief") flags.brief = value();
+    else if (arg === "--convention") flags.convention = value();
+    else if (arg === "--tool") flags.tools.push(...value().split(",").filter(Boolean));
+    else if (arg === "--invite") flags.invite.push(...value().split(",").filter(Boolean));
+    else if (arg === "--role") {
+      const [agent, ...rest] = value().split("=");
+      if (agent && rest.length) flags.roles.set(agent, rest.join("="));
+    } else if (arg === "--dry-run") flags.dryRun = true;
+    else throw new Error(`Unknown flag "${arg}"`);
+  }
+  return flags;
+}
+
+/**
+ * One command replaces the two messages a human otherwise retypes: it creates
+ * the room with a charter, then launches each invited agent with a seed prompt
+ * that makes it join and read that charter.
+ */
+function open(room: string, argv: string[]): void {
+  if (!room) {
+    console.error(
+      'usage: ai-room open <room> [--brief "..."] [--convention caveman] [--tool graphify]\n' +
+        "                       [--invite codex,agy] [--role codex=reviewer] [--dry-run]"
+    );
+    process.exit(1);
+  }
+
+  const flags = parseOpenFlags(argv);
+  const db = openDb();
+
+  roomJoin(db, { room, agent: "human", role: "host" });
+
+  const roster: RosterEntry[] = flags.invite.map((agent) => ({
+    agent,
+    role: flags.roles.get(agent),
+  }));
+  const charter = roomSetCharter(db, {
+    room,
+    brief: flags.brief ?? null,
+    conventionPreset: flags.convention ?? null,
+    tools: flags.tools,
+    roster,
+  });
+
+  console.log(`room: ${room}`);
+  console.log(`brief: ${charter.brief ?? "(none)"}`);
+  console.log(`convention: ${charter.conventionPreset ?? "(none)"}`);
+  console.log(`tools: ${charter.tools.map((t) => t.name).join(", ") || "(none)"}`);
+  console.log(`roster: ${charter.roster.map((r) => r.role ? `${r.agent} (${r.role})` : r.agent).join(", ") || "(none)"}`);
+
+  if (!flags.invite.length) {
+    console.log("invited: nobody");
+    return;
+  }
+
+  console.log("");
+  for (const agent of flags.invite) {
+    const result = invite(room, agent, { dryRun: flags.dryRun });
+    if (flags.dryRun) {
+      console.log(`would launch ${agent}: ${result.command}`);
+    } else if (result.status === "launched") {
+      console.log(`launched ${agent} (pid ${result.pid}) -> ${result.logPath}`);
+    } else {
+      console.error(`failed ${agent}: ${result.error}`);
+      process.exitCode = 1;
+    }
+  }
+}
+
 const [, , cmd, arg] = process.argv;
 
 switch (cmd) {
@@ -101,7 +192,12 @@ switch (cmd) {
   case "who":
     who(arg);
     break;
+  case "open":
+    open(arg, process.argv.slice(4));
+    break;
   default:
-    console.error("usage: ai-room <serve|status|rooms [query]|messages <room>|who <room>>");
+    console.error(
+      "usage: ai-room <serve|status|rooms [query]|messages <room>|who <room>|open <room> [flags]>"
+    );
     process.exit(1);
 }

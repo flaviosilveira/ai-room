@@ -1,6 +1,11 @@
 import type Database from "better-sqlite3";
+import { resolveConvention, resolveTool } from "./presets.js";
 import type {
   ActiveRoomInfo,
+  AgentBriefing,
+  RoomCharter,
+  RosterEntry,
+  ToolDeclaration,
   AgentStatus,
   MessageInfo,
   ParticipantInfo,
@@ -102,7 +107,12 @@ function getParticipant(
 export function roomJoin(
   db: Database.Database,
   params: { room: string; agent: string; role?: string; createIfMissing?: boolean }
-): { room: RoomInfo; participant: ParticipantInfo; created: boolean } {
+): {
+  room: RoomInfo;
+  participant: ParticipantInfo;
+  created: boolean;
+  briefing: AgentBriefing | null;
+} {
   const result = ensureRoom(db, params.room, params.createIfMissing ?? true);
   const participant = ensureParticipant(
     db,
@@ -111,7 +121,12 @@ export function roomJoin(
     params.role ?? null,
     true
   );
-  return { room: result.room, participant, created: result.created };
+  return {
+    room: result.room,
+    participant,
+    created: result.created,
+    briefing: roomBriefing(db, params.room, params.agent),
+  };
 }
 
 export function roomSend(
@@ -345,4 +360,125 @@ export function agentActiveRooms(
        ORDER BY p.last_seen_at DESC`
     )
     .all(agent) as ActiveRoomInfo[];
+}
+
+function parseJson<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+interface CharterRow {
+  room: string;
+  brief: string | null;
+  conventions: string | null;
+  conventionPreset: string | null;
+  tools: string | null;
+  roster: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function roomCharter(
+  db: Database.Database,
+  room: string
+): RoomCharter | null {
+  const row = db
+    .prepare(
+      `SELECT room, brief, conventions, convention_preset as conventionPreset,
+              tools, roster, created_at as createdAt, updated_at as updatedAt
+       FROM room_profiles WHERE room = ?`
+    )
+    .get(room) as CharterRow | undefined;
+  if (!row) return null;
+  return {
+    ...row,
+    tools: parseJson<ToolDeclaration[]>(row.tools, []),
+    roster: parseJson<RosterEntry[]>(row.roster, []),
+  };
+}
+
+/**
+ * The charter as one agent should receive it: the shared parts, plus that
+ * agent's own role pulled out of the roster and the teammates it should expect.
+ * This is what removes the "you are X, you will help Y" message a human
+ * otherwise retypes into every agent.
+ */
+export function roomBriefing(
+  db: Database.Database,
+  room: string,
+  agent: string
+): AgentBriefing | null {
+  const charter = roomCharter(db, room);
+  if (!charter) return null;
+  const you = charter.roster.find((entry) => entry.agent === agent) ?? null;
+  return {
+    ...charter,
+    you,
+    teammates: charter.roster.filter((entry) => entry.agent !== agent),
+  };
+}
+
+export function roomSetCharter(
+  db: Database.Database,
+  params: {
+    room: string;
+    brief?: string | null;
+    conventionPreset?: string | null;
+    conventions?: string | null;
+    tools?: (string | ToolDeclaration)[];
+    roster?: RosterEntry[];
+  }
+): RoomCharter {
+  ensureRoom(db, params.room, false, "Call room_join first to create it.");
+
+  const existing = roomCharter(db, params.room);
+  const now = Date.now();
+
+  // An explicit `conventions` string wins; otherwise a preset name expands to
+  // its text. Passing neither leaves whatever the room already had.
+  const preset =
+    params.conventionPreset !== undefined
+      ? params.conventionPreset
+      : existing?.conventionPreset ?? null;
+  const conventions =
+    params.conventions !== undefined
+      ? params.conventions
+      : params.conventionPreset !== undefined
+        ? resolveConvention(preset)
+        : existing?.conventions ?? null;
+
+  const tools =
+    params.tools !== undefined
+      ? params.tools.map((tool) => (typeof tool === "string" ? resolveTool(tool) : tool))
+      : existing?.tools ?? [];
+  const roster = params.roster !== undefined ? params.roster : existing?.roster ?? [];
+  const brief = params.brief !== undefined ? params.brief : existing?.brief ?? null;
+
+  db.prepare(
+    `INSERT INTO room_profiles
+       (room, brief, conventions, convention_preset, tools, roster, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(room) DO UPDATE SET
+       brief = excluded.brief,
+       conventions = excluded.conventions,
+       convention_preset = excluded.convention_preset,
+       tools = excluded.tools,
+       roster = excluded.roster,
+       updated_at = excluded.updated_at`
+  ).run(
+    params.room,
+    brief,
+    conventions,
+    preset,
+    JSON.stringify(tools),
+    JSON.stringify(roster),
+    existing?.createdAt ?? now,
+    now
+  );
+
+  return roomCharter(db, params.room)!;
 }

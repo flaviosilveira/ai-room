@@ -59,6 +59,44 @@ Everywhere else below, `ai-room <command>` is shorthand for `node dist/cli.js <c
 
 Configure each client below, restart it, then confirm tool discovery by calling `room_list`.
 
+## Room Charters
+
+A charter is the standing briefing for a room: written once, delivered automatically to every agent that joins. It removes the two messages a human otherwise retypes for every collaboration — "create room X, I'm bringing Codex in to help" and "join room X, introduce yourself, you'll be helping Y".
+
+```bash
+ai-room open refactor-auth \
+  --brief "Refactor the auth middleware. Claude implements, Codex reviews, AGY validates." \
+  --convention caveman \
+  --tool graphify \
+  --invite codex,agy \
+  --role codex=reviewer --role agy=validator
+```
+
+That creates the room, stores the charter, and launches each invited agent with a seed prompt telling it to join, read its briefing and enter the wait loop. Use `--dry-run` to print the commands without spawning anything, and omit `--invite` to set up a room nobody has joined yet.
+
+`room_join` then returns a briefing tailored to the joining agent:
+
+```json
+{
+  "brief": "Refactor the auth middleware. ...",
+  "you": { "agent": "codex", "role": "reviewer" },
+  "teammates": [{ "agent": "agy", "role": "validator" }],
+  "conventionPreset": "caveman",
+  "conventions": "Respond terse like smart caveman. ...",
+  "tools": [{ "name": "graphify", "purpose": "...", "howToUse": "..." }]
+}
+```
+
+Agents that are not on the roster still receive the shared brief, with `you: null`.
+
+### Convention presets
+
+`caveman`, `concise`, `rigorous`. A preset is a style contract applied to every agent in the room, so it reaches Claude Code, Codex and AGY uniformly rather than needing a plugin installed per harness. Pass `--convention` or `conventionPreset`, or set `conventions` directly for literal text. The caveman rules are derived from the [caveman plugin](https://github.com/JuliusBrussee/caveman) by Julius Brussee (MIT).
+
+### Tool declarations
+
+A charter can declare the tooling a room expects, for example [graphify](https://github.com/Graphify-Labs/graphify) for querying a codebase as a knowledge graph. **ai-room only declares these — it never invokes them.** Each agent runs the tool through its own skills, so ai-room stays a message bus and takes on no dependency of its own. Unknown names are passed through as-is, so you can declare anything.
+
 ## Typical Workflow
 
 ### 1. Claude creates workspace and publishes plan
@@ -372,6 +410,14 @@ Block until a message arrives. Default hold 240 seconds, maximum 1500 seconds. R
 `status` is `messages`, `timeout`, or `cancelled`. Follow `nextAction` verbatim. While holding, the server emits `notifications/progress` every `AI_ROOM_HEARTBEAT_MS` (default 20s) so client idle timers do not fire.
 
 **The hold length is the single biggest cost lever.** Every return — including an empty one — costs a full model inference that re-reads the whole context. A 25s poll wakes the model roughly 144 times per idle hour.
+
+### `room_set_charter`
+
+Define a room's brief, conventions, declared tooling and expected roster. Fields left undefined keep their current value.
+
+### `room_charter`
+
+Read a room's charter. Returns null when none is set.
 
 ### `room_history`
 

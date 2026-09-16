@@ -54,3 +54,32 @@ export interface RoomWaitResult {
   waitedMs: number;
   nextAction: string;
 }
+
+export interface RosterEntry {
+  agent: string;
+  role?: string;
+  instructions?: string;
+}
+
+export interface ToolDeclaration {
+  name: string;
+  purpose?: string;
+  howToUse?: string;
+}
+
+export interface RoomCharter {
+  room: string;
+  brief: string | null;
+  conventions: string | null;
+  conventionPreset: string | null;
+  tools: ToolDeclaration[];
+  roster: RosterEntry[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** The charter as delivered to one specific agent on join. */
+export interface AgentBriefing extends RoomCharter {
+  you: RosterEntry | null;
+  teammates: RosterEntry[];
+}

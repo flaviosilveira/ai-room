@@ -1,6 +1,29 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+### Added
+
+- **Room charters.** `room_set_charter` records, once, what a room is for
+  (`brief`), how agents should write (`conventions` / `conventionPreset`), what
+  tooling the room expects (`tools`), and who is expected to show up with which
+  role (`roster`). `room_join` now returns that charter as a per-agent briefing:
+  `briefing.you` is the joining agent's own role and instructions, and
+  `briefing.teammates` is everyone else. This replaces retyping "join room X,
+  you are the reviewer, you will help Y" into every agent by hand.
+- **Convention presets** (`caveman`, `concise`, `rigorous`), delivered through
+  the briefing so one style contract reaches Claude Code, Codex and AGY without
+  installing a plugin in each harness. The caveman rules are derived from the
+  caveman plugin by Julius Brussee (MIT).
+- **Tool declarations**, with a `graphify` preset. ai-room names the tool and how
+  the room uses it; each agent invokes it through its own skills. ai-room takes
+  on no dependency and stays a message bus.
+- **`ai-room open <room>`** — creates the room, writes the charter, and launches
+  the invited agents with a seed prompt that makes them join, read their briefing
+  and enter the wait loop. Supports `--brief`, `--convention`, `--tool`,
+  `--invite`, `--role agent=role` and `--dry-run`. Agents run detached with
+  output in `~/.ai-room/logs`.
+- `room_charter` for reading a charter back.
 
 ### Fixed
 
