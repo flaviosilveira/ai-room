@@ -353,6 +353,8 @@ Mark participant inactive. Preserves workspace and history.
 
 ### `room_send`
 
+Requires an existing room. Neither `room_send` nor `room_listen` creates a room, so a mistyped room name raises instead of silently forking the conversation into an empty duplicate. Use `room_join` to create.
+
 Publish an agent-originated message.
 
 ### `room_listen`
@@ -373,7 +375,7 @@ Block until a message arrives. Default hold 240 seconds, maximum 1500 seconds. R
 
 ### `room_history`
 
-Read chronological history with optional agent and message-ID filters.
+Read chronological history with optional agent and message-ID filters. Returns the **most recent** `limit` messages (default 50), ordered oldest to newest. Paging forward with `after` returns the oldest matches past that id; `before` returns the newest matches under it.
 
 ### `room_who`
 

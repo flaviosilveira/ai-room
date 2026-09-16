@@ -226,3 +226,63 @@ describe("ai-room store", () => {
     fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
   });
 });
+
+describe("room_history windowing", () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = openDb(":memory:");
+    roomJoin(db, { room: "r", agent: "claude" });
+    for (let i = 1; i <= 120; i += 1) {
+      roomSend(db, { room: "r", agent: "claude", message: `m${i}` });
+    }
+  });
+
+  afterEach(() => db.close());
+
+  it("returns the most recent messages, in chronological order", () => {
+    const rows = roomHistory(db, { room: "r", limit: 5 });
+    expect(rows.map((m) => m.content)).toEqual(["m116", "m117", "m118", "m119", "m120"]);
+  });
+
+  it("pages forward from `after` with the oldest matches past that id", () => {
+    const first = roomHistory(db, { room: "r", limit: 3, after: 0 });
+    expect(first.map((m) => m.content)).toEqual(["m1", "m2", "m3"]);
+    const next = roomHistory(db, { room: "r", limit: 3, after: first[2].id });
+    expect(next.map((m) => m.content)).toEqual(["m4", "m5", "m6"]);
+  });
+
+  it("pages backward from `before` with the newest matches under that id", () => {
+    const rows = roomHistory(db, { room: "r", limit: 3, before: 11 });
+    expect(rows.map((m) => m.content)).toEqual(["m8", "m9", "m10"]);
+  });
+});
+
+describe("rooms are never conjured by accident", () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = openDb(":memory:");
+    roomJoin(db, { room: "real", agent: "claude" });
+  });
+
+  afterEach(() => db.close());
+
+  it("refuses room_send into a room that does not exist", () => {
+    expect(() => roomSend(db, { room: "reall", agent: "claude", message: "x" })).toThrow(
+      /does not exist/
+    );
+    expect(roomList(db, {}).map((r) => r.name)).toEqual(["real"]);
+  });
+
+  it("refuses room_listen on a room that does not exist", () => {
+    expect(() => roomListen(db, { room: "typo", agent: "claude" })).toThrow(/does not exist/);
+    expect(roomList(db, {}).map((r) => r.name)).toEqual(["real"]);
+  });
+
+  it("still allows send and listen in a joined room", () => {
+    roomJoin(db, { room: "real", agent: "codex" });
+    roomSend(db, { room: "real", agent: "codex", message: "hi" });
+    expect(roomListen(db, { room: "real", agent: "claude" }).map((m) => m.content)).toEqual(["hi"]);
+  });
+});

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `room_history` returned the OLDEST messages, not the newest. `room_history(limit: 50)`
+  on a 500-message room replayed the first 50 messages — the beginning of the
+  conversation — instead of what was just said. It now selects the newest matches and
+  still returns them chronologically. Paging forward with `after` keeps taking the
+  oldest matches past that id; `before` takes the newest under it.
+- `room_send` and `room_listen` created the room when it was missing, so a single typo
+  silently forked the conversation into a new empty room that looked identical from the
+  outside. Both now require an existing room and say to call `room_join` first.
+
 ## 0.1.0
 
 Focus: stop burning model tokens while a room is idle, and stop relying on the

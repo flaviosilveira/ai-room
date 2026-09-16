@@ -11,7 +11,8 @@ import type {
 function ensureRoom(
   db: Database.Database,
   room: string,
-  createIfMissing = true
+  createIfMissing = true,
+  hint = "Use room_list with a query before joining a persistent workspace."
 ): { room: RoomInfo; created: boolean } {
   const now = Date.now();
   const result = db.prepare(
@@ -23,9 +24,7 @@ function ensureRoom(
     .prepare(`SELECT name, created_at as createdAt FROM rooms WHERE name = ?`)
     .get(room) as RoomInfo | undefined;
   if (!row) {
-    throw new Error(
-      `Room "${room}" does not exist. Use room_list with a query before joining a persistent workspace.`
-    );
+    throw new Error(`Room "${room}" does not exist. ${hint}`);
   }
   return { room: row, created: insert?.changes === 1 };
 }
@@ -119,7 +118,7 @@ export function roomSend(
   db: Database.Database,
   params: { room: string; agent: string; message: string }
 ): MessageInfo {
-  ensureRoom(db, params.room);
+  ensureRoom(db, params.room, false, "Call room_join first; room_send never creates a room, so a typo cannot silently fork the conversation.");
   ensureParticipant(db, params.room, params.agent, null);
 
   const now = Date.now();
@@ -150,7 +149,7 @@ export function roomListen(
   db: Database.Database,
   params: { room: string; agent: string }
 ): MessageInfo[] {
-  ensureRoom(db, params.room);
+  ensureRoom(db, params.room, false, "Call room_join first; room_listen never creates a room.");
   ensureParticipant(db, params.room, params.agent, null);
 
   const listen = db.transaction((room: string, agent: string) => {
@@ -220,13 +219,22 @@ export function roomHistory(
   const limit = params.limit ?? 50;
   args.push(limit);
 
+  // Paging forward from `after` takes the OLDEST matches past that id; every
+  // other call takes the NEWEST matches. Selecting the oldest N by default made
+  // `room_history(limit: 50)` on a busy room return message 1..50 — the start of
+  // the conversation — rather than what was just said.
+  const pageForward = params.after !== undefined && params.before === undefined;
+
   const rows = db
     .prepare(
-      `SELECT id, room, agent, origin, content, created_at as createdAt
-       FROM messages
-       WHERE ${clauses.join(" AND ")}
-       ORDER BY id ASC
-       LIMIT ?`
+      `SELECT id, room, agent, origin, content, createdAt FROM (
+         SELECT id, room, agent, origin, content, created_at as createdAt
+         FROM messages
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY id ${pageForward ? "ASC" : "DESC"}
+         LIMIT ?
+       )
+       ORDER BY id ASC`
     )
     .all(...args) as MessageInfo[];
 
