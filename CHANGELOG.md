@@ -2,6 +2,10 @@
 
 ## 0.2.0
 
+Feature freeze. Known limitations are documented in the README under
+"Known limitations (0.2.0)" — notably Codex's per-tool approval prompts, why a
+blocked agent still reads as `working`, and that the pane workspace needs tmux.
+
 ### Added
 
 - **tmux pane workspace.** `ai-room open` creates one tmux session per room

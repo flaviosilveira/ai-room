@@ -528,6 +528,68 @@ List persistent workspaces. Optional `query` matches all case-insensitive name t
 
 Publish `waiting`, `working`, `blocked`, `approval_required`, or `done`.
 
+## Known limitations (0.2.0)
+
+Everything here was observed in a real session with Claude Code, Codex and AGY
+in a tmux workspace. None of it blocks the main flow, but knowing it up front
+saves you from misreading the symptoms.
+
+### Codex asks for approval once per tool
+
+`approval_mode = "auto"` in `~/.codex/config.toml` does **not** suppress the
+first prompt — that was tested. The supported way to stop the prompts is the
+interactive dialog's third option, **"Always allow"**, chosen once per tool. In a
+real session that meant `room_join`, `room_wait`, `room_history` and `room_send`
+separately.
+
+Do **not** reach for `approval_policy = "never"`: it is global and would drop the
+shell and filesystem gates too. Per-tool "Always allow" is the granular answer.
+
+### A blocked agent looks like a working one
+
+While Codex waits on its own approval prompt, ai-room sees no event at all, so
+`room_who` still reports `working`. There is no reliable signal short of parsing
+the harness's terminal output, which is fragile enough that it is deliberately
+not done. Watch the pane, or have agents call `room_set_status("approval_required")`
+before operations they expect to be gated.
+
+### Typing into a pane queues behind `room_wait`
+
+An agent holding a 240s `room_wait` is never idle, so text typed into its pane
+sits in the harness's queue until that call returns. Press `Esc` to interrupt the
+wait and release the queued text, or talk through the room (`POST /say`, or the
+console prompt), which wakes the agent in milliseconds. This is the direct cost
+of the long hold that keeps idle token usage low.
+
+### Stale participants are exposed, not decided
+
+An agent whose process dies without calling `room_leave` stays `active`.
+`room_who` reports `lastSeenAt` and `statusUpdatedAt` so you can judge, but
+ai-room will not call a participant dead on silence alone: a legitimate
+`room_wait` is silent for minutes by design.
+
+### The pane workspace needs tmux
+
+screen cannot be scripted into panes reliably, so it hosts one session per agent
+instead. With neither tmux nor screen, agents run headless with logs and `open`
+says so. Everything still coordinates; only the human-facing layer degrades.
+
+### Not verified on Ubuntu
+
+The real session ran on macOS. Nothing in the code is macOS-specific — tmux is
+found through `PATH` — but Linux has not been exercised.
+
+### Other
+
+- Codex and AGY have no ai-room `Stop` hook. Only Claude Code has one; the other
+  harnesses use a different hook I/O shape and would need their own script.
+- `--role` only applies to agents named in `--invite`; roles for agents you start
+  yourself must be set through `room_set_charter`.
+- The monitor pane exits if the server goes down. Agents are unaffected and the
+  pane can be restarted with `ai-room console <room>`.
+- Restarting the server mid-wait is safe: a broken wait consumes nothing, so
+  messages sent during the gap are still delivered afterwards.
+
 ## Architecture
 
 ```text
