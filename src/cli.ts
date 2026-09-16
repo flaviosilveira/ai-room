@@ -2,16 +2,13 @@ import { openDb, defaultDbPath } from "./db/index.js";
 import { VERSION } from "./version.js";
 import { createHttpApp } from "./http.js";
 import { roomHistory, roomJoin, roomList, roomSetCharter, roomWho } from "./store.js";
-import { invite, openWorkspace, planWorkspace } from "./invite.js";
+import { closeRoom, invite, openWorkspace, planWorkspace } from "./invite.js";
 import { runConsole } from "./console.js";
 import {
   INSTALL_HINT,
   detectMultiplexer,
-  killWorkspace,
   liveSessions,
   sessionName,
-  sessionExists,
-  workspaceName,
 } from "./session.js";
 import { TOOL_CATALOG } from "./catalog.js";
 import type { RosterEntry } from "./types.js";
@@ -265,14 +262,14 @@ function close(room: string): void {
     console.error("usage: ai-room close <room>");
     process.exit(1);
   }
-  const driver = detectMultiplexer("tmux");
-  const session = workspaceName(room);
-  if (!driver || !sessionExists(driver, session)) {
-    console.log(`no tmux workspace for "${room}".`);
+  const closed = closeRoom(room);
+  if (!closed.length) {
+    console.log(`no live session for "${room}".`);
     return;
   }
-  killWorkspace(driver, session);
-  console.log(`closed workspace ${session}.`);
+  for (const { session, agent } of closed) {
+    console.log(agent ? `closed ${agent} session ${session}.` : `closed workspace ${session}.`);
+  }
   console.log(`the room, its charter and its history are untouched.`);
 }
 

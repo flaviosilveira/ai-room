@@ -9,10 +9,18 @@ import {
   killWorkspace,
   sessionExists,
   sessionName,
+  startSession,
   workspaceName,
   workspacePanes,
 } from "../src/session.js";
-import { agentCommand, joinPrompt, planWorkspace } from "../src/invite.js";
+import {
+  LAUNCHERS,
+  agentCommand,
+  closeRoom,
+  joinPrompt,
+  planWorkspace,
+  roomSessions,
+} from "../src/invite.js";
 import { TOOL_CATALOG, TOOL_NAMES } from "../src/catalog.js";
 
 describe("workspace naming and isolation", () => {
@@ -40,6 +48,15 @@ describe("workspace naming and isolation", () => {
   it("never lets a per-agent session collide with a workspace", () => {
     expect(workspaceName("r-codex")).not.toBe(sessionName("r", "codex"));
     expect(sessionName("a", "b-c")).not.toBe(sessionName("a-b", "c"));
+  });
+
+  it("counts the detached per-agent sessions as the room's own", () => {
+    const owned = roomSessions("refactor-auth");
+    expect(owned).toHaveLength(Object.keys(LAUNCHERS).length + 1);
+    expect(owned[0]).toEqual({ session: workspaceName("refactor-auth"), agent: null });
+    for (const agent of Object.keys(LAUNCHERS)) {
+      expect(owned).toContainEqual({ session: sessionName("refactor-auth", agent), agent });
+    }
   });
 
   it("never emits a kill-server command", () => {
@@ -176,8 +193,14 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
   const session = workspaceName(room);
   const pane = (title: string) => ({ title, command: ["sh", "-c", "sleep 60"] });
 
+  // Covers the neighbour room too: a failing assertion must not leak a session
+  // into the next test, or into the developer's tmux server.
   afterEach(() => {
-    if (tmux) killWorkspace(tmux, session);
+    if (!tmux) return;
+    for (const name of [room, `${room}-other`]) {
+      killWorkspace(tmux, workspaceName(name));
+      for (const owned of roomSessions(name)) killWorkspace(tmux, owned.session);
+    }
   });
 
   it("creates, extends on reopen, and stays idempotent", () => {
@@ -208,6 +231,33 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
     expect(again.panes).toEqual([]);
     expect(again.skipped).toEqual(["codex"]);
     expect(workspacePanes(tmux!, session)).toEqual(["codex"]);
+  });
+
+  it("closes the detached per-agent sessions, not just the workspace", () => {
+    // `open --detached` puts every agent in its own session whose name carries
+    // a digest, so a workspace-only close orphaned them beyond reach.
+    const claude = sessionName(room, "claude");
+    const codex = sessionName(room, "codex");
+    startSession(tmux!, claude, process.cwd(), ["sh", "-c", "sleep 60"]);
+    startSession(tmux!, codex, process.cwd(), ["sh", "-c", "sleep 60"]);
+    ensureWorkspace(tmux!, session, process.cwd(), [pane("claude")]);
+
+    const closed = closeRoom(room, { driver: tmux });
+    expect(closed.map((c) => c.session).sort()).toEqual([claude, codex, session].sort());
+    for (const name of [claude, codex, session]) {
+      expect(sessionExists(tmux!, name)).toBe(false);
+    }
+  });
+
+  it("leaves another room's sessions alone when closing one", () => {
+    const other = `${room}-other`;
+    startSession(tmux!, sessionName(other, "claude"), process.cwd(), ["sh", "-c", "sleep 60"]);
+    startSession(tmux!, sessionName(room, "claude"), process.cwd(), ["sh", "-c", "sleep 60"]);
+
+    closeRoom(room, { driver: tmux });
+    expect(sessionExists(tmux!, sessionName(room, "claude"))).toBe(false);
+    expect(sessionExists(tmux!, sessionName(other, "claude"))).toBe(true);
+    killWorkspace(tmux!, sessionName(other, "claude"));
   });
 
   it("keeps rooms in separate sessions", () => {

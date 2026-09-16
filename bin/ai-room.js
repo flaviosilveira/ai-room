@@ -1,2 +1,5 @@
 #!/usr/bin/env node
-import "../dist/cli.js";
+import { assertSupportedRuntime } from "../dist/preflight.js";
+
+assertSupportedRuntime();
+await import("../dist/cli.js");

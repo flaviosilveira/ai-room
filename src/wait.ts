@@ -138,16 +138,27 @@ export async function roomWait(
 
   // Heartbeats also refresh last_seen_at, so a long-held waiter is not mistaken
   // for a dead agent by room_who or the /active endpoint.
+  //
+  // A timer callback has no caller to catch for it, so anything thrown here
+  // reaches the top level and kills the server, taking every other room with
+  // it. Both halves fail in normal operation — the room can be deleted under a
+  // parked waiter, the notification channel can already be gone — and either
+  // way this wait is over, so settle it and let the client get a response.
   const heartbeat = options.onHeartbeat
     ? setInterval(() => {
-        const elapsed = Date.now() - startedAt;
-        roomSetStatus(db, {
-          room: params.room,
-          agent: params.agent,
-          status: "waiting",
-          detail: null,
-        });
-        options.onHeartbeat?.(elapsed);
+        try {
+          const elapsed = Date.now() - startedAt;
+          roomSetStatus(db, {
+            room: params.room,
+            agent: params.agent,
+            status: "waiting",
+            detail: null,
+          });
+          options.onHeartbeat?.(elapsed);
+        } catch {
+          clearInterval(heartbeat);
+          subscription.cancel();
+        }
       }, options.heartbeatMs ?? HEARTBEAT_MS)
     : undefined;
 

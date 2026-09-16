@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+
+- **`ai-room close` left detached sessions running.** `--detached` gives every
+  agent its own session, but close only knew about the shared pane workspace, so
+  those agents kept running with no way to reach them: the session names carry a
+  digest a human cannot reconstruct. Close now ends every session the room owns.
+  The names are computed, never matched by prefix — slugging is lossy, and a
+  prefix scan would also kill sessions belonging to a different room that slugs
+  the same. With no tmux it looks for the screen sessions instead of reporting
+  nothing to close. The room, its charter and its history stay untouched.
+- **A failing `room_wait` heartbeat took the whole server down.** The heartbeat
+  runs from a timer, which has no caller to catch for it, so anything thrown
+  reached the top level and killed the process — every room on the bus, not just
+  the one at fault. Both halves fail in normal operation: the room can disappear
+  under a parked waiter, and the notification channel can already be gone. The
+  heartbeat now ends that one wait and lets its client get an ordinary response.
+
+### Runtime safety
+
+- **An unsupported Node runtime is detected before SQLite is opened.** The
+  bundled SQLite binding is a Node-API 10 addon; loading it on a Node-API 9
+  runtime kills the process with SIGSEGV instead of failing cleanly, and the
+  crash lands at the first database call with no output at all. This is not new
+  in 0.2.0 — the dependency has been there since 0.0.1 — but there was nothing
+  guarding it. `ai-room` now checks the runtime first and exits 1 naming the
+  Node version, its path, and the Node-API version it offers against the one
+  required. The check sits in `openDb` and in the `bin` entrypoint, so it covers
+  the CLI, `serve`, and use as a library.
+- **Node requirement is now `>=23`**, declared in `engines`. A version manager
+  that picks Node from the working directory is the common way to land on an
+  unsupported runtime, since `ai-room` is meant to be run from any repo; point
+  `AI_ROOM_NODE` at a supported node and launch through it.
+
 ## 0.2.0
 
 Feature freeze. Known limitations are documented in the README under

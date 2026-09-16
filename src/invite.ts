@@ -7,6 +7,8 @@ import {
   INSTALL_HINT,
   detectMultiplexer,
   ensureWorkspace,
+  killWorkspace,
+  liveSessions,
   sessionExists,
   sessionName,
   startSession,
@@ -231,4 +233,43 @@ export function openWorkspace(
   const plan = planWorkspace(room, agents, options);
   const result = ensureWorkspace(driver, workspaceName(room), options.cwd ?? process.cwd(), plan.panes);
   return { plan, result };
+}
+
+/* ----------------------------------------------------------------- close */
+
+export interface ClosedSession {
+  session: string;
+  /** null for the shared pane workspace, otherwise the agent it hosted. */
+  agent: string | null;
+}
+
+/**
+ * Every session a room can own: the pane workspace plus one per launchable
+ * agent, because `--detached` gives each agent its own session. Closing only
+ * the workspace left those running with no way to find them, since the names
+ * carry a digest the human cannot reconstruct.
+ *
+ * Names are computed, never prefix-matched: slugging is lossy, so a prefix scan
+ * would also match sessions belonging to a different room that slugs the same.
+ */
+export function roomSessions(room: string): ClosedSession[] {
+  return [
+    { session: workspaceName(room), agent: null },
+    ...Object.keys(LAUNCHERS).map((agent) => ({ session: sessionName(room, agent), agent })),
+  ];
+}
+
+export function closeRoom(
+  room: string,
+  options: { driver?: MultiplexerDriver | null } = {}
+): ClosedSession[] {
+  // No preference: with tmux absent the detached sessions are screen sessions,
+  // and asking for tmux alone would report them as nonexistent.
+  const driver = options.driver !== undefined ? options.driver : detectMultiplexer();
+  if (!driver) return [];
+
+  const live = new Set(liveSessions(driver));
+  return roomSessions(room).filter(
+    (candidate) => live.has(candidate.session) && killWorkspace(driver, candidate.session)
+  );
 }

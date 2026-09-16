@@ -110,4 +110,51 @@ describe("room_wait", () => {
     expect(beats.length).toBeGreaterThanOrEqual(2);
     expect(registry.size()).toBe(0);
   });
+
+  it("survives the room disappearing under a parked waiter", async () => {
+    const dropRoom = () => {
+      for (const table of ["cursors", "messages", "participants", "room_profiles"]) {
+        db.exec(`DELETE FROM ${table} WHERE room = 'r'`);
+      }
+      db.exec("DELETE FROM rooms WHERE name = 'r'");
+    };
+
+    // The heartbeat after this one writes a status for a room that is gone.
+    // Thrown from a timer that reached the top level and killed the server.
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 2_000 },
+      { heartbeatMs: 10, onHeartbeat: dropRoom }
+    );
+
+    const startedAt = Date.now();
+    await expect(pending).rejects.toThrow(/does not exist/);
+    // The guard stops the wait at the failing beat. Without it the timer kept
+    // throwing until the hold expired, if the process lived that long.
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(registry.size()).toBe(0);
+  });
+
+  it("settles instead of crashing when the heartbeat channel fails", async () => {
+    let beats = 0;
+    const result = await roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 2_000 },
+      {
+        heartbeatMs: 10,
+        onHeartbeat: () => {
+          beats += 1;
+          throw new Error("notification channel closed");
+        },
+      }
+    );
+
+    expect(result.status).toBe("timeout");
+    expect(result.waitedMs).toBeLessThan(500);
+    // One failure is enough to end the wait; an unguarded timer kept firing.
+    expect(beats).toBe(1);
+    expect(registry.size()).toBe(0);
+  });
 });

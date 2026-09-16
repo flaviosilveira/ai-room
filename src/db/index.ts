@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { assertSupportedRuntime } from "../preflight.js";
 
 export function defaultDbPath(): string {
   return (
@@ -11,6 +12,7 @@ export function defaultDbPath(): string {
 }
 
 export function openDb(dbPath: string = defaultDbPath()): Database.Database {
+  assertSupportedRuntime();
   if (dbPath !== ":memory:") {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   }
