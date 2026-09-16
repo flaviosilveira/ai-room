@@ -4,6 +4,38 @@
 
 ### Added
 
+- **tmux pane workspace.** `ai-room open` creates one tmux session per room
+  (`airoom-<room>`) with a pane per agent plus a monitor pane running
+  `ai-room console`. Reopening a room attaches to what is already there and adds
+  only the missing panes. `ai-room close <room>` kills that one session and
+  nothing else — never `kill-server`, and never the room itself: the workspace
+  and the room in SQLite are separate entities.
+- **`--detached`** keeps the previous behaviour (one session per agent), and
+  `--no-monitor` drops the monitor pane. With no tmux, `open` degrades to
+  per-agent sessions; with neither tmux nor screen it degrades to headless
+  processes with logs, and says so. It never fails outright.
+- **Capability discovery without an MCP handshake**: `GET /tools`,
+  `ai-room tools [--json]`, and `ai-room status --json`. External tooling was
+  reading `registerTool` out of `dist/server.js`; that is now a supported
+  interface. A test asserts the catalog matches what the server registers, so the
+  two cannot drift.
+
+### Fixed
+
+- **`pnpm build` failed in any non-interactive context** with
+  `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`. The cause was not the script:
+  `node_modules` had been installed by pnpm 10 (store v10) while the active pnpm
+  was 11 (store v11), so pnpm insisted on purging and reinstalling, and the purge
+  prompt needs a TTY. `verify-deps-before-run` and `devEngines` were both tested
+  and ruled out. Resyncing the install fixes it; `confirm-modules-purge=false`
+  now lets a future major transition resync unattended instead of dead-ending in
+  CI, scripts or a service manager. Consumers no longer need to call
+  `node_modules/.bin/tsc` to work around it.
+- Pane identity no longer depends on `pane_title`. Agents rewrite their own title
+  through escape sequences — Codex sets it to "[ ! ] Action Required" — which made
+  reopening a room duplicate every pane. Identity now lives in a tmux user option
+  the application cannot reach.
+
 - **`ai-room console <sala>`** — one window for the whole room: a live feed of
   messages and participant status, plus a prompt to talk to the room. Agents that
   report `approval_required` or `blocked` are called out with the command to

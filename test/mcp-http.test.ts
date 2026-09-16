@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { openDb } from "../src/db/index.js";
 import { createHttpApp } from "../src/http.js";
+import { TOOL_NAMES } from "../src/catalog.js";
 import type Database from "better-sqlite3";
 
 async function makeClient(baseUrl: URL): Promise<Client> {
@@ -150,5 +151,28 @@ describe("ai-room MCP over Streamable HTTP", () => {
     await claude.close();
     await codex.close();
     await agy.close();
+  });
+
+  it("keeps the published catalog identical to what the server registers", async () => {
+    // This is what lets external tooling trust GET /tools and `ai-room tools`
+    // instead of grepping registerTool out of the compiled server.
+    const client = await makeClient(baseUrl);
+    const registered = (await client.listTools()).tools.map((t) => t.name).sort();
+    expect(registered).toEqual([...TOOL_NAMES].sort());
+    await client.close();
+  });
+
+  it("serves capability discovery without an MCP handshake", async () => {
+    const response = await fetch(new URL("/tools", baseUrl));
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      count: number;
+      tools: Array<{ name: string; summary: string; mutates: boolean }>;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.count).toBe(TOOL_NAMES.length);
+    expect(body.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
+    expect(body.tools.every((t) => t.summary.length > 0)).toBe(true);
   });
 });

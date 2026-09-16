@@ -61,6 +61,58 @@ Configure each client below, restart it, then confirm tool discovery by calling 
 
 ## One window for everything
 
+```bash
+ai-room open refactor-auth --brief "..." --invite codex,agy
+tmux attach -t airoom-refactor-auth
+```
+
+```
+┌───────────────────────────┬───────────────────────────┐
+│ codex                     │ agy                       │
+│ sessão interativa         │ sessão interativa         │
+├───────────────────────────┴───────────────────────────┤
+│ monitor — ai-room console                             │
+└───────────────────────────────────────────────────────┘
+```
+
+Each agent pane is a real interactive session of that harness, so selecting a
+pane lets you talk to that agent directly and answer its own approval prompts.
+The monitor pane runs `ai-room console` for the room feed.
+
+Two channels, deliberately separate:
+
+| Channel | Carrier | Purpose |
+| --- | --- | --- |
+| human ↔ agent | tmux pane | Direct conversation with one harness |
+| agent ↔ agent | ai-room over MCP | Coordination, charter, status |
+
+tmux is a **frontend**, never part of the protocol. `ai-room serve` does not know
+whether one is running: close every workspace and the server, rooms and history
+are untouched.
+
+| Situação | Comportamento |
+| --- | --- |
+| tmux instalado | Pane workspace (padrão) |
+| `--detached` | Uma sessão por agente, anexável individualmente |
+| Sem tmux | Sessões por agente via screen, com aviso |
+| Sem tmux e sem screen | Processos headless com log, com aviso |
+
+`ai-room close <room>` kills only that room's workspace. The room, its charter
+and its history live in SQLite and survive.
+
+### Discovering what ai-room can do
+
+```bash
+ai-room tools --json      # catálogo das ferramentas MCP
+ai-room status --json     # saúde, versão, multiplexador e catálogo
+curl localhost:49375/tools
+```
+
+No MCP handshake required, so bootstrap tooling never has to inspect the
+compiled server.
+
+## Legacy: one console window
+
 Agents do not need a terminal each. `ai-room open` starts each one in a detached
 tmux (or screen) session, and `ai-room console` gives you a single window with a
 live feed of the room and a prompt to talk to it.

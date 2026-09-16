@@ -1,59 +1,55 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   INSTALL_HINT,
   detectMultiplexer,
+  ensureWorkspace,
   sessionExists,
   sessionName,
   startSession,
+  workspaceName,
 } from "./session.js";
+import type { MultiplexerDriver, PaneSpec, WorkspaceResult } from "./session.js";
 
 export interface AgentLauncher {
-  /** Binary to look for on PATH. */
   bin: string;
   /**
-   * argv for an INTERACTIVE run seeded with `prompt`. Interactive matters: it is
-   * what makes the harness's own approval prompt exist, so a human can attach to
-   * the session and answer it instead of the approval being auto-resolved.
+   * argv for an INTERACTIVE run seeded with `prompt`. Interactive is the point:
+   * a headless run resolves its own approval prompts, so attaching to it later
+   * would leave the human nothing to answer.
    */
   args: (prompt: string) => string[];
 }
 
-/**
- * Every supported harness can be started with a seed prompt. They differ in how
- * long they stay alive: `codex exec` and `claude -p` run the agentic loop until
- * the model stops calling tools, which — with room_wait holding server-side —
- * means they keep listening. `agy -i` seeds an interactive session instead.
- */
 export const LAUNCHERS: Record<string, AgentLauncher> = {
   claude: { bin: "claude", args: (prompt) => [prompt] },
   codex: { bin: "codex", args: (prompt) => [prompt] },
   agy: { bin: "agy", args: (prompt) => ["-i", prompt] },
 };
 
+/**
+ * Deliberately minimal. The charter is the source of the collaboration, so the
+ * seed prompt only says how to go get it — it never restates the brief, roles,
+ * conventions or tools. Duplicating them here would let the two drift apart.
+ */
 export function joinPrompt(room: string, agent: string): string {
   return [
     `Join the ai-room "${room}" as agent "${agent}" by calling room_join`,
     `with {room: "${room}", agent: "${agent}"}.`,
-    "The response contains your briefing: read briefing.brief, briefing.you,",
-    "briefing.teammates, briefing.conventions and briefing.tools, and follow all of it.",
-    "Introduce yourself with room_send, then call room_wait and stay in that loop.",
-    "When room_wait returns status 'timeout', call it again and emit no text.",
+    "Read the briefing in the response and follow it.",
+    "Then call room_wait and stay in that loop.",
   ].join(" ");
 }
 
-export interface InviteResult {
-  agent: string;
-  launcher: string;
-  command: string;
-  status: "launched" | "missing" | "failed";
-  session?: string;
-  attachWith?: string;
-  multiplexer?: string;
-  error?: string;
+export function agentCommand(room: string, agent: string, launcherName = agent): string[] | null {
+  const launcher = LAUNCHERS[launcherName];
+  if (!launcher) return null;
+  return [launcher.bin, ...launcher.args(joinPrompt(room, agent))];
 }
 
-function onPath(bin: string): boolean {
+export function onPath(bin: string): boolean {
   const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   return dirs.some((dir) => {
     try {
@@ -65,75 +61,159 @@ function onPath(bin: string): boolean {
   });
 }
 
-/**
- * Starts one agent in a detached multiplexer session. Detached so the human
- * stays in a single console window; a session rather than a log file so they
- * can attach to any agent later, without having predicted at launch time which
- * one would end up needing attention.
- */
+export function logDir(): string {
+  return process.env.AI_ROOM_LOG_DIR || path.join(os.homedir(), ".ai-room", "logs");
+}
+
+export type InviteMode = "workspace" | "session" | "headless";
+
+export interface InviteResult {
+  agent: string;
+  command: string;
+  status: "launched" | "missing" | "failed" | "skipped";
+  mode?: InviteMode;
+  session?: string;
+  attachWith?: string;
+  logPath?: string;
+  error?: string;
+}
+
+/* ------------------------------------------------- per-agent session mode */
+
 export function invite(
   room: string,
   agent: string,
-  options: { launcher?: string; cwd?: string; dryRun?: boolean } = {}
+  options: { launcher?: string; cwd?: string; dryRun?: boolean; driver?: MultiplexerDriver | null } = {}
 ): InviteResult {
-  const launcherName = options.launcher ?? agent;
-  const launcher = LAUNCHERS[launcherName];
-  if (!launcher) {
+  const argv = agentCommand(room, agent, options.launcher ?? agent);
+  if (!argv) {
     return {
       agent,
-      launcher: launcherName,
       command: "",
       status: "failed",
-      error: `No launcher for "${launcherName}". Known: ${Object.keys(LAUNCHERS).join(", ")}.`,
+      error: `No launcher for "${options.launcher ?? agent}". Known: ${Object.keys(LAUNCHERS).join(", ")}.`,
     };
   }
 
-  const argv = [launcher.bin, ...launcher.args(joinPrompt(room, agent))];
   const command = argv.map((a) => (a.includes(" ") ? JSON.stringify(a) : a)).join(" ");
   const session = sessionName(room, agent);
-
   if (options.dryRun) {
-    return { agent, launcher: launcherName, command, status: "launched", session };
+    return { agent, command, status: "launched", mode: "session", session };
+  }
+  if (!onPath(argv[0])) {
+    return { agent, command, status: "missing", error: `${argv[0]} is not on PATH.` };
   }
 
-  const driver = detectMultiplexer();
-  if (!driver) {
-    return { agent, launcher: launcherName, command, status: "failed", error: `No tmux or screen on PATH. ${INSTALL_HINT}` };
-  }
-  if (!onPath(launcher.bin)) {
-    return { agent, launcher: launcherName, command, status: "missing", error: `${launcher.bin} is not on PATH.` };
-  }
+  const driver = options.driver !== undefined ? options.driver : detectMultiplexer();
+  const cwd = options.cwd ?? process.cwd();
+
+  // No multiplexer at all: still launch, just without an attachable TTY. The
+  // room must keep working on a machine with neither tmux nor screen.
+  if (!driver) return headless(room, agent, argv, command, cwd);
+
   if (sessionExists(driver, session)) {
     return {
       agent,
-      launcher: launcherName,
       command,
-      status: "failed",
+      status: "skipped",
+      mode: "session",
       session,
       attachWith: driver.attach(session),
-      error: `Session "${session}" already exists. Attach to it, or kill it first.`,
+      error: `Session "${session}" already exists; left running.`,
     };
   }
 
   try {
-    const started = startSession(driver, session, options.cwd ?? process.cwd(), argv);
+    const started = startSession(driver, session, cwd, argv);
     return {
       agent,
-      launcher: launcherName,
       command,
       status: "launched",
+      mode: "session",
       session: started.session,
       attachWith: started.attachWith,
-      multiplexer: started.multiplexer,
     };
   } catch (error) {
-    return {
-      agent,
-      launcher: launcherName,
-      command,
-      status: "failed",
-      session,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return { agent, command, status: "failed", session, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function headless(
+  room: string,
+  agent: string,
+  argv: string[],
+  command: string,
+  cwd: string
+): InviteResult {
+  const dir = logDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const logPath = path.join(dir, `${room}-${agent}.log`);
+  const out = fs.openSync(logPath, "a");
+  try {
+    const child = spawn(argv[0], argv.slice(1), {
+      cwd,
+      detached: true,
+      stdio: ["ignore", out, out],
+    });
+    child.unref();
+    return { agent, command, status: "launched", mode: "headless", logPath };
+  } catch (error) {
+    return { agent, command, status: "failed", mode: "headless", logPath, error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    fs.closeSync(out);
+  }
+}
+
+/* ------------------------------------------------------- workspace mode */
+
+export interface WorkspacePlan {
+  agents: string[];
+  missing: string[];
+  panes: PaneSpec[];
+}
+
+/**
+ * Builds the pane list: one per agent that is actually installed, plus a monitor
+ * pane running the room console. The monitor is just another frontend client —
+ * it talks to the server over HTTP and holds no coordination state of its own.
+ */
+export function planWorkspace(
+  room: string,
+  agents: string[],
+  options: { monitor?: boolean; monitorCommand?: string[] } = {}
+): WorkspacePlan {
+  const panes: PaneSpec[] = [];
+  const missing: string[] = [];
+  const launched: string[] = [];
+
+  for (const agent of agents) {
+    const argv = agentCommand(room, agent);
+    if (!argv || !onPath(argv[0])) {
+      missing.push(agent);
+      continue;
+    }
+    panes.push({ title: agent, command: argv });
+    launched.push(agent);
+  }
+
+  if (options.monitor !== false) {
+    panes.push({
+      title: "monitor",
+      command: options.monitorCommand ?? ["ai-room", "console", room],
+    });
+  }
+
+  return { agents: launched, missing, panes };
+}
+
+export function openWorkspace(
+  room: string,
+  agents: string[],
+  options: { cwd?: string; monitorCommand?: string[]; monitor?: boolean } = {}
+): { plan: WorkspacePlan; result: WorkspaceResult } {
+  const driver = detectMultiplexer("tmux");
+  if (!driver) throw new Error(`tmux is required for the pane workspace. ${INSTALL_HINT}`);
+  const plan = planWorkspace(room, agents, options);
+  const result = ensureWorkspace(driver, workspaceName(room), options.cwd ?? process.cwd(), plan.panes);
+  return { plan, result };
 }

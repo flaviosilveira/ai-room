@@ -2,9 +2,18 @@ import { openDb, defaultDbPath } from "./db/index.js";
 import { VERSION } from "./version.js";
 import { createHttpApp } from "./http.js";
 import { roomHistory, roomJoin, roomList, roomSetCharter, roomWho } from "./store.js";
-import { invite } from "./invite.js";
+import { invite, openWorkspace, planWorkspace } from "./invite.js";
 import { runConsole } from "./console.js";
-import { INSTALL_HINT, detectMultiplexer, liveSessions, sessionName } from "./session.js";
+import {
+  INSTALL_HINT,
+  detectMultiplexer,
+  killWorkspace,
+  liveSessions,
+  sessionName,
+  sessionExists,
+  workspaceName,
+} from "./session.js";
+import { TOOL_CATALOG } from "./catalog.js";
 import type { RosterEntry } from "./types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -26,34 +35,57 @@ function serve(): void {
   });
 }
 
-async function status(): Promise<void> {
-  console.log(`db: ${defaultDbPath()}`);
+async function status(asJson = false): Promise<void> {
   const baseUrl = `http://127.0.0.1:${port()}`;
-  console.log(`url: ${baseUrl}`);
+  const report: Record<string, unknown> = {
+    name: "ai-room",
+    version: VERSION,
+    db: defaultDbPath(),
+    url: baseUrl,
+    multiplexer: detectMultiplexer()?.name ?? null,
+    tools: TOOL_CATALOG,
+  };
 
+  type Health = { ok?: boolean; version?: string; database?: string };
+  let health: Health | null = null;
+  let healthError = "";
   try {
     const response = await fetch(`${baseUrl}/health`);
-    const health = (await response.json()) as {
-      ok?: boolean;
-      version?: string;
-      database?: string;
-    };
-    if (!response.ok || !health.ok) throw new Error(`health returned HTTP ${response.status}`);
-    console.log(`server: reachable`);
-    console.log(`version: ${health.version ?? "unknown"}`);
-    console.log(`database: ${health.database ?? "unknown"}`);
+    health = (await response.json()) as Health;
+    if (!response.ok || !health?.ok) throw new Error(`health returned HTTP ${response.status}`);
   } catch (error) {
+    healthError = error instanceof Error ? error.message : String(error);
+  }
+
+  report.server = healthError ? "unreachable" : "reachable";
+  report.database = health?.database ?? "unknown";
+  if (healthError) report.error = healthError;
+
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+    if (healthError) process.exitCode = 1;
+    return;
+  }
+
+  console.log(`db: ${report.db}`);
+  console.log(`url: ${baseUrl}`);
+  if (healthError) {
     console.error(`server: unreachable`);
-    console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`error: ${healthError}`);
     process.exitCode = 1;
     return;
   }
+  console.log(`server: reachable`);
+  console.log(`version: ${health?.version ?? "unknown"}`);
+  console.log(`database: ${health?.database ?? "unknown"}`);
+  console.log(`multiplexer: ${report.multiplexer ?? "none"}`);
+  console.log(`mcp tools: ${TOOL_CATALOG.length} (ai-room tools --json)`);
 
   const client = new Client({ name: "ai-room-status", version: VERSION });
   try {
     await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
-    const tools = await client.listTools();
-    console.log(`mcp: reachable (${tools.tools.length} tools)`);
+    const live = await client.listTools();
+    console.log(`mcp: reachable (${live.tools.length} tools)`);
   } catch (error) {
     console.error(`mcp: unavailable`);
     console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
@@ -95,6 +127,8 @@ interface OpenFlags {
   invite: string[];
   roles: Map<string, string>;
   dryRun: boolean;
+  detached: boolean;
+  monitor: boolean;
 }
 
 function parseOpenFlags(argv: string[]): OpenFlags {
@@ -103,6 +137,8 @@ function parseOpenFlags(argv: string[]): OpenFlags {
     invite: [],
     roles: new Map(),
     dryRun: false,
+    detached: false,
+    monitor: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -115,6 +151,8 @@ function parseOpenFlags(argv: string[]): OpenFlags {
       const [agent, ...rest] = value().split("=");
       if (agent && rest.length) flags.roles.set(agent, rest.join("="));
     } else if (arg === "--dry-run") flags.dryRun = true;
+    else if (arg === "--detached") flags.detached = true;
+    else if (arg === "--no-monitor") flags.monitor = false;
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;
@@ -163,21 +201,89 @@ function open(room: string, argv: string[]): void {
   }
 
   console.log("");
+
+  const tmux = detectMultiplexer("tmux");
+  const useWorkspace = !flags.detached && Boolean(tmux);
+
+  if (flags.dryRun) {
+    const plan = planWorkspace(room, flags.invite, { monitor: flags.monitor });
+    console.log(`mode: ${useWorkspace ? "tmux workspace" : flags.detached ? "detached" : "detached (no tmux)"}`);
+    for (const pane of plan.panes) {
+      console.log(`  ${pane.title}: ${pane.command.join(" ")}`);
+    }
+    if (plan.missing.length) console.log(`  not installed: ${plan.missing.join(", ")}`);
+    return;
+  }
+
+  if (useWorkspace) {
+    try {
+      const { plan, result } = openWorkspace(room, flags.invite, { monitor: flags.monitor });
+      if (plan.missing.length) {
+        console.error(`not on PATH, skipped: ${plan.missing.join(", ")}`);
+        process.exitCode = 1;
+      }
+      console.log(
+        result.created
+          ? `created tmux workspace ${result.session} with panes: ${result.panes.join(", ")}`
+          : `reused tmux workspace ${result.session}` +
+              (result.panes.length ? `, added panes: ${result.panes.join(", ")}` : " (nothing to add)")
+      );
+      if (result.skipped.length) console.log(`already running: ${result.skipped.join(", ")}`);
+      console.log(`\nattach with:  ${result.attachWith}`);
+      return;
+    } catch (error) {
+      console.error(`workspace failed: ${error instanceof Error ? error.message : error}`);
+      console.error("falling back to detached sessions.");
+      process.exitCode = 1;
+    }
+  } else if (!flags.detached && !tmux) {
+    console.log(`tmux not found, using detached sessions. ${INSTALL_HINT}\n`);
+  }
+
   for (const agent of flags.invite) {
-    const result = invite(room, agent, { dryRun: flags.dryRun });
-    if (flags.dryRun) {
-      console.log(`would launch ${agent}: ${result.command}`);
-    } else if (result.status === "launched") {
-      console.log(`launched ${agent} in ${result.multiplexer} session ${result.session}`);
-      console.log(`  attach with: ${result.attachWith}`);
+    const result = invite(room, agent, {});
+    if (result.status === "launched") {
+      console.log(
+        result.mode === "headless"
+          ? `launched ${agent} headless -> ${result.logPath}`
+          : `launched ${agent} in session ${result.session}\n  attach with: ${result.attachWith}`
+      );
+    } else if (result.status === "skipped") {
+      console.log(`${agent}: ${result.error}`);
     } else {
       console.error(`failed ${agent}: ${result.error}`);
       process.exitCode = 1;
     }
   }
 
-  if (!flags.dryRun) {
-    console.log(`\nwatch everything in one window:  ai-room console ${room}`);
+  console.log(`\nwatch everything in one window:  ai-room console ${room}`);
+}
+
+/** Closes only the tmux workspace. The room, its charter and history remain. */
+function close(room: string): void {
+  if (!room) {
+    console.error("usage: ai-room close <room>");
+    process.exit(1);
+  }
+  const driver = detectMultiplexer("tmux");
+  const session = workspaceName(room);
+  if (!driver || !sessionExists(driver, session)) {
+    console.log(`no tmux workspace for "${room}".`);
+    return;
+  }
+  killWorkspace(driver, session);
+  console.log(`closed workspace ${session}.`);
+  console.log(`the room, its charter and its history are untouched.`);
+}
+
+function tools(json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify({ name: "ai-room", version: VERSION, count: TOOL_CATALOG.length, tools: TOOL_CATALOG }, null, 2));
+    return;
+  }
+  console.log(`ai-room ${VERSION} — ${TOOL_CATALOG.length} MCP tools`);
+  for (const tool of TOOL_CATALOG) {
+    console.log(`  ${tool.name}${tool.mutates ? "" : "  (read-only)"}\n    ${tool.summary}`);
   }
 }
 
@@ -209,7 +315,7 @@ switch (cmd) {
     serve();
     break;
   case "status":
-    await status();
+    await status(process.argv.includes("--json"));
     break;
   case "rooms":
     rooms(arg);
@@ -233,10 +339,17 @@ switch (cmd) {
   case "agents":
     agents(arg);
     break;
+  case "close":
+    close(arg);
+    break;
+  case "tools":
+    tools(process.argv.includes("--json"));
+    break;
   default:
     console.error(
-      "usage: ai-room <serve|status|console <room>|open <room> [flags]|agents <room>|" +
-        "rooms [query]|messages <room>|who <room>>"
+      "usage: ai-room <serve|status [--json]|tools [--json]|console <room>|" +
+        "open <room> [flags]|close <room>|agents <room>|rooms [query]|" +
+        "messages <room>|who <room>>"
     );
     process.exit(1);
 }

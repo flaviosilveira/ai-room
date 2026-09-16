@@ -6,6 +6,7 @@ import type { Express } from "express";
 import { createAiRoomServer } from "./server.js";
 import { agentActiveRooms, roomHistory, roomSend, roomWho } from "./store.js";
 import { VERSION } from "./version.js";
+import { TOOL_CATALOG } from "./catalog.js";
 import { RoomWaitRegistry } from "./wait.js";
 
 export function createHttpApp(db: Database.Database): Express {
@@ -145,6 +146,19 @@ export function createHttpApp(db: Database.Database): Express {
       clearInterval(timer);
       clearInterval(keepAlive);
       res.end();
+    });
+  });
+
+  // Capability discovery without an MCP handshake, so external tooling never
+  // has to inspect the compiled server to learn what ai-room offers.
+  app.get("/tools", (_req, res) => {
+    res.json({
+      ok: true,
+      name: "ai-room",
+      version: VERSION,
+      mcpEndpoint: "/mcp",
+      count: TOOL_CATALOG.length,
+      tools: TOOL_CATALOG,
     });
   });
 
