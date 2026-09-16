@@ -114,11 +114,19 @@ export function roomJoin(
   briefing: AgentBriefing | null;
 } {
   const result = ensureRoom(db, params.room, params.createIfMissing ?? true);
+
+  // The charter's roster stays the single source of truth for roles; the
+  // participant row only mirrors it, so `room_who` can show who is playing what
+  // without a second lookup. An explicit role argument still wins.
+  const rosterRole = roomCharter(db, params.room)?.roster.find(
+    (entry) => entry.agent === params.agent
+  )?.role;
+
   const participant = ensureParticipant(
     db,
     params.room,
     params.agent,
-    params.role ?? null,
+    params.role ?? rosterRole ?? null,
     true
   );
   return {

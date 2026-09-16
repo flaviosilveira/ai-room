@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
-import { roomBriefing, roomCharter, roomJoin, roomSetCharter } from "../src/store.js";
+import { roomBriefing, roomCharter, roomJoin, roomSetCharter, roomWho } from "../src/store.js";
 import { LAUNCHERS, invite, joinPrompt } from "../src/invite.js";
 
 describe("room charter", () => {
@@ -55,6 +55,21 @@ describe("room charter", () => {
     expect(stranger.teammates.map((t) => t.agent)).toEqual(["codex", "agy"]);
   });
 
+  it("mirrors the roster role onto the participant so room_who shows it", () => {
+    roomJoin(db, { room: "r", agent: "codex" });
+    roomJoin(db, { room: "r", agent: "agy" });
+    const who = Object.fromEntries(roomWho(db, { room: "r" }).map((p) => [p.agent, p.role]));
+    expect(who.codex).toBe("reviewer");
+    expect(who.agy).toBe("validator");
+  });
+
+  it("lets an explicit role win over the roster, without editing the charter", () => {
+    roomJoin(db, { room: "r", agent: "codex", role: "pair" });
+    expect(roomWho(db, { room: "r" }).find((p) => p.agent === "codex")?.role).toBe("pair");
+    // The charter stays the source of truth and is untouched.
+    expect(roomCharter(db, "r")!.roster.find((e) => e.agent === "codex")?.role).toBe("reviewer");
+  });
+
   it("delivers the briefing through room_join", () => {
     const result = roomJoin(db, { room: "r", agent: "codex" });
     expect(result.briefing?.you).toMatchObject({ role: "reviewer" });
@@ -102,7 +117,7 @@ describe("invite launcher", () => {
     const result = invite("r", "codex", { dryRun: true });
     expect(result.status).toBe("launched");
     expect(result.command).toMatch(/^codex /);
-    expect(result.session).toBe("airoom-r-codex");
+    expect(result.session).toMatch(/^airoom-r-codex-[0-9a-f]{10}$/);
     expect(result.attachWith).toBeUndefined();
   });
 

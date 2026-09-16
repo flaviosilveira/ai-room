@@ -16,14 +16,30 @@ import { agentCommand, joinPrompt, planWorkspace } from "../src/invite.js";
 import { TOOL_CATALOG, TOOL_NAMES } from "../src/catalog.js";
 
 describe("workspace naming and isolation", () => {
-  it("gives each room its own workspace session", () => {
-    expect(workspaceName("refactor-auth")).toBe("airoom-refactor-auth");
+  it("gives each room its own workspace session, deterministically", () => {
+    expect(workspaceName("refactor-auth")).toMatch(/^airoom-refactor-auth-[0-9a-f]{10}$/);
     expect(workspaceName("a")).not.toBe(workspaceName("b"));
+    // Reattach depends on the same room always resolving to the same session.
+    expect(workspaceName("refactor-auth")).toBe(workspaceName("refactor-auth"));
   });
 
-  it("strips characters tmux rejects", () => {
-    expect(workspaceName("minha.sala:teste")).toBe("airoom-minha-sala-teste");
-    expect(sessionName("a/b c", "ag y")).toBe("airoom-a-b-c-ag-y");
+  it("keeps rooms distinct even when their slugs are identical", () => {
+    // Slugging alone maps all of these to "airoom-refactor-auth", which would
+    // drop three different rooms into one workspace.
+    const names = ["refactor:auth", "refactor auth", "refactor-auth", "refactor.auth"]
+      .map(workspaceName);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("emits tmux-safe names for messy room names", () => {
+    for (const room of ["OP-3563/auth fix", "teste com espaços", "a:b.c/d"]) {
+      expect(workspaceName(room)).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
+  });
+
+  it("never lets a per-agent session collide with a workspace", () => {
+    expect(workspaceName("r-codex")).not.toBe(sessionName("r", "codex"));
+    expect(sessionName("a", "b-c")).not.toBe(sessionName("a-b", "c"));
   });
 
   it("never emits a kill-server command", () => {
@@ -48,6 +64,14 @@ describe("launch commands", () => {
     expect(agentCommand("r", "nope")).toBeNull();
   });
 
+  it("tells the agent that talking to a human is not leaving the room", () => {
+    // A direct terminal conversation interrupts room_wait; without this the
+    // agent answers the human and silently stops participating.
+    const prompt = joinPrompt("r", "codex");
+    expect(prompt).toMatch(/room_wait again/);
+    expect(prompt).toMatch(/room_leave/);
+  });
+
   it("keeps the seed prompt minimal: the charter is fetched, never inlined", () => {
     const prompt = joinPrompt("refactor-auth", "codex");
     expect(prompt).toMatch(/room_join/);
@@ -55,7 +79,7 @@ describe("launch commands", () => {
     expect(prompt).toMatch(/briefing/i);
     // The charter's own content must not be duplicated into the prompt.
     expect(prompt).not.toMatch(/caveman|graphify|reviewer|validator/i);
-    expect(prompt.length).toBeLessThan(400);
+    expect(prompt.length).toBeLessThan(600);
   });
 });
 
@@ -63,7 +87,11 @@ describe("workspace planning", () => {
   it("adds a monitor pane alongside the agents", () => {
     const plan = planWorkspace("r", []);
     expect(plan.panes.map((p) => p.title)).toEqual(["monitor"]);
-    expect(plan.panes[0].command).toEqual(["ai-room", "console", "r"]);
+    // Must resolve to something runnable: a repo checkout has no ai-room on PATH.
+    const [bin, ...rest] = plan.panes[0].command;
+    expect(bin === "ai-room" || bin === process.execPath).toBe(true);
+    expect(rest).toContain("console");
+    expect(rest).toContain("r");
   });
 
   it("omits the monitor when asked", () => {

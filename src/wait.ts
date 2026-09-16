@@ -155,7 +155,14 @@ export async function roomWait(
     const raced = receive();
     if (raced.length > 0) return settle(raced, false);
     await subscription.promise;
-    return settle(receive(), options.signal?.aborted ?? false);
+
+    // A cancelled wait must not consume anything. receive() advances the read
+    // cursor, so draining here would hand messages to a client that has already
+    // gone away and they would never be delivered to anyone. This happens for
+    // real: interrupting an agent's terminal aborts its in-flight room_wait.
+    if (options.signal?.aborted) return settle([], true);
+
+    return settle(receive(), false);
   } finally {
     if (heartbeat) clearInterval(heartbeat);
     subscription.cancel();

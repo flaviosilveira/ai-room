@@ -74,6 +74,30 @@ describe("room_wait", () => {
     expect(registry.size()).toBe(0);
   });
 
+  it("does not consume messages when the client aborts mid-wait", async () => {
+    const controller = new AbortController();
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: controller.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    // Message lands, then the client goes away before it is delivered.
+    roomSend(db, { room: "r", agent: "claude", message: "nao pode sumir" });
+    registry.notify("r");
+    controller.abort();
+
+    const aborted = await pending;
+    expect(aborted.status).toBe("cancelled");
+    expect(aborted.messages).toEqual([]);
+
+    // The next wait must still find it: an abandoned read consumes nothing.
+    const next = await roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 50 });
+    expect(next.messages.map((m) => m.content)).toEqual(["nao pode sumir"]);
+  });
+
   it("emits heartbeats while holding so client idle timers stay alive", async () => {
     const beats: number[] = [];
     const result = await roomWait(

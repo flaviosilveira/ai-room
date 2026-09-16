@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -40,6 +41,8 @@ export function joinPrompt(room: string, agent: string): string {
     `with {room: "${room}", agent: "${agent}"}.`,
     "Read the briefing in the response and follow it.",
     "Then call room_wait and stay in that loop.",
+    "If a human talks to you here, answer them and then call room_wait again;",
+    "that is not leaving the room. Only room_leave ends your participation.",
   ].join(" ");
 }
 
@@ -59,6 +62,18 @@ export function onPath(bin: string): boolean {
       return false;
     }
   });
+}
+
+/**
+ * How the monitor pane should invoke ai-room. A globally installed `ai-room` is
+ * preferred, but a repo checkout has none on PATH, so fall back to running this
+ * very CLI with the current node binary. Without this the monitor pane starts a
+ * command that does not exist.
+ */
+export function monitorCommand(room: string): string[] {
+  if (onPath("ai-room")) return ["ai-room", "console", room];
+  const cli = fileURLToPath(new URL("./cli.js", import.meta.url));
+  return [process.execPath, cli, "console", room];
 }
 
 export function logDir(): string {
@@ -199,7 +214,7 @@ export function planWorkspace(
   if (options.monitor !== false) {
     panes.push({
       title: "monitor",
-      command: options.monitorCommand ?? ["ai-room", "console", room],
+      command: options.monitorCommand ?? monitorCommand(room),
     });
   }
 

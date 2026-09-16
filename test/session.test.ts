@@ -3,8 +3,10 @@ import { DRIVERS_FOR_TEST, sessionName } from "../src/session.js";
 
 describe("session naming", () => {
   it("strips characters tmux and screen reject", () => {
-    expect(sessionName("minha.sala:teste", "codex")).toBe("airoom-minha-sala-teste-codex");
-    expect(sessionName("a/b c", "ag y")).toBe("airoom-a-b-c-ag-y");
+    expect(sessionName("minha.sala:teste", "codex")).toMatch(
+      /^airoom-minha-sala-teste-codex-[0-9a-f]{10}$/
+    );
+    expect(sessionName("a/b c", "ag y")).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
   it("keeps rooms and agents distinguishable", () => {

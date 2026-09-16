@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -75,16 +76,32 @@ export function detectMultiplexer(preferred?: Multiplexer): MultiplexerDriver | 
 export const INSTALL_HINT =
   "Install tmux for the pane workspace: `brew install tmux` on macOS, `sudo apt install tmux` on Ubuntu.";
 
-const safe = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, "-");
+/**
+ * tmux rejects "." and ":" in session names, so the readable part is a slug.
+ * Slugging alone is lossy and collides badly: "refactor:auth", "refactor auth"
+ * and "refactor-auth" all slug to the same string, which would drop three
+ * different rooms into one workspace. A digest of the exact identity is
+ * appended so distinct rooms always get distinct sessions, while the same room
+ * always resolves to the same name — reattach depends on that determinism.
+ */
+const slug = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40);
 
-/** One workspace session per room. tmux rejects "." and ":" in names. */
-export function workspaceName(room: string): string {
-  return `airoom-${safe(room)}`;
+function digest(...parts: string[]): string {
+  return createHash("sha256").update(parts.join("\u0000")).digest("hex").slice(0, 10);
 }
 
-/** Per-agent session, used when panes are unavailable. */
+/** One workspace session per room. */
+export function workspaceName(room: string): string {
+  return `airoom-${slug(room)}-${digest("workspace", room)}`;
+}
+
+/**
+ * Per-agent session, used when panes are unavailable. The digest covers the
+ * kind as well as room and agent, so a per-agent session can never land on the
+ * same name as some other room's workspace.
+ */
 export function sessionName(room: string, agent: string): string {
-  return `${workspaceName(room)}-${safe(agent)}`;
+  return `airoom-${slug(room)}-${slug(agent)}-${digest("agent", room, agent)}`;
 }
 
 export function liveSessions(driver: MultiplexerDriver): string[] {
@@ -97,10 +114,15 @@ export function sessionExists(driver: MultiplexerDriver, session: string): boole
   return liveSessions(driver).includes(session);
 }
 
-function run(bin: string, argv: string[], cwd?: string): { ok: boolean; error: string } {
+function run(
+  bin: string,
+  argv: string[],
+  cwd?: string
+): { ok: boolean; out: string; error: string } {
   const result = spawnSync(bin, argv, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return {
     ok: result.status === 0,
+    out: `${result.stdout ?? ""}`.trim(),
     error: `${result.stderr ?? ""}`.trim() || `exit ${result.status}`,
   };
 }
@@ -178,25 +200,20 @@ export function ensureWorkspace(
   const added: string[] = [];
 
   for (const pane of missing) {
-    if (!sessionExists(driver, session)) {
-      const { ok, error } = run(
-        driver.name,
-        ["new-session", "-d", "-s", session, "-c", cwd, ...pane.command],
-        cwd
-      );
-      if (!ok) throw new Error(`tmux failed to create "${session}": ${error}`);
-    } else {
-      const { ok, error } = run(
-        driver.name,
-        ["split-window", "-t", session, "-c", cwd, ...pane.command],
-        cwd
-      );
-      if (!ok) throw new Error(`tmux failed to add pane "${pane.title}": ${error}`);
-    }
-    // Tag the pane that split-window/new-session just made active. This tag is
-    // what reopening reads; the title is cosmetic and agents overwrite it.
-    run(driver.name, ["set-option", "-p", "-t", session, PANE_TAG, pane.title], cwd);
-    run(driver.name, ["set-option", "-p", "-t", session, "pane-border-format", ` ${pane.title} `], cwd);
+    // -P -F prints the id of the pane just created. Targeting the session
+    // instead would tag whichever pane happens to be active, and select-layout
+    // can change that — which silently put an agent's tag on another agent's
+    // pane and made every reopen duplicate panes.
+    const create = !sessionExists(driver, session)
+      ? run(driver.name, ["new-session", "-d", "-s", session, "-c", cwd, "-P", "-F", "#{pane_id}", ...pane.command], cwd)
+      : run(driver.name, ["split-window", "-t", session, "-c", cwd, "-P", "-F", "#{pane_id}", ...pane.command], cwd);
+
+    if (!create.ok) throw new Error(`tmux failed to add pane "${pane.title}": ${create.error}`);
+    const paneId = create.out.split("\n").pop()?.trim();
+    if (!paneId) throw new Error(`tmux did not report a pane id for "${pane.title}"`);
+
+    run(driver.name, ["set-option", "-p", "-t", paneId, PANE_TAG, pane.title], cwd);
+    run(driver.name, ["set-option", "-p", "-t", paneId, "pane-border-format", ` ${pane.title} `], cwd);
     run(driver.name, ["select-layout", "-t", session, "tiled"], cwd);
     added.push(pane.title);
   }

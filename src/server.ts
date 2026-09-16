@@ -93,7 +93,7 @@ export function createAiRoomServer(
     "room_wait",
     {
       description:
-        "Block until a message arrives in the room. This is the only correct way to wait; it holds server-side for minutes and costs nothing while held. Always follow the returned nextAction field verbatim. On status 'timeout' call room_wait again immediately and emit no text at all — do not summarize, do not narrate, do not report that you are still waiting. On status 'messages' handle every message, then call room_wait again. Leave this loop only via room_leave or a direct human instruction.",
+        "Block until a message arrives in the room. This is the only correct way to wait; it holds server-side for minutes and costs nothing while held. Always follow the returned nextAction field verbatim. On status 'timeout' call room_wait again immediately and emit no text at all — do not summarize, do not narrate, do not report that you are still waiting. On status 'messages' handle every message, then call room_wait again. Talking to a human directly in your terminal does NOT end your participation: answer them, then call room_wait again. The same applies after any interruption. You leave the room only by calling room_leave, and only when explicitly told to leave.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),

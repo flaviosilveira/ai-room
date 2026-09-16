@@ -22,6 +22,29 @@
 
 ### Fixed
 
+- **A cancelled `room_wait` consumed messages and lost them.** On abort the
+  handler still drained the room and advanced the read cursor, so messages were
+  handed to a client that had already gone away and reached nobody. Interrupting
+  an agent's terminal aborts its in-flight wait, so this was reachable from
+  ordinary use. A cancelled wait now consumes nothing.
+- **A direct terminal conversation made agents leave the room.** The `room_wait`
+  description said the loop ends "via room_leave or a direct human instruction",
+  which reads as authorisation to stop participating the moment a human types in
+  the pane. Answering a human is now explicitly not an exit; only `room_leave` is.
+- **tmux session names collided.** "refactor:auth", "refactor auth" and
+  "refactor-auth" all slugged to one name, dropping three different rooms into a
+  single workspace, and a per-agent session could take a workspace's name. Names
+  now carry a digest of the exact identity, and stay deterministic so reattach
+  still finds the same session.
+- **Pane tags landed on the wrong pane.** Tagging targeted the session's active
+  pane, which `select-layout` can change, so an agent's tag could end up on
+  another agent's pane — one pane was labelled `monitor` while running an agent.
+  The tag now targets the pane id tmux reports when it creates it.
+- **The monitor pane ran a command that does not exist** in a repo checkout,
+  where `ai-room` is not on PATH. It falls back to the current node binary.
+- `room_who` showed `role=None`. `room_join` now mirrors the charter roster's
+  role onto the participant, so roles are visible without a second lookup. The
+  roster stays the single source of truth and an explicit role still wins.
 - **`pnpm build` failed in any non-interactive context** with
   `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`. The cause was not the script:
   `node_modules` had been installed by pnpm 10 (store v10) while the active pnpm
