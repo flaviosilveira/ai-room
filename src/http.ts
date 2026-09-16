@@ -3,6 +3,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Express } from "express";
 import { createAiRoomServer } from "./server.js";
+import { agentActiveRooms } from "./store.js";
 import { VERSION } from "./version.js";
 import { RoomWaitRegistry } from "./wait.js";
 
@@ -29,6 +30,34 @@ export function createHttpApp(db: Database.Database): Express {
         version: VERSION,
         database: "error",
         mcpEndpoint: "/mcp",
+      });
+    }
+  });
+
+  // Polled by harness stop hooks to decide whether an agent may end its turn.
+  // Deliberately unauthenticated and read-only: it is bound to 127.0.0.1 and
+  // exposes nothing a local caller cannot already read from the SQLite file.
+  app.get("/active", (req, res) => {
+    const agent = typeof req.query.agent === "string" ? req.query.agent : "";
+    if (!agent) {
+      res.status(400).json({ ok: false, error: "query parameter 'agent' is required" });
+      return;
+    }
+    try {
+      const rooms = agentActiveRooms(db, agent);
+      const room = typeof req.query.room === "string" ? req.query.room : undefined;
+      const scoped = room ? rooms.filter((entry) => entry.room === room) : rooms;
+      res.json({
+        ok: true,
+        agent,
+        active: scoped.length > 0,
+        unread: scoped.reduce((total, entry) => total + entry.unread, 0),
+        rooms: scoped,
+      });
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   });

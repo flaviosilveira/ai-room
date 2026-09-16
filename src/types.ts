@@ -36,3 +36,21 @@ export interface MessageInfo {
   content: string;
   createdAt: number;
 }
+
+export interface ActiveRoomInfo {
+  room: string;
+  role: string | null;
+  status: AgentStatus;
+  statusDetail: string | null;
+  lastSeenAt: number;
+  unread: number;
+}
+
+export type RoomWaitStatus = "messages" | "timeout" | "cancelled";
+
+export interface RoomWaitResult {
+  messages: MessageInfo[];
+  status: RoomWaitStatus;
+  waitedMs: number;
+  nextAction: string;
+}

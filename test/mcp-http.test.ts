@@ -44,7 +44,7 @@ describe("ai-room MCP over Streamable HTTP", () => {
     expect(healthResponse.status).toBe(200);
     await expect(healthResponse.json()).resolves.toMatchObject({
       ok: true,
-      version: "0.0.2",
+      version: "0.1.0",
       database: "ok",
     });
 
@@ -115,8 +115,37 @@ describe("ai-room MCP over Streamable HTTP", () => {
       name: "room_send",
       arguments: { room: "backend-auth", agent: "claude", message: "Final validation" },
     });
-    const waitResult = toolResult(await waiting) as Array<{ content: string }>;
-    expect(waitResult).toMatchObject([{ content: "Final validation" }]);
+    const waitResult = toolResult(await waiting) as {
+      status: string;
+      messages: Array<{ content: string }>;
+      nextAction: string;
+    };
+    expect(waitResult.status).toBe("messages");
+    expect(waitResult.messages).toMatchObject([{ content: "Final validation" }]);
+    expect(waitResult.nextAction).toMatch(/call room_wait again/i);
+
+    const activeResponse = await fetch(new URL("/active?agent=codex", baseUrl));
+    expect(activeResponse.status).toBe(200);
+    const active = (await activeResponse.json()) as {
+      active: boolean;
+      rooms: Array<{ room: string; unread: number }>;
+    };
+    expect(active.active).toBe(true);
+    expect(active.rooms.map((entry) => entry.room)).toEqual(["backend-auth"]);
+
+    await codex.callTool({
+      name: "room_leave",
+      arguments: { room: "backend-auth", agent: "codex" },
+    });
+    const afterLeave = (await (
+      await fetch(new URL("/active?agent=codex", baseUrl))
+    ).json()) as { active: boolean };
+    expect(afterLeave.active).toBe(false);
+
+    const unknown = (await (
+      await fetch(new URL("/active?agent=nobody", baseUrl))
+    ).json()) as { active: boolean };
+    expect(unknown.active).toBe(false);
 
     await claude.close();
     await codex.close();

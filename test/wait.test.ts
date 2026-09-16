@@ -19,13 +19,19 @@ describe("room_wait", () => {
 
   it("returns pending messages immediately", async () => {
     roomSend(db, { room: "r", agent: "claude", message: "plan" });
-    await expect(roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 100 })).resolves.toMatchObject([
-      { content: "plan" },
-    ]);
+    await expect(
+      roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 100 })
+    ).resolves.toMatchObject({
+      status: "messages",
+      messages: [{ content: "plan" }],
+    });
   });
 
-  it("returns an empty array on timeout and leaves agent waiting", async () => {
-    await expect(roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 5 })).resolves.toEqual([]);
+  it("reports a timeout without messages and leaves agent waiting", async () => {
+    const result = await roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 5 });
+    expect(result.messages).toEqual([]);
+    expect(result.status).toBe("timeout");
+    expect(result.nextAction).toMatch(/call room_wait again/i);
     expect(roomWho(db, { room: "r" }).find((p) => p.agent === "codex")?.status).toBe("waiting");
     expect(registry.size()).toBe(0);
   });
@@ -36,7 +42,10 @@ describe("room_wait", () => {
     roomSend(db, { room: "r", agent: "claude", message: "review" });
     registry.notify("r");
 
-    await expect(pending).resolves.toMatchObject([{ content: "review" }]);
+    await expect(pending).resolves.toMatchObject({
+      status: "messages",
+      messages: [{ content: "review" }],
+    });
     expect(roomWho(db, { room: "r" }).find((p) => p.agent === "codex")?.status).toBe("working");
     expect(registry.size()).toBe(0);
   });
@@ -45,6 +54,36 @@ describe("room_wait", () => {
     roomJoin(db, { room: "other", agent: "agy" });
     const pending = roomWait(db, registry, { room: "other", agent: "agy", timeoutMs: 20 });
     registry.notify("r");
-    await expect(pending).resolves.toEqual([]);
+    await expect(pending).resolves.toMatchObject({ status: "timeout", messages: [] });
+  });
+
+  it("releases the subscription as soon as the client aborts", async () => {
+    const controller = new AbortController();
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: controller.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.size()).toBe(1);
+
+    controller.abort();
+    const result = await pending;
+    expect(result.status).toBe("cancelled");
+    expect(registry.size()).toBe(0);
+  });
+
+  it("emits heartbeats while holding so client idle timers stay alive", async () => {
+    const beats: number[] = [];
+    const result = await roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 120 },
+      { heartbeatMs: 20, onHeartbeat: (elapsed) => beats.push(elapsed) }
+    );
+    expect(result.status).toBe("timeout");
+    expect(beats.length).toBeGreaterThanOrEqual(2);
+    expect(registry.size()).toBe(0);
   });
 });

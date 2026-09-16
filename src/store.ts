@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type {
+  ActiveRoomInfo,
   AgentStatus,
   MessageInfo,
   ParticipantInfo,
@@ -309,4 +310,31 @@ export function roomSetStatus(
      WHERE room = ? AND agent = ?`
   ).run(params.status, params.detail ?? null, now, now, params.status, params.room, params.agent);
   return getParticipant(db, params.room, params.agent)!;
+}
+
+/**
+ * Rooms where `agent` is still an active participant, with the number of
+ * messages it has not yet consumed. Backs `GET /active`, which harness stop
+ * hooks poll to decide whether an agent is allowed to end its turn.
+ */
+export function agentActiveRooms(
+  db: Database.Database,
+  agent: string
+): ActiveRoomInfo[] {
+  return db
+    .prepare(
+      `SELECT p.room, p.role, p.status, p.status_detail as statusDetail,
+              p.last_seen_at as lastSeenAt,
+              (SELECT COUNT(*) FROM messages m
+                WHERE m.room = p.room
+                  AND m.agent != p.agent
+                  AND m.id > COALESCE(
+                        (SELECT c.last_message_id FROM cursors c
+                          WHERE c.room = p.room AND c.agent = p.agent), 0)
+              ) as unread
+       FROM participants p
+       WHERE p.agent = ? AND p.active = 1
+       ORDER BY p.last_seen_at DESC`
+    )
+    .all(agent) as ActiveRoomInfo[];
 }

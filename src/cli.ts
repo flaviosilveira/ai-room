@@ -1,4 +1,5 @@
 import { openDb, defaultDbPath } from "./db/index.js";
+import { VERSION } from "./version.js";
 import { createHttpApp } from "./http.js";
 import { roomHistory, roomList, roomWho } from "./store.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -44,7 +45,7 @@ async function status(): Promise<void> {
     return;
   }
 
-  const client = new Client({ name: "ai-room-status", version: "0.0.2" });
+  const client = new Client({ name: "ai-room-status", version: VERSION });
   try {
     await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
     const tools = await client.listTools();
