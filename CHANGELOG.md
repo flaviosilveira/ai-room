@@ -32,6 +32,10 @@ model *choosing* to keep listening.
 ### Fixed
 
 - `ai-room status` reported a hardcoded client version; now uses `VERSION`.
+- `devEngines.packageManager.onFail` was `download`; npm 11 aborts with
+  `EBADDEVENGINES` instead of downloading, for every npm/npx call whose cwd is
+  this repo. That silently killed `npx`-based agent hooks (Codex reported
+  SessionStart/UserPromptSubmit/Stop as Failed) and broke `npx tsc`. Now `warn`.
 
 ## 0.0.2
 
