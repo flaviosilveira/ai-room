@@ -1,12 +1,21 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import {
+  INSTALL_HINT,
+  detectMultiplexer,
+  sessionExists,
+  sessionName,
+  startSession,
+} from "./session.js";
 
 export interface AgentLauncher {
   /** Binary to look for on PATH. */
   bin: string;
-  /** Build argv for a seeded, non-interactive run. */
+  /**
+   * argv for an INTERACTIVE run seeded with `prompt`. Interactive matters: it is
+   * what makes the harness's own approval prompt exist, so a human can attach to
+   * the session and answer it instead of the approval being auto-resolved.
+   */
   args: (prompt: string) => string[];
 }
 
@@ -17,9 +26,9 @@ export interface AgentLauncher {
  * means they keep listening. `agy -i` seeds an interactive session instead.
  */
 export const LAUNCHERS: Record<string, AgentLauncher> = {
-  claude: { bin: "claude", args: (prompt) => ["-p", prompt] },
-  codex: { bin: "codex", args: (prompt) => ["exec", "--skip-git-repo-check", prompt] },
-  agy: { bin: "agy", args: (prompt) => ["-p", prompt] },
+  claude: { bin: "claude", args: (prompt) => [prompt] },
+  codex: { bin: "codex", args: (prompt) => [prompt] },
+  agy: { bin: "agy", args: (prompt) => ["-i", prompt] },
 };
 
 export function joinPrompt(room: string, agent: string): string {
@@ -38,8 +47,9 @@ export interface InviteResult {
   launcher: string;
   command: string;
   status: "launched" | "missing" | "failed";
-  pid?: number;
-  logPath?: string;
+  session?: string;
+  attachWith?: string;
+  multiplexer?: string;
   error?: string;
 }
 
@@ -55,14 +65,11 @@ function onPath(bin: string): boolean {
   });
 }
 
-export function logDir(): string {
-  return process.env.AI_ROOM_LOG_DIR || path.join(os.homedir(), ".ai-room", "logs");
-}
-
 /**
- * Launches one agent detached, with stdout and stderr going to a per-invite log
- * file. Detached so the agents outlive the `ai-room open` process that spawned
- * them; the human stays in their own terminal.
+ * Starts one agent in a detached multiplexer session. Detached so the human
+ * stays in a single console window; a session rather than a log file so they
+ * can attach to any agent later, without having predicted at launch time which
+ * one would end up needing attention.
  */
 export function invite(
   room: string,
@@ -81,46 +88,52 @@ export function invite(
     };
   }
 
-  const prompt = joinPrompt(room, agent);
-  const args = launcher.args(prompt);
-  const command = `${launcher.bin} ${args.map((a) => (a.includes(" ") ? JSON.stringify(a) : a)).join(" ")}`;
+  const argv = [launcher.bin, ...launcher.args(joinPrompt(room, agent))];
+  const command = argv.map((a) => (a.includes(" ") ? JSON.stringify(a) : a)).join(" ");
+  const session = sessionName(room, agent);
 
   if (options.dryRun) {
-    return { agent, launcher: launcherName, command, status: "launched" };
+    return { agent, launcher: launcherName, command, status: "launched", session };
+  }
+
+  const driver = detectMultiplexer();
+  if (!driver) {
+    return { agent, launcher: launcherName, command, status: "failed", error: `No tmux or screen on PATH. ${INSTALL_HINT}` };
   }
   if (!onPath(launcher.bin)) {
+    return { agent, launcher: launcherName, command, status: "missing", error: `${launcher.bin} is not on PATH.` };
+  }
+  if (sessionExists(driver, session)) {
     return {
       agent,
       launcher: launcherName,
       command,
-      status: "missing",
-      error: `${launcher.bin} is not on PATH.`,
+      status: "failed",
+      session,
+      attachWith: driver.attach(session),
+      error: `Session "${session}" already exists. Attach to it, or kill it first.`,
     };
   }
 
-  const dir = logDir();
-  fs.mkdirSync(dir, { recursive: true });
-  const logPath = path.join(dir, `${room}-${agent}-${Date.now()}.log`);
-  const out = fs.openSync(logPath, "a");
-
   try {
-    const child = spawn(launcher.bin, args, {
-      cwd: options.cwd ?? process.cwd(),
-      detached: true,
-      stdio: ["ignore", out, out],
-    });
-    child.unref();
-    return { agent, launcher: launcherName, command, status: "launched", pid: child.pid, logPath };
+    const started = startSession(driver, session, options.cwd ?? process.cwd(), argv);
+    return {
+      agent,
+      launcher: launcherName,
+      command,
+      status: "launched",
+      session: started.session,
+      attachWith: started.attachWith,
+      multiplexer: started.multiplexer,
+    };
   } catch (error) {
     return {
       agent,
       launcher: launcherName,
       command,
       status: "failed",
-      logPath,
+      session,
       error: error instanceof Error ? error.message : String(error),
     };
-  } finally {
-    fs.closeSync(out);
   }
 }

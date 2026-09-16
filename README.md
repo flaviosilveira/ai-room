@@ -59,6 +59,47 @@ Everywhere else below, `ai-room <command>` is shorthand for `node dist/cli.js <c
 
 Configure each client below, restart it, then confirm tool discovery by calling `room_list`.
 
+## One window for everything
+
+Agents do not need a terminal each. `ai-room open` starts each one in a detached
+tmux (or screen) session, and `ai-room console` gives you a single window with a
+live feed of the room and a prompt to talk to it.
+
+```bash
+ai-room open refactor-auth --brief "..." --invite codex,agy
+ai-room console refactor-auth
+```
+
+```
+14:22:07 codex  Encontrei uma corrida no refreshToken().
+14:22:19 —  codex:working  agy:waiting
+14:23:02 —  codex:approval_required (quer rodar a migration)
+→ codex precisa de você (approval_required)  use /attach codex
+human> /attach codex
+```
+
+Inside the console, anything you type is sent to the room as a message with
+`origin: "human"`, which wakes every waiting agent immediately rather than
+letting them sit out the rest of their hold. Commands start with `/`:
+
+| Comando | Efeito |
+| --- | --- |
+| `/attach <agente>` | Anexa à sessão daquele agente. Detach com `Ctrl-B D` (tmux) ou `Ctrl-A D` (screen) |
+| `/agents` | Lista as sessões vivas da sala |
+| `/who` | Participantes e status |
+| `/quit` | Sai do console; os agentes continuam rodando |
+
+### Why sessions instead of log files
+
+Agents run **interactively** inside the session, not headless. That is deliberate:
+a headless run resolves approval prompts on its own, so attaching to it later
+would give you nothing to answer. Running in a real TTY keeps every harness gate
+intact — you just reach it on demand, from one window, instead of deciding at
+launch time which agent deserved its own terminal.
+
+tmux is preferred; screen is used when tmux is absent. Install tmux with
+`brew install tmux` on macOS or `sudo apt install tmux` on Ubuntu.
+
 ## Room Charters
 
 A charter is the standing briefing for a room: written once, delivered automatically to every agent that joins. It removes the two messages a human otherwise retypes for every collaboration — "create room X, I'm bringing Codex in to help" and "join room X, introduce yourself, you'll be helping Y".

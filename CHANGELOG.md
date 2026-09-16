@@ -4,6 +4,25 @@
 
 ### Added
 
+- **`ai-room console <sala>`** — one window for the whole room: a live feed of
+  messages and participant status, plus a prompt to talk to the room. Agents that
+  report `approval_required` or `blocked` are called out with the command to
+  reach them.
+- **Agents run in detached tmux or screen sessions**, interactively, instead of
+  headless with output in a log file. That costs a multiplexer but buys a real
+  TTY, so each harness's own approval prompt still exists and a human can
+  `/attach <agent>` to answer it — no dangerous bypass flags, and no need to
+  guess at launch time which agent will need attention. tmux is preferred and
+  screen is the fallback; both are supported on macOS and Ubuntu.
+- **`POST /say`** writes a message with `origin: "human"` and wakes every waiter
+  in the room immediately. `origin` has been in the schema since 0.0.2 with
+  nothing ever writing "human"; this is the channel it was declared for. It is
+  set server-side, so an agent calling `room_send` can never claim to be the
+  human.
+- **`GET /stream?room=X`** — SSE feed of messages and status changes, with
+  replayed backlog, used by the console.
+- `ai-room agents <sala>` lists the live agent sessions and how to attach.
+
 - **Room charters.** `room_set_charter` records, once, what a room is for
   (`brief`), how agents should write (`conventions` / `conventionPreset`), what
   tooling the room expects (`tools`), and who is expected to show up with which

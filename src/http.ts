@@ -1,9 +1,10 @@
 import type Database from "better-sqlite3";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import express from "express";
 import type { Express } from "express";
 import { createAiRoomServer } from "./server.js";
-import { agentActiveRooms } from "./store.js";
+import { agentActiveRooms, roomHistory, roomSend, roomWho } from "./store.js";
 import { VERSION } from "./version.js";
 import { RoomWaitRegistry } from "./wait.js";
 
@@ -60,6 +61,91 @@ export function createHttpApp(db: Database.Database): Express {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  // The human channel. `origin` is set here, server-side, so an agent can never
+  // claim to be the human: room_send over MCP always writes "agent".
+  app.post("/say", express.json(), (req, res) => {
+    const room = typeof req.body?.room === "string" ? req.body.room : "";
+    const message = typeof req.body?.message === "string" ? req.body.message : "";
+    const agent = typeof req.body?.agent === "string" ? req.body.agent : "human";
+    if (!room || !message) {
+      res.status(400).json({ ok: false, error: "room and message are required" });
+      return;
+    }
+    try {
+      const sent = roomSend(db, { room, agent, message, origin: "human" });
+      // Wake every waiter immediately instead of letting them sit out the hold.
+      waitRegistry.notify(room);
+      res.json({ ok: true, message: sent });
+    } catch (error) {
+      res.status(400).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  // Live feed for the console: replays recent history, then streams new
+  // messages and participant status as they land.
+  app.get("/stream", (req, res) => {
+    const room = typeof req.query.room === "string" ? req.query.room : "";
+    if (!room) {
+      res.status(400).json({ ok: false, error: "query parameter 'room' is required" });
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const send = (event: string, data: unknown) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const backlog = Number(req.query.backlog ?? 20);
+    let lastId = 0;
+    for (const message of roomHistory(db, { room, limit: Number.isFinite(backlog) ? backlog : 20 })) {
+      send("message", message);
+      lastId = Math.max(lastId, message.id);
+    }
+
+    let lastStatus = "";
+    const poll = () => {
+      try {
+        const fresh = roomHistory(db, { room, after: lastId, limit: 200 });
+        for (const message of fresh) {
+          send("message", message);
+          lastId = Math.max(lastId, message.id);
+        }
+        // Status is small and changes rarely; diffing it avoids a chatty stream.
+        const participants = roomWho(db, { room });
+        const fingerprint = JSON.stringify(
+          participants.map((p) => [p.agent, p.status, p.statusDetail, p.active])
+        );
+        if (fingerprint !== lastStatus) {
+          lastStatus = fingerprint;
+          send("status", participants);
+        }
+      } catch (error) {
+        send("error", { error: error instanceof Error ? error.message : String(error) });
+      }
+    };
+
+    poll();
+    send("ready", { room });
+    const timer = setInterval(poll, 700);
+    // Comment frames keep proxies and idle timers from closing the stream.
+    const keepAlive = setInterval(() => res.write(": keep-alive\n\n"), 20_000);
+
+    req.on("close", () => {
+      clearInterval(timer);
+      clearInterval(keepAlive);
+      res.end();
+    });
   });
 
   app.post("/mcp", async (req, res) => {

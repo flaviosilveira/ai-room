@@ -131,8 +131,18 @@ export function roomJoin(
 
 export function roomSend(
   db: Database.Database,
-  params: { room: string; agent: string; message: string }
+  params: {
+    room: string;
+    agent: string;
+    message: string;
+    /**
+     * Server-controlled. Only the human console writes "human"; agents can never
+     * claim it, which is what keeps `origin` trustworthy as an authority signal.
+     */
+    origin?: MessageInfo["origin"];
+  }
 ): MessageInfo {
+  const origin = params.origin ?? "agent";
   ensureRoom(db, params.room, false, "Call room_join first; room_send never creates a room, so a typo cannot silently fork the conversation.");
   ensureParticipant(db, params.room, params.agent, null);
 
@@ -140,9 +150,9 @@ export function roomSend(
   const info = db
     .prepare(
       `INSERT INTO messages (room, agent, origin, content, created_at)
-       VALUES (?, ?, 'agent', ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`
     )
-    .run(params.room, params.agent, params.message, now);
+    .run(params.room, params.agent, origin, params.message, now);
 
   db.prepare(`UPDATE participants SET last_seen_at = ? WHERE room = ? AND agent = ?`).run(
     now,
@@ -154,7 +164,7 @@ export function roomSend(
     id: Number(info.lastInsertRowid),
     room: params.room,
     agent: params.agent,
-    origin: "agent",
+    origin,
     content: params.message,
     createdAt: now,
   };

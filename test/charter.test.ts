@@ -89,17 +89,21 @@ describe("invite launcher", () => {
     expect(prompt).toMatch(/briefing/);
   });
 
-  it("knows a launcher for each supported harness", () => {
+  it("launches every harness interactively, so approval prompts still exist", () => {
     expect(Object.keys(LAUNCHERS).sort()).toEqual(["agy", "claude", "codex"]);
-    expect(LAUNCHERS.codex.args("P")).toEqual(["exec", "--skip-git-repo-check", "P"]);
-    expect(LAUNCHERS.claude.args("P")).toEqual(["-p", "P"]);
+    // No -p / exec: a headless run resolves approvals on its own, and attaching
+    // to it later would give the human nothing to answer.
+    expect(LAUNCHERS.codex.args("P")).toEqual(["P"]);
+    expect(LAUNCHERS.claude.args("P")).toEqual(["P"]);
+    expect(LAUNCHERS.agy.args("P")).toEqual(["-i", "P"]);
   });
 
-  it("reports the command without spawning anything on a dry run", () => {
+  it("reports the command and session without spawning anything on a dry run", () => {
     const result = invite("r", "codex", { dryRun: true });
     expect(result.status).toBe("launched");
-    expect(result.pid).toBeUndefined();
-    expect(result.command).toContain("codex exec");
+    expect(result.command).toMatch(/^codex /);
+    expect(result.session).toBe("airoom-r-codex");
+    expect(result.attachWith).toBeUndefined();
   });
 
   it("fails cleanly for an unknown harness", () => {

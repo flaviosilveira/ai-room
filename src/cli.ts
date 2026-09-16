@@ -3,6 +3,8 @@ import { VERSION } from "./version.js";
 import { createHttpApp } from "./http.js";
 import { roomHistory, roomJoin, roomList, roomSetCharter, roomWho } from "./store.js";
 import { invite } from "./invite.js";
+import { runConsole } from "./console.js";
+import { INSTALL_HINT, detectMultiplexer, liveSessions, sessionName } from "./session.js";
 import type { RosterEntry } from "./types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -166,11 +168,37 @@ function open(room: string, argv: string[]): void {
     if (flags.dryRun) {
       console.log(`would launch ${agent}: ${result.command}`);
     } else if (result.status === "launched") {
-      console.log(`launched ${agent} (pid ${result.pid}) -> ${result.logPath}`);
+      console.log(`launched ${agent} in ${result.multiplexer} session ${result.session}`);
+      console.log(`  attach with: ${result.attachWith}`);
     } else {
       console.error(`failed ${agent}: ${result.error}`);
       process.exitCode = 1;
     }
+  }
+
+  if (!flags.dryRun) {
+    console.log(`\nwatch everything in one window:  ai-room console ${room}`);
+  }
+}
+
+function agents(room: string): void {
+  if (!room) {
+    console.error("usage: ai-room agents <room>");
+    process.exit(1);
+  }
+  const driver = detectMultiplexer();
+  if (!driver) {
+    console.error(`No tmux or screen on PATH. ${INSTALL_HINT}`);
+    process.exit(1);
+  }
+  const prefix = sessionName(room, "").slice(0, -1);
+  const live = liveSessions(driver).filter((s) => s.startsWith(prefix));
+  if (!live.length) {
+    console.log(`no live agent sessions for "${room}".`);
+    return;
+  }
+  for (const session of live) {
+    console.log(`${session}\n  attach with: ${driver.attach(session)}`);
   }
 }
 
@@ -195,9 +223,20 @@ switch (cmd) {
   case "open":
     open(arg, process.argv.slice(4));
     break;
+  case "console":
+    if (!arg) {
+      console.error("usage: ai-room console <room>");
+      process.exit(1);
+    }
+    await runConsole(arg, { baseUrl: `http://127.0.0.1:${port()}` });
+    break;
+  case "agents":
+    agents(arg);
+    break;
   default:
     console.error(
-      "usage: ai-room <serve|status|rooms [query]|messages <room>|who <room>|open <room> [flags]>"
+      "usage: ai-room <serve|status|console <room>|open <room> [flags]|agents <room>|" +
+        "rooms [query]|messages <room>|who <room>>"
     );
     process.exit(1);
 }
