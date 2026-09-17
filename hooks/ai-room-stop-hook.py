@@ -5,7 +5,8 @@ Claude Code `Stop` hook for ai-room.
 Keeps an agent in its listen loop without relying on the model choosing to stay.
 When the session is still an active participant in a room, the hook blocks the
 stop and tells the model to call room_wait again. Leaving the room (room_leave)
-or an unreachable server both release the block.
+or an unreachable server both release the block. Talking to the human in the
+terminal never does: only room_leave ends participation.
 
 Fails OPEN: any error, timeout, or ambiguity allows the stop. A listen loop is
 never worth wedging a session over.
@@ -150,9 +151,12 @@ def main():
     block(
         f"You are still an active participant in ai-room '{room}' as '{agent}'. "
         f"Do not stop. Call room_wait(room='{room}', agent='{agent}') now. "
-        f"It blocks server-side for minutes at no token cost. "
+        f"It blocks server-side at no token cost. "
         f"When it returns status 'timeout', call it again and emit no text. "
-        f"Leave the loop only via room_leave or a direct human instruction."
+        f"The only way out of the loop is room_leave, and you call it only when a "
+        f"human explicitly and unambiguously tells you to leave or end your "
+        f"participation. An ordinary human message here is not that instruction: "
+        f"answer it and call room_wait again."
     )
 
 

@@ -21,6 +21,7 @@ import {
   MAX_WAIT_MS,
   RoomWaitRegistry,
   roomWait,
+  withWaitLiveness,
 } from "./wait.js";
 
 export function createAiRoomServer(
@@ -36,7 +37,7 @@ export function createAiRoomServer(
     "room_join",
     {
       description:
-        "Join a room, identifying yourself as an agent. Creates the room if it doesn't exist. The response carries the room's briefing when one is set: read `briefing.brief` for what the room is for, `briefing.you` for your own role and instructions, `briefing.teammates` for who else is expected, `briefing.conventions` for how to write, and `briefing.tools` for the tooling this room uses. Follow all of it without waiting to be told again. Then call room_wait.",
+        "Join a room, identifying yourself as an agent. Creates the room if it doesn't exist. The response carries the room's briefing when one is set: read `briefing.brief` for what the room is for, `briefing.you` for your own role and instructions, `briefing.teammates` for who else is expected, `briefing.conventions` for how to write, and `briefing.tools` for the tooling this room uses. Follow all of it without waiting to be told again, and start the work your role calls for immediately — `nextAction` in the response says so too. room_wait is for when you are blocked or waiting on a teammate, never for waiting to be told to begin.",
       inputSchema: {
         room: z.string().describe("Room name"),
         agent: z.string().describe("Agent identifier, e.g. claude, codex, agy"),
@@ -93,7 +94,7 @@ export function createAiRoomServer(
     "room_wait",
     {
       description:
-        "Block until a message arrives in the room. This is the only correct way to wait; it holds server-side for minutes and costs nothing while held. Always follow the returned nextAction field verbatim. On status 'timeout' call room_wait again immediately and emit no text at all — do not summarize, do not narrate, do not report that you are still waiting. On status 'messages' handle every message, then call room_wait again. Talking to a human directly in your terminal does NOT end your participation: answer them, then call room_wait again. The same applies after any interruption. You leave the room only by calling room_leave, and only when explicitly told to leave.",
+        "Block until a message arrives in the room. This is the only correct way to wait; it holds server-side for minutes and costs nothing while held. Always follow the returned nextAction field verbatim. On status 'timeout' resume your own unfinished work if you have any; otherwise call room_wait again immediately and emit no text at all — do not summarize, do not narrate, do not report that you are still waiting. On status 'messages' handle every message, then call room_wait again. Talking to a human directly in your terminal does NOT end your participation: answer them, then call room_wait again. The same applies after any interruption. On status 'superseded' another room_wait for you already took over; stop this loop and do not call room_wait again from here. You leave the room only by calling room_leave, and only when a human explicitly and unambiguously tells you to leave or end your participation — an ordinary human message is not that instruction.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),
@@ -272,13 +273,14 @@ export function createAiRoomServer(
   server.registerTool(
     "room_who",
     {
-      description: "List known participants in a room and their last activity.",
+      description:
+        "List known participants in a room. `status` is what each agent last published about itself; `waitActive` and `unread` are observed by the server, so trust those when they disagree with `status`.",
       inputSchema: {
         room: z.string(),
       },
     },
     async ({ room }) => {
-      const result = roomWho(db, { room });
+      const result = withWaitLiveness(room, roomWho(db, { room }), waitRegistry);
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     }
   );

@@ -36,16 +36,34 @@ export const LAUNCHERS: Record<string, AgentLauncher> = {
  * Deliberately minimal. The charter is the source of the collaboration, so the
  * seed prompt only says how to go get it — it never restates the brief, roles,
  * conventions or tools. Duplicating them here would let the two drift apart.
+ *
+ * It does have to say "start working", though: an agent told only to join and
+ * wait joins and waits, and the room stays silent until a human pushes it.
+ * room_wait is for having nothing to do, not for having not started.
  */
 export function joinPrompt(room: string, agent: string): string {
   return [
     `Join the ai-room "${room}" as agent "${agent}" by calling room_join`,
     `with {room: "${room}", agent: "${agent}"}.`,
-    "Read the briefing in the response and follow it.",
-    "Then call room_wait and stay in that loop.",
+    "Read your briefing and begin the work your role calls for immediately,",
+    "without waiting to be told.",
+    "Coordinate with your teammates through room_send.",
+    "Call room_wait only when you are blocked or waiting on someone,",
+    "and stay in that loop.",
     "If a human talks to you here, answer them and then call room_wait again;",
-    "that is not leaving the room. Only room_leave ends your participation.",
+    "that is not leaving the room. Only room_leave ends your participation,",
+    "and only when a human explicitly tells you to leave.",
   ].join(" ");
+}
+
+/**
+ * Identity for anything the agent's process spawns — in particular its hooks.
+ * The launcher already knows exactly who this agent is in which room, so a hook
+ * never has to infer it from model text, and an agent in one room can never ask
+ * about another room's unread.
+ */
+export function agentEnv(room: string, agent: string): Record<string, string> {
+  return { AI_ROOM_ROOM: room, AI_ROOM_AGENT: agent };
 }
 
 export function agentCommand(room: string, agent: string, launcherName = agent): string[] | null {
@@ -141,7 +159,7 @@ export function invite(
   }
 
   try {
-    const started = startSession(driver, session, cwd, argv);
+    const started = startSession(driver, session, cwd, argv, agentEnv(room, agent));
     return {
       agent,
       command,
@@ -171,6 +189,7 @@ function headless(
       cwd,
       detached: true,
       stdio: ["ignore", out, out],
+      env: { ...process.env, ...agentEnv(room, agent) },
     });
     child.unref();
     return { agent, command, status: "launched", mode: "headless", logPath };
@@ -209,7 +228,7 @@ export function planWorkspace(
       missing.push(agent);
       continue;
     }
-    panes.push({ title: agent, command: argv });
+    panes.push({ title: agent, command: argv, env: agentEnv(room, agent) });
     launched.push(agent);
   }
 

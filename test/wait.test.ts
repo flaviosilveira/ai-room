@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../src/db/index.js";
 import { roomJoin, roomSend, roomWho } from "../src/store.js";
-import { RoomWaitRegistry, roomWait } from "../src/wait.js";
+import {
+  DEFAULT_WAIT_MS,
+  FOREGROUND_BUDGET_MS,
+  RoomWaitRegistry,
+  roomWait,
+  withWaitLiveness,
+} from "../src/wait.js";
 import type Database from "better-sqlite3";
 
 describe("room_wait", () => {
@@ -156,5 +162,185 @@ describe("room_wait", () => {
     // One failure is enough to end the wait; an unguarded timer kept firing.
     expect(beats).toBe(1);
     expect(registry.size()).toBe(0);
+  });
+});
+
+describe("wait liveness", () => {
+  let db: Database.Database;
+  let registry: RoomWaitRegistry;
+
+  beforeEach(() => {
+    db = openDb(":memory:");
+    registry = new RoomWaitRegistry();
+    roomJoin(db, { room: "r", agent: "claude" });
+    roomJoin(db, { room: "r", agent: "codex" });
+  });
+  afterEach(() => db.close());
+
+  it("holds for less than the host's foreground budget by default", () => {
+    // Claude Code moves an MCP call to the background at 120s; a default above
+    // that guaranteed every quiet wait became a call nobody was reading.
+    expect(DEFAULT_WAIT_MS).toBeLessThan(FOREGROUND_BUDGET_MS);
+    expect(FOREGROUND_BUDGET_MS - DEFAULT_WAIT_MS).toBeGreaterThanOrEqual(20_000);
+    expect(DEFAULT_WAIT_MS).toBeGreaterThan(30_000);
+  });
+
+  it("reports a parked wait as live, per agent", async () => {
+    const pending = roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 200 });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.isWaiting("r", "codex")).toBe(true);
+    expect(registry.isWaiting("r", "claude")).toBe(false);
+    expect(registry.waitingAgents("r")).toEqual(["codex"]);
+    await pending;
+  });
+
+  it("drops liveness on timeout", async () => {
+    await roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 5 });
+    expect(registry.isWaiting("r", "codex")).toBe(false);
+    expect(registry.size()).toBe(0);
+  });
+
+  it("drops liveness on abort", async () => {
+    const controller = new AbortController();
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: controller.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.isWaiting("r", "codex")).toBe(true);
+    controller.abort();
+    await pending;
+    expect(registry.isWaiting("r", "codex")).toBe(false);
+  });
+
+  it("drops liveness when the transport disconnects mid-wait", async () => {
+    // What a closed HTTP response does: the server aborts the request signal.
+    const transport = new AbortController();
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: transport.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    transport.abort();
+    const result = await pending;
+    expect(result.status).toBe("cancelled");
+    expect(registry.isWaiting("r", "codex")).toBe(false);
+    expect(registry.size()).toBe(0);
+  });
+
+  it("drops liveness when the wait throws", async () => {
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 2_000 },
+      {
+        heartbeatMs: 5,
+        onHeartbeat: () => {
+          db.exec("DELETE FROM participants WHERE room = 'r' AND agent = 'codex'");
+          db.exec("DELETE FROM rooms WHERE name = 'r'");
+        },
+      }
+    );
+    await expect(pending).rejects.toThrow();
+    expect(registry.isWaiting("r", "codex")).toBe(false);
+    expect(registry.size()).toBe(0);
+  });
+
+  it("keeps exactly one live wait per (room, agent)", async () => {
+    // The backgrounded wait and the fresh one raced over the same cursor.
+    const stale = roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 60_000 });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.size()).toBe(1);
+
+    const fresh = roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 200 });
+    const replaced = await stale;
+    expect(replaced.status).toBe("superseded");
+    expect(replaced.messages).toEqual([]);
+    expect(replaced.nextAction).toMatch(/do not call room_wait again/i);
+    expect(registry.size()).toBe(1);
+    expect(registry.isWaiting("r", "codex")).toBe(true);
+
+    await fresh;
+    expect(registry.size()).toBe(0);
+  });
+
+  it("a superseded wait consumes nothing, so the live one still gets the message", async () => {
+    const stale = roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 60_000 });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const fresh = roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 1_000 });
+    expect((await stale).messages).toEqual([]);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    roomSend(db, { room: "r", agent: "claude", message: "nao pode sumir" });
+    registry.notify("r");
+    expect((await fresh).messages.map((m) => m.content)).toEqual(["nao pode sumir"]);
+  });
+
+  it("keeps unread accurate across cancelled and live waits", async () => {
+    const unread = () => roomWho(db, { room: "r" }).find((p) => p.agent === "codex")!.unread;
+    expect(unread()).toBe(0);
+
+    const controller = new AbortController();
+    const abandoned = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: controller.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort();
+    expect(await abandoned).toMatchObject({ status: "cancelled" });
+
+    roomSend(db, { room: "r", agent: "claude", message: "um" });
+    roomSend(db, { room: "r", agent: "claude", message: "dois" });
+    // Nobody is listening any more, so both stay unread rather than vanishing.
+    expect(unread()).toBe(2);
+
+    const delivered = await roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 50 });
+    expect(delivered.messages.map((m) => m.content)).toEqual(["um", "dois"]);
+    expect(unread()).toBe(0);
+  });
+
+  it("consumes nothing for a client that is already gone when the wait starts", async () => {
+    roomSend(db, { room: "r", agent: "claude", message: "pendente" });
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: controller.signal }
+    );
+    expect(result.status).toBe("cancelled");
+    expect(roomWho(db, { room: "r" }).find((p) => p.agent === "codex")!.unread).toBe(1);
+  });
+
+  it("stops presenting a stale 'waiting' as a live wait", async () => {
+    const controller = new AbortController();
+    const pending = roomWait(
+      db,
+      registry,
+      { room: "r", agent: "codex", timeoutMs: 60_000 },
+      { signal: controller.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort();
+    await pending;
+
+    const [view] = withWaitLiveness(
+      "r",
+      roomWho(db, { room: "r" }).filter((p) => p.agent === "codex"),
+      registry
+    );
+    // The agent's own last word stays "waiting" — we never invent a status we
+    // did not observe — but the evidence behind it is gone and must show it.
+    expect(view.status).toBe("waiting");
+    expect(view.waitActive).toBe(false);
   });
 });

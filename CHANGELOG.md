@@ -1,5 +1,117 @@
 # Changelog
 
+## 0.3.0
+
+The release that makes a message actually reach the agent it was meant for, and
+makes the monitor say only what the server can see.
+
+### Delivery and liveness
+
+- **A wait longer than the host's foreground budget stopped being a wait.** The
+  default hold was 240s; Claude Code moves an MCP call to the background at
+  120s, which closes the request and aborts the wait server-side. From then on
+  nothing was listening for that agent, so a message sat pending until it
+  happened to ask again — 7m21s in a measured session, while the other agent
+  answered the same message in 4s. The default is now 90s, under that budget,
+  still tunable with `AI_ROOM_WAIT_MS`.
+- **One live wait per `(room, agent)`.** A backgrounded wait stayed registered
+  while the model opened a new one, and the two raced over the same cursor: the
+  loser's messages went to a call nobody was reading. A new `room_wait` now
+  supersedes whatever that agent had parked; the replaced call returns the new
+  status `superseded` having consumed nothing.
+- **A wait nobody is reading consumes nothing.** Cancelled, superseded, or
+  already aborted when the call arrived — in every case the read cursor stays
+  where it was, so the next wait still finds the messages.
+- **Wait liveness is observed, not claimed.** The registry tracks waits per
+  `(room, agent)` and exposes `waitActive`; `unread` is counted from the
+  cursors. Both reach `room_who`, `GET /active` and the new `GET /who`.
+- **The monitor stopped presenting a stale status as fact.** `waiting` is
+  written when a wait starts, so an aborted wait left `claude:waiting` on screen
+  while the agent had been running shell commands for eleven minutes. It now
+  renders `codex:wait(live)`, `claude:working unread:2`, and `claude:waiting?7m`
+  for a status whose evidence expired. The stored status is still the agent's
+  own last word — never overwritten with something nobody observed.
+- A failing `room_wait` heartbeat ends that one wait instead of reaching the top
+  level and taking the server down (shipped in 0.2.1, kept here).
+
+### Boundary delivery
+
+- **A PreToolUse hook tells a working agent that messages are waiting.** Wait
+  liveness only helps an agent that is parked; one that is working has no wait
+  at all. `hooks/ai-room-unread-hook.sh` runs at the boundary before the next
+  tool call, asks the local `/active` endpoint, and returns one line of
+  `additionalContext` naming the count and the room. Measured end to end:
+  Claude noticed 4.4s after the message and had drained the room at 6.5s.
+- **Advisory by construction.** The hook never reads message content, never
+  advances the cursor, never sends to the room, and never returns a permission
+  decision. Messages are still consumed the normal way, by the agent calling
+  `room_wait`/`room_listen`. Every failure — server down, timeout, malformed
+  response, unknown identity — is silent and non-blocking.
+- **Identity comes from the launcher and nowhere else.** `ai-room open` exports
+  `AI_ROOM_ROOM` and `AI_ROOM_AGENT` into each agent's process, so an agent
+  cannot be told about a room it did not join. Without them the hook says
+  nothing: guessing identity from session text would misfire on any session
+  that merely mentions a room.
+- **A shell wrapper keeps the cost off unrelated sessions.** The hook fires on
+  every tool call of every session of the harness, and most are not in a room.
+  The wrapper answers that one question without an interpreter and exits: 9ms
+  instead of 56ms over 200 runs, with no network, no output and no log.
+- **Claude Code works out of the box; Codex needs one human approval.** Both
+  implement the same contract, verified in real sessions. Codex additionally
+  hashes a hook and refuses to run it until a human trusts that hash — in the
+  TUI it stops at a "Hooks need review" prompt. ai-room never approves it and
+  cannot read that state, so `ai-room hooks` reports where the hook goes and
+  says plainly what Codex will ask. No hook support is claimed for AGY.
+- `ai-room hooks [--json]` shows the install target per harness and prints the
+  snippet.
+
+### Agent startup and collaboration
+
+- **Invited agents start working immediately.** Every instruction they had — the
+  seed prompt, the `room_join` description, the `room_wait` timeout — ended in
+  "call room_wait", so both agents read a good charter and parked until a human
+  pushed them. `room_join` now returns a `nextAction` that says to begin, and
+  the seed prompt says the same without restating the charter.
+- **`room_wait` is for having nothing to do, not for not having started.**
+- **An ordinary human message in the pane is not an exit.** Seed prompt, tool
+  descriptions and the Stop hook now agree: only `room_leave` leaves a room, and
+  only when a human explicitly says to.
+
+### Workspace and open lifecycle
+
+- **`ai-room open` ends attached.** It hands the terminal to the workspace —
+  `attach-session` normally, `switch-client` from inside tmux — instead of
+  printing a command to retype. `--detached` stays the explicit way out, a
+  non-interactive terminal falls back to printing the command, and screen and
+  headless are unchanged.
+- **Reopening a room reattaches it.** `ai-room open <room>` with no flags reuses
+  the charter and roster it already has: same cast, no duplicated panes.
+- **Reopening without `--brief` no longer wiped the charter.** Only the flags
+  actually given are written; before, the reattach path cleared brief,
+  conventions, tooling and roster.
+- **A workspace with nothing to launch is no longer reported as created**, which
+  had left `open` attaching to a session tmux never heard of.
+- **`/attach <agent>` finds the agent.** In workspace mode an agent is a pane,
+  not a session, and the old lookup failed for every agent the workspace
+  launched. It resolves the pane through the stable `@airoom_agent` tag and
+  still falls back to the per-agent session for `--detached` and screen.
+- **`/detach` and `/close sim`** in the console: release the workspace without
+  killing anything, or end the room's panes and sessions through `closeRoom`
+  after an explicit confirmation. History and charter survive either way.
+- **The help taught the wrong detach key.** tmux binds detach to lowercase `d`;
+  `Ctrl-b D` is `choose-client`, whose overlay is invisible behind a repainting
+  agent TUI. Reproduced against tmux 3.7c, then fixed everywhere it appears.
+- `close` ends every session a room owns, including the per-agent sessions from
+  `--detached` (shipped in 0.2.1, kept here).
+
+### Runtime safety
+
+- The runtime preflight introduced in 0.2.1 still guards startup: an unsupported
+  Node runtime is detected and reported before the SQLite binding is loaded, so
+  a Node-API mismatch in the environment surfaces as a readable error instead of
+  a SIGSEGV. This is an environment incompatibility the guard catches, not a
+  fault introduced by a release.
+
 ## 0.2.1
 
 ### Fixed

@@ -112,6 +112,7 @@ export function roomJoin(
   participant: ParticipantInfo;
   created: boolean;
   briefing: AgentBriefing | null;
+  nextAction: string;
 } {
   const result = ensureRoom(db, params.room, params.createIfMissing ?? true);
 
@@ -129,11 +130,18 @@ export function roomJoin(
     params.role ?? rosterRole ?? null,
     true
   );
+  const briefing = roomBriefing(db, params.room, params.agent);
   return {
     room: result.room,
     participant,
     created: result.created,
-    briefing: roomBriefing(db, params.room, params.agent),
+    briefing,
+    // Joining is not the job. Without this an agent reads a perfectly good
+    // briefing and parks in room_wait, and the room stays silent until a human
+    // tells it to start — which is exactly what the charter exists to avoid.
+    nextAction: briefing
+      ? "Start now: do the work your role in the briefing calls for, and publish what you are doing with room_send. Call room_wait only once you are blocked or waiting on a teammate."
+      : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.",
   };
 }
 
@@ -274,17 +282,31 @@ export function roomHistory(
   return rows;
 }
 
+/**
+ * `unread` is counted here rather than reported by the agent: cursors are the
+ * server's own record, so it is the one delivery fact nobody can misstate.
+ * Wait liveness lives in the wait registry, so callers that have it decorate
+ * these rows with `waitActive`.
+ */
 export function roomWho(
   db: Database.Database,
   params: { room: string }
-): ParticipantInfo[] {
+): (ParticipantInfo & { unread: number })[] {
   const rows = db
     .prepare(
-      `SELECT room, agent, role, joined_at as joinedAt, last_seen_at as lastSeenAt, active,
-              status, status_detail as statusDetail, status_updated_at as statusUpdatedAt
-       FROM participants WHERE room = ? ORDER BY last_seen_at DESC`
+      `SELECT p.room, p.agent, p.role, p.joined_at as joinedAt, p.last_seen_at as lastSeenAt,
+              p.active, p.status, p.status_detail as statusDetail,
+              p.status_updated_at as statusUpdatedAt,
+              (SELECT COUNT(*) FROM messages m
+                WHERE m.room = p.room
+                  AND m.agent != p.agent
+                  AND m.id > COALESCE(
+                        (SELECT c.last_message_id FROM cursors c
+                          WHERE c.room = p.room AND c.agent = p.agent), 0)
+              ) as unread
+       FROM participants p WHERE p.room = ? ORDER BY p.last_seen_at DESC`
     )
-    .all(params.room) as (Omit<ParticipantInfo, "active"> & { active: number })[];
+    .all(params.room) as (Omit<ParticipantInfo, "active"> & { active: number; unread: number })[];
 
   return rows.map((row) => ({ ...row, active: !!row.active }));
 }

@@ -89,6 +89,16 @@ describe("launch commands", () => {
     expect(prompt).toMatch(/room_leave/);
   });
 
+  it("tells the agent to start working, not to sit in room_wait", () => {
+    // The first real session: both agents joined, read the charter and parked.
+    // Nothing happened until the human typed "can you work with this?".
+    const prompt = joinPrompt("r", "claude");
+    expect(prompt).toMatch(/begin the work[\s\S]*immediately/i);
+    expect(prompt).toMatch(/without waiting to be told/i);
+    expect(prompt).toMatch(/room_wait only when/i);
+    expect(prompt).toMatch(/room_send/);
+  });
+
   it("keeps the seed prompt minimal: the charter is fetched, never inlined", () => {
     const prompt = joinPrompt("refactor-auth", "codex");
     expect(prompt).toMatch(/room_join/);
@@ -216,6 +226,26 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
 
     const third = ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("codex")]);
     expect(third.panes).toEqual([]);
+  });
+
+  it("reports no workspace when there was nothing to create", () => {
+    // `created` used to be "the session did not exist before", so an open with
+    // no launchable pane announced a workspace tmux had never heard of, and
+    // attach then failed against that name.
+    const empty = ensureWorkspace(tmux!, session, process.cwd(), []);
+    expect(empty.created).toBe(false);
+    expect(sessionExists(tmux!, session)).toBe(false);
+  });
+
+  it("reattaches an existing workspace without duplicating panes", () => {
+    const first = ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("monitor")]);
+    expect(first.created).toBe(true);
+    // A second `ai-room open <room>` must find everything already running.
+    const again = ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("monitor")]);
+    expect(again.created).toBe(false);
+    expect(again.panes).toEqual([]);
+    expect(again.skipped).toEqual(["claude", "monitor"]);
+    expect(workspacePanes(tmux!, session).sort()).toEqual(["claude", "monitor"]);
   });
 
   it("survives agents renaming their own pane title", () => {

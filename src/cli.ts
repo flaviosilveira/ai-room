@@ -6,12 +6,18 @@ import { closeRoom, invite, openWorkspace, planWorkspace } from "./invite.js";
 import { runConsole } from "./console.js";
 import {
   INSTALL_HINT,
+  attachWorkspace,
+  canAttach,
   detectMultiplexer,
+  insideMultiplexer,
   liveSessions,
+  sessionExists,
   sessionName,
+  workspaceName,
 } from "./session.js";
 import { TOOL_CATALOG } from "./catalog.js";
-import type { RosterEntry } from "./types.js";
+import { agentsToLaunch, charterPatch, parseOpenFlags } from "./open.js";
+import { hookSnippet, hookStatus } from "./hooks.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -117,54 +123,17 @@ function who(room: string): void {
 }
 
 
-interface OpenFlags {
-  brief?: string;
-  convention?: string;
-  tools: string[];
-  invite: string[];
-  roles: Map<string, string>;
-  dryRun: boolean;
-  detached: boolean;
-  monitor: boolean;
-}
-
-function parseOpenFlags(argv: string[]): OpenFlags {
-  const flags: OpenFlags = {
-    tools: [],
-    invite: [],
-    roles: new Map(),
-    dryRun: false,
-    detached: false,
-    monitor: true,
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    const value = () => argv[++i] ?? "";
-    if (arg === "--brief") flags.brief = value();
-    else if (arg === "--convention") flags.convention = value();
-    else if (arg === "--tool") flags.tools.push(...value().split(",").filter(Boolean));
-    else if (arg === "--invite") flags.invite.push(...value().split(",").filter(Boolean));
-    else if (arg === "--role") {
-      const [agent, ...rest] = value().split("=");
-      if (agent && rest.length) flags.roles.set(agent, rest.join("="));
-    } else if (arg === "--dry-run") flags.dryRun = true;
-    else if (arg === "--detached") flags.detached = true;
-    else if (arg === "--no-monitor") flags.monitor = false;
-    else throw new Error(`Unknown flag "${arg}"`);
-  }
-  return flags;
-}
-
 /**
  * One command replaces the two messages a human otherwise retypes: it creates
- * the room with a charter, then launches each invited agent with a seed prompt
- * that makes it join and read that charter.
+ * the room with a charter, launches each invited agent, and hands the terminal
+ * to the workspace. For interactive use `open` means the whole experience, so
+ * it ends attached; `--detached` is how you ask for the old behaviour.
  */
 function open(room: string, argv: string[]): void {
   if (!room) {
     console.error(
       'usage: ai-room open <room> [--brief "..."] [--convention caveman] [--tool graphify]\n' +
-        "                       [--invite codex,agy] [--role codex=reviewer] [--dry-run]"
+        "                       [--invite codex,agy] [--role codex=reviewer] [--detached] [--dry-run]"
     );
     process.exit(1);
   }
@@ -174,17 +143,7 @@ function open(room: string, argv: string[]): void {
 
   roomJoin(db, { room, agent: "human", role: "host" });
 
-  const roster: RosterEntry[] = flags.invite.map((agent) => ({
-    agent,
-    role: flags.roles.get(agent),
-  }));
-  const charter = roomSetCharter(db, {
-    room,
-    brief: flags.brief ?? null,
-    conventionPreset: flags.convention ?? null,
-    tools: flags.tools,
-    roster,
-  });
+  const charter = roomSetCharter(db, charterPatch(room, flags));
 
   console.log(`room: ${room}`);
   console.log(`brief: ${charter.brief ?? "(none)"}`);
@@ -192,10 +151,7 @@ function open(room: string, argv: string[]): void {
   console.log(`tools: ${charter.tools.map((t) => t.name).join(", ") || "(none)"}`);
   console.log(`roster: ${charter.roster.map((r) => r.role ? `${r.agent} (${r.role})` : r.agent).join(", ") || "(none)"}`);
 
-  if (!flags.invite.length) {
-    console.log("invited: nobody");
-    return;
-  }
+  const agents = agentsToLaunch(flags, charter.roster);
 
   console.log("");
 
@@ -203,18 +159,19 @@ function open(room: string, argv: string[]): void {
   const useWorkspace = !flags.detached && Boolean(tmux);
 
   if (flags.dryRun) {
-    const plan = planWorkspace(room, flags.invite, { monitor: flags.monitor });
+    const plan = planWorkspace(room, agents, { monitor: flags.monitor });
     console.log(`mode: ${useWorkspace ? "tmux workspace" : flags.detached ? "detached" : "detached (no tmux)"}`);
     for (const pane of plan.panes) {
       console.log(`  ${pane.title}: ${pane.command.join(" ")}`);
     }
     if (plan.missing.length) console.log(`  not installed: ${plan.missing.join(", ")}`);
+    if (useWorkspace) console.log(`  then attach to ${workspaceName(room)}`);
     return;
   }
 
   if (useWorkspace) {
     try {
-      const { plan, result } = openWorkspace(room, flags.invite, { monitor: flags.monitor });
+      const { plan, result } = openWorkspace(room, agents, { monitor: flags.monitor });
       if (plan.missing.length) {
         console.error(`not on PATH, skipped: ${plan.missing.join(", ")}`);
         process.exitCode = 1;
@@ -226,7 +183,25 @@ function open(room: string, argv: string[]): void {
               (result.panes.length ? `, added panes: ${result.panes.join(", ")}` : " (nothing to add)")
       );
       if (result.skipped.length) console.log(`already running: ${result.skipped.join(", ")}`);
-      console.log(`\nattach with:  ${result.attachWith}`);
+
+      if (!sessionExists(tmux!, result.session)) {
+        console.log("nothing to attach to: no agent was launched and no workspace exists.");
+        return;
+      }
+      // A piped or non-interactive run has no terminal to hand over, so it
+      // prints the command instead of failing inside tmux.
+      if (!canAttach()) {
+        console.log(`\nattach with:  ${result.attachWith}`);
+        return;
+      }
+      const attached = attachWorkspace(tmux!, result.session, {
+        insideMultiplexer: insideMultiplexer(),
+      });
+      if (!attached.ok) {
+        console.error(`attach failed: ${attached.error}`);
+        console.error(`attach manually with:  ${result.attachWith}`);
+        process.exitCode = 1;
+      }
       return;
     } catch (error) {
       console.error(`workspace failed: ${error instanceof Error ? error.message : error}`);
@@ -237,7 +212,12 @@ function open(room: string, argv: string[]): void {
     console.log(`tmux not found, using detached sessions. ${INSTALL_HINT}\n`);
   }
 
-  for (const agent of flags.invite) {
+  if (!agents.length) {
+    console.log("invited: nobody");
+    return;
+  }
+
+  for (const agent of agents) {
     const result = invite(room, agent, {});
     if (result.status === "launched") {
       console.log(
@@ -281,6 +261,28 @@ function tools(json: boolean): void {
   console.log(`ai-room ${VERSION} — ${TOOL_CATALOG.length} MCP tools`);
   for (const tool of TOOL_CATALOG) {
     console.log(`  ${tool.name}${tool.mutates ? "" : "  (read-only)"}\n    ${tool.summary}`);
+  }
+}
+
+/**
+ * Where the unread hook goes and whether it is there. An agent that is working
+ * has no room_wait parked, so this hook is the only thing that tells it a
+ * message arrived before it acts on stale context.
+ */
+function hooks(asJson: boolean): void {
+  const status = hookStatus();
+  if (asJson) {
+    console.log(JSON.stringify({ name: "ai-room", version: VERSION, hooks: status }, null, 2));
+    return;
+  }
+  for (const entry of status) {
+    console.log(`${entry.harness}: ${entry.installed ? "installed" : "not installed"}`);
+    console.log(`  config: ${entry.configPath}`);
+    console.log(`  event:  ${entry.event}`);
+    if (entry.note) console.log(`  note:   ${entry.note}`);
+    if (!entry.installed) {
+      console.log(hookSnippet(entry.harness).split("\n").map((line) => `  ${line}`).join("\n"));
+    }
   }
 }
 
@@ -339,14 +341,17 @@ switch (cmd) {
   case "close":
     close(arg);
     break;
+  case "hooks":
+    hooks(process.argv.includes("--json"));
+    break;
   case "tools":
     tools(process.argv.includes("--json"));
     break;
   default:
     console.error(
-      "usage: ai-room <serve|status [--json]|tools [--json]|console <room>|" +
-        "open <room> [flags]|close <room>|agents <room>|rooms [query]|" +
-        "messages <room>|who <room>>"
+      "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
+        "console <room>|open <room> [flags]|close <room>|agents <room>|" +
+        "rooms [query]|messages <room>|who <room>>"
     );
     process.exit(1);
 }

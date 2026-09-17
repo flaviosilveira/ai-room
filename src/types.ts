@@ -37,6 +37,17 @@ export interface MessageInfo {
   createdAt: number;
 }
 
+/**
+ * A participant as the server can actually observe it: the status the agent
+ * last published, plus the two facts the server knows first-hand — whether a
+ * room_wait is parked for it right now, and how many messages it has not read.
+ * `status` alone is a claim; `waitActive` is evidence.
+ */
+export interface ParticipantView extends ParticipantInfo {
+  unread: number;
+  waitActive: boolean;
+}
+
 export interface ActiveRoomInfo {
   room: string;
   role: string | null;
@@ -46,7 +57,7 @@ export interface ActiveRoomInfo {
   unread: number;
 }
 
-export type RoomWaitStatus = "messages" | "timeout" | "cancelled";
+export type RoomWaitStatus = "messages" | "timeout" | "cancelled" | "superseded";
 
 export interface RoomWaitResult {
   messages: MessageInfo[];

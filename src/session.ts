@@ -15,7 +15,7 @@ export interface MultiplexerDriver {
   name: Multiplexer;
   /** True when this driver can host several agents as panes in one window. */
   supportsPanes: boolean;
-  start: (session: string, cwd: string, command: string[]) => string[];
+  start: (session: string, cwd: string, command: string[], env?: Record<string, string>) => string[];
   list: () => string[];
   parseList: (stdout: string) => string[];
   attach: (session: string) => string;
@@ -26,8 +26,8 @@ const DRIVERS: Record<Multiplexer, MultiplexerDriver> = {
   tmux: {
     name: "tmux",
     supportsPanes: true,
-    start: (session, cwd, command) => [
-      "new-session", "-d", "-s", session, "-c", cwd, ...command,
+    start: (session, cwd, command, env) => [
+      "new-session", "-d", "-s", session, "-c", cwd, ...envArgs(env), ...command,
     ],
     list: () => ["list-sessions", "-F", "#{session_name}"],
     parseList: (stdout) => stdout.split("\n").map((l) => l.trim()).filter(Boolean),
@@ -41,6 +41,8 @@ const DRIVERS: Record<Multiplexer, MultiplexerDriver> = {
     // screen can split, but not reliably from a script, so it only ever hosts
     // one agent per session.
     supportsPanes: false,
+    // screen has no per-session env flag; the launcher exports the variables
+    // into the command itself instead.
     start: (session, _cwd, command) => ["-dmS", session, ...command],
     list: () => ["-ls"],
     parseList: (stdout) =>
@@ -137,9 +139,14 @@ export function startSession(
   driver: MultiplexerDriver,
   session: string,
   cwd: string,
-  command: string[]
+  command: string[],
+  env?: Record<string, string>
 ): StartedSession {
-  const { ok, error } = run(driver.name, driver.start(session, cwd, command), cwd);
+  const argv =
+    driver.supportsPanes || !env
+      ? driver.start(session, cwd, command, env)
+      : driver.start(session, cwd, ["env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`), ...command]);
+  const { ok, error } = run(driver.name, argv, cwd);
   if (!ok) throw new Error(`${driver.name} failed to start "${session}": ${error}`);
   return { session, attachWith: driver.attach(session), multiplexer: driver.name };
 }
@@ -150,6 +157,13 @@ export interface PaneSpec {
   /** Pane title, normally the agent name. */
   title: string;
   command: string[];
+  /** Exported into the pane's process, and therefore into its hooks. */
+  env?: Record<string, string>;
+}
+
+/** tmux takes one `-e KEY=value` per variable, for new-session and split-window alike. */
+function envArgs(env: Record<string, string> | undefined): string[] {
+  return Object.entries(env ?? {}).flatMap(([key, value]) => ["-e", `${key}=${value}`]);
 }
 
 export interface WorkspaceResult {
@@ -171,12 +185,63 @@ export interface WorkspaceResult {
 export const PANE_TAG = "@airoom_agent";
 
 export function workspacePanes(driver: MultiplexerDriver, session: string): string[] {
+  return listTaggedPanes(driver, session).map((pane) => pane.agent);
+}
+
+export interface TaggedPane {
+  agent: string;
+  paneId: string;
+}
+
+/** Every pane in the workspace that ai-room tagged, with its stable pane id. */
+export function listTaggedPanes(driver: MultiplexerDriver, session: string): TaggedPane[] {
+  if (driver.name !== "tmux") return [];
   const result = spawnSync(
     driver.name,
-    ["list-panes", "-s", "-t", session, "-F", `#{${PANE_TAG}}`],
+    ["list-panes", "-s", "-t", session, "-F", `#{${PANE_TAG}}\t#{pane_id}`],
     { encoding: "utf8" }
   );
-  return `${result.stdout ?? ""}`.split("\n").map((l) => l.trim()).filter(Boolean);
+  return `${result.stdout ?? ""}`
+    .split("\n")
+    .map((line) => line.trim().split("\t"))
+    .filter(([agent, paneId]) => Boolean(agent) && Boolean(paneId))
+    .map(([agent, paneId]) => ({ agent, paneId }));
+}
+
+export function agentPane(
+  driver: MultiplexerDriver,
+  session: string,
+  agent: string
+): string | null {
+  return listTaggedPanes(driver, session).find((pane) => pane.agent === agent)?.paneId ?? null;
+}
+
+/**
+ * Brings an agent's pane to the front. Identity is the pane id behind the
+ * ai-room tag, never the pane title — agents rewrite their own titles, and a
+ * title lookup focuses whatever pane happens to have been renamed last.
+ */
+export function focusPane(
+  driver: MultiplexerDriver,
+  paneId: string
+): { ok: boolean; error?: string } {
+  const window = run(driver.name, ["select-window", "-t", paneId]);
+  const pane = run(driver.name, ["select-pane", "-t", paneId]);
+  if (pane.ok || window.ok) return { ok: true };
+  return { ok: false, error: pane.error || window.error };
+}
+
+/** Detaches every client of one workspace. Panes, agents and room keep running. */
+export function detachWorkspace(
+  driver: MultiplexerDriver,
+  session: string
+): { ok: boolean; error?: string } {
+  if (driver.name !== "tmux") {
+    return { ok: false, error: `${driver.name} cannot detach a workspace from a script.` };
+  }
+  if (!sessionExists(driver, session)) return { ok: false, error: `no session "${session}"` };
+  const result = run(driver.name, ["detach-client", "-s", session]);
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
 }
 
 /**
@@ -204,9 +269,10 @@ export function ensureWorkspace(
     // instead would tag whichever pane happens to be active, and select-layout
     // can change that — which silently put an agent's tag on another agent's
     // pane and made every reopen duplicate panes.
+    const env = envArgs(pane.env);
     const create = !sessionExists(driver, session)
-      ? run(driver.name, ["new-session", "-d", "-s", session, "-c", cwd, "-P", "-F", "#{pane_id}", ...pane.command], cwd)
-      : run(driver.name, ["split-window", "-t", session, "-c", cwd, "-P", "-F", "#{pane_id}", ...pane.command], cwd);
+      ? run(driver.name, ["new-session", "-d", "-s", session, "-c", cwd, ...env, "-P", "-F", "#{pane_id}", ...pane.command], cwd)
+      : run(driver.name, ["split-window", "-t", session, "-c", cwd, ...env, "-P", "-F", "#{pane_id}", ...pane.command], cwd);
 
     if (!create.ok) throw new Error(`tmux failed to add pane "${pane.title}": ${create.error}`);
     const paneId = create.out.split("\n").pop()?.trim();
@@ -226,10 +292,63 @@ export function ensureWorkspace(
   return {
     session,
     attachWith: driver.attach(session),
-    created: !existed,
+    // A pane list with nothing missing starts no session, so `!existed` alone
+    // reported a workspace that was never created and left `open` trying to
+    // attach to a name tmux does not know.
+    created: !existed && added.length > 0,
     panes: added,
     skipped: panes.filter((p) => present.includes(p.title)).map((p) => p.title),
   };
+}
+
+/* ----------------------------------------------------------------- attach */
+
+/**
+ * Handing the terminal over is the whole point of `open` for interactive use,
+ * so the argv differs by where the human already is: attaching from inside a
+ * multiplexer nests one session in another, which tmux refuses outright.
+ */
+export function attachArgv(
+  driver: MultiplexerDriver,
+  session: string,
+  options: { insideMultiplexer?: boolean } = {}
+): string[] {
+  if (driver.name === "tmux") {
+    return options.insideMultiplexer
+      ? ["switch-client", "-t", session]
+      : ["attach-session", "-t", session];
+  }
+  return ["-r", session];
+}
+
+export function insideMultiplexer(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.TMUX || env.STY);
+}
+
+/** Attaching needs a terminal on both ends; a piped or CI run has neither. */
+export function canAttach(
+  stream: { isTTY?: boolean } = process.stdout,
+  input: { isTTY?: boolean } = process.stdin
+): boolean {
+  return Boolean(stream.isTTY && input.isTTY);
+}
+
+/**
+ * Blocks until the human detaches. This is the last thing `open` does, so the
+ * exit status of the multiplexer becomes the exit status of the command.
+ */
+export function attachWorkspace(
+  driver: MultiplexerDriver,
+  session: string,
+  options: { insideMultiplexer?: boolean } = {}
+): { ok: boolean; error?: string } {
+  const result = spawnSync(driver.name, attachArgv(driver, session, options), {
+    stdio: "inherit",
+  });
+  if (result.error) return { ok: false, error: result.error.message };
+  return result.status === 0
+    ? { ok: true }
+    : { ok: false, error: `${driver.name} exited ${result.status}` };
 }
 
 /** Kills exactly one workspace. The room in SQLite is a separate entity. */

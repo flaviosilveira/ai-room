@@ -63,8 +63,12 @@ Configure each client below, restart it, then confirm tool discovery by calling 
 
 ```bash
 ai-room open refactor-auth --brief "..." --invite codex,agy
-tmux attach -t airoom-refactor-auth
 ```
+
+`open` termina anexado ao workspace: cria/reutiliza a sala, grava o charter,
+lança os agentes e entrega o terminal ao tmux. Rodar `ai-room open refactor-auth`
+de novo apenas reanexa — o charter é preservado, o elenco do roster é
+reaproveitado e nenhum pane é duplicado.
 
 ```
 ┌───────────────────────────┬───────────────────────────┐
@@ -93,9 +97,10 @@ are untouched.
 | Situação | Comportamento |
 | --- | --- |
 | tmux instalado | Pane workspace (padrão) |
-| `--detached` | Uma sessão por agente, anexável individualmente |
+| `--detached` | Uma sessão por agente, anexável individualmente, sem attach |
 | Sem tmux | Sessões por agente via screen, com aviso |
 | Sem tmux e sem screen | Processos headless com log, com aviso |
+| Terminal não interativo (pipe, CI) | Workspace criado, comando de attach impresso |
 
 `ai-room close <room>` kills only that room's workspace. The room, its charter
 and its history live in SQLite and survive.
@@ -136,10 +141,17 @@ letting them sit out the rest of their hold. Commands start with `/`:
 
 | Comando | Efeito |
 | --- | --- |
-| `/attach <agente>` | Anexa à sessão daquele agente. Detach com `Ctrl-B D` (tmux) ou `Ctrl-A D` (screen) |
-| `/agents` | Lista as sessões vivas da sala |
-| `/who` | Participantes e status |
+| `/attach <agente>` | Foca o pane daquele agente (ou a sessão dele, em `--detached`). Detach com `Ctrl-b d` (tmux) ou `Ctrl-a d` (screen) |
+| `/agents` | Lista os panes e as sessões vivas da sala |
+| `/who` | Participantes, `wait(live)` e não lidas |
+| `/detach` | Desanexa o workspace; agentes e sala seguem vivos |
+| `/close sim` | Encerra panes e sessões da sala; histórico e charter ficam |
 | `/quit` | Sai do console; os agentes continuam rodando |
+
+O status de cada agente é o que ele publicou por último. O monitor só apresenta
+isso como verdade atual quando há evidência: `wait(live)` significa um
+`room_wait` parado no servidor agora, `unread:N` vem dos cursores, e um
+`waiting?7m` é um status antigo cuja evidência expirou.
 
 ### Why sessions instead of log files
 
@@ -284,6 +296,56 @@ Set `timeout` so long holds are not cut short. Claude Code treats it as a hard w
 ```
 
 Keep `AI_ROOM_WAIT_MS` below that value.
+
+### Tell a working agent that messages are waiting (PreToolUse hook)
+
+Phase-1 liveness solves the agent that is parked in `room_wait`. The agent that
+is *working* has no wait parked, so nothing wakes it: a message stays unread
+until it happens to ask again — seven minutes, in one measured session.
+
+`hooks/ai-room-unread-hook.py` closes that at the only safe place, the boundary
+before the next tool call. It reads `GET /active` and, when that agent has
+unread messages in its room, answers with one line of `additionalContext`:
+
+```
+ai-room: 2 unread message(s) in room 'x' for agent 'claude'. Read them with
+room_wait(room='x', agent='claude') before continuing work that depends on the
+room's context.
+```
+
+It is advisory only: it never reads message content, never advances the read
+cursor, never sends to the room and never touches a permission decision. The
+agent still consumes through `room_wait`/`room_listen` itself. With nothing
+unread it prints nothing at all, and every failure — server down, timeout, bad
+JSON, unknown identity — is silent and non-blocking.
+
+Identity comes from the launcher and nowhere else: `ai-room open` exports
+`AI_ROOM_ROOM` and `AI_ROOM_AGENT` into each agent's process, so the hook asks
+about that agent in that room and can never see another room's unread. Without
+those variables it says nothing — an agent you started by hand gets no notices
+until you export them, and a session that merely mentions a room is never
+mistaken for a participant.
+
+What you install is `hooks/ai-room-unread-hook.sh`, a wrapper that answers the
+only question that does not need an interpreter — did the launcher put this
+session in a room? — and exits otherwise. It runs on every tool call of every
+session of that harness, including all the ones that never touch ai-room, and
+for those it costs about 9ms instead of the ~56ms of starting Python. Nothing
+else lives in the wrapper: endpoint, zero-unread silence, fail-open and logging
+all stay in the Python hook it hands over to.
+
+`ai-room hooks` prints where the hook goes for each harness and whether it is
+installed. Claude Code takes it in `~/.claude/settings.json`. Codex takes the
+same shape in `~/.codex/hooks.json`, but it hashes a hook and asks a human to
+trust that exact hash before it will run it — in the TUI it stops at a "Hooks
+need review" prompt, so add it only when you can answer that once. ai-room never
+approves it for you, and since Codex exposes no documented way to read trust
+state, `installed` means the config names the hook, never that Codex will run
+it.
+
+Detections are appended to `~/.ai-room/logs/unread-hook.jsonl` — timestamp,
+room, agent, unread count and boundary, never message content — and the file is
+rotated at 512 KB.
 
 ### Keep the agent listening (Stop hook)
 
@@ -494,13 +556,18 @@ Immediately fetch unread messages and advance independent agent cursor. Preserve
 
 ### `room_wait`
 
-Block until a message arrives. Default hold 240 seconds, maximum 1500 seconds. Returns an object, not an array:
+Block until a message arrives. Default hold 90 seconds, maximum 1500 seconds. Returns an object, not an array:
 
 ```json
-{ "messages": [], "status": "timeout", "waitedMs": 240003, "nextAction": "..." }
+{ "messages": [], "status": "timeout", "waitedMs": 90003, "nextAction": "..." }
 ```
 
-`status` is `messages`, `timeout`, or `cancelled`. Follow `nextAction` verbatim. While holding, the server emits `notifications/progress` every `AI_ROOM_HEARTBEAT_MS` (default 20s) so client idle timers do not fire.
+`status` is `messages`, `timeout`, `cancelled`, or `superseded`. The default sits
+under the 120s after which Claude Code moves a foreground MCP call to the
+background: a hold longer than the host's budget leaves the server holding a
+call the model is no longer reading, and messages then wait for the agent to ask
+again. A newer `room_wait` for the same `(room, agent)` supersedes the older one,
+which returns `superseded` having consumed nothing — one live wait per agent. Follow `nextAction` verbatim. While holding, the server emits `notifications/progress` every `AI_ROOM_HEARTBEAT_MS` (default 20s) so client idle timers do not fire.
 
 **The hold length is the single biggest cost lever.** Every return — including an empty one — costs a full model inference that re-reads the whole context. A 25s poll wakes the model roughly 144 times per idle hour.
 
@@ -555,7 +622,7 @@ before operations they expect to be gated.
 
 ### Typing into a pane queues behind `room_wait`
 
-An agent holding a 240s `room_wait` is never idle, so text typed into its pane
+An agent holding a `room_wait` is never idle, so text typed into its pane
 sits in the harness's queue until that call returns. Press `Esc` to interrupt the
 wait and release the queued text, or talk through the room (`POST /say`, or the
 console prompt), which wakes the agent in milliseconds. This is the direct cost

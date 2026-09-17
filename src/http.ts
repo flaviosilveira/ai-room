@@ -7,7 +7,7 @@ import { createAiRoomServer } from "./server.js";
 import { agentActiveRooms, roomHistory, roomSend, roomWho } from "./store.js";
 import { VERSION } from "./version.js";
 import { TOOL_CATALOG } from "./catalog.js";
-import { RoomWaitRegistry } from "./wait.js";
+import { RoomWaitRegistry, withWaitLiveness } from "./wait.js";
 
 export function createHttpApp(db: Database.Database): Express {
   const app = createMcpExpressApp({ host: "127.0.0.1" });
@@ -46,7 +46,10 @@ export function createHttpApp(db: Database.Database): Express {
       return;
     }
     try {
-      const rooms = agentActiveRooms(db, agent);
+      const rooms = agentActiveRooms(db, agent).map((entry) => ({
+        ...entry,
+        waitActive: waitRegistry.isWaiting(entry.room, agent),
+      }));
       const room = typeof req.query.room === "string" ? req.query.room : undefined;
       const scoped = room ? rooms.filter((entry) => entry.room === room) : rooms;
       res.json({
@@ -61,6 +64,27 @@ export function createHttpApp(db: Database.Database): Express {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  });
+
+  // What the server can actually observe about a room's participants: the last
+  // status each agent published, plus live wait and unread, which the server
+  // knows first-hand. The console renders this instead of repeating a status
+  // whose evidence expired.
+  app.get("/who", (req, res) => {
+    const room = typeof req.query.room === "string" ? req.query.room : "";
+    if (!room) {
+      res.status(400).json({ ok: false, error: "query parameter 'room' is required" });
+      return;
+    }
+    try {
+      res.json({
+        ok: true,
+        room,
+        participants: withWaitLiveness(room, roomWho(db, { room }), waitRegistry),
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -123,9 +147,9 @@ export function createHttpApp(db: Database.Database): Express {
           lastId = Math.max(lastId, message.id);
         }
         // Status is small and changes rarely; diffing it avoids a chatty stream.
-        const participants = roomWho(db, { room });
+        const participants = withWaitLiveness(room, roomWho(db, { room }), waitRegistry);
         const fingerprint = JSON.stringify(
-          participants.map((p) => [p.agent, p.status, p.statusDetail, p.active])
+          participants.map((p) => [p.agent, p.status, p.statusDetail, p.active, p.waitActive, p.unread])
         );
         if (fingerprint !== lastStatus) {
           lastStatus = fingerprint;
