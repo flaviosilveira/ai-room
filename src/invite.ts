@@ -280,12 +280,18 @@ export function planWorkspace(
 export function openWorkspace(
   room: string,
   agents: string[],
-  options: { cwd?: string; monitorCommand?: string[]; monitor?: boolean } = {}
+  options: { cwd?: string; monitorCommand?: string[]; monitor?: boolean; mouse?: boolean } = {}
 ): { plan: WorkspacePlan; result: WorkspaceResult } {
   const driver = detectMultiplexer("tmux");
   if (!driver) throw new Error(`tmux is required for the pane workspace. ${INSTALL_HINT}`);
   const plan = planWorkspace(room, agents, options);
-  const result = ensureWorkspace(driver, workspaceName(room), options.cwd ?? process.cwd(), plan.panes);
+  const result = ensureWorkspace(
+    driver,
+    workspaceName(room),
+    options.cwd ?? process.cwd(),
+    plan.panes,
+    { mouse: options.mouse }
+  );
   return { plan, result };
 }
 

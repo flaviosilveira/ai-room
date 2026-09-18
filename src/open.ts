@@ -11,6 +11,7 @@ export interface OpenFlags {
   dryRun: boolean;
   detached: boolean;
   monitor: boolean;
+  mouse: boolean;
 }
 
 export function parseOpenFlags(argv: string[]): OpenFlags {
@@ -22,6 +23,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     dryRun: false,
     detached: false,
     monitor: true,
+    mouse: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -37,6 +39,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--dry-run") flags.dryRun = true;
     else if (arg === "--detached") flags.detached = true;
     else if (arg === "--no-monitor") flags.monitor = false;
+    else if (arg === "--mouse") flags.mouse = true;
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;

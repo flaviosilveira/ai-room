@@ -144,9 +144,29 @@ letting them sit out the rest of their hold. Commands start with `/`:
 | `/attach <agente>` | Foca o pane daquele agente (ou a sessão dele, em `--detached`). Detach com `Ctrl-b d` (tmux) ou `Ctrl-a d` (screen) |
 | `/agents` | Lista os panes e as sessões vivas da sala |
 | `/who` | Participantes, `wait(live)` e não lidas |
+| `/show` | Mostra o que está colado no rascunho |
+| `/clear` | Descarta o rascunho |
 | `/detach` | Desanexa o workspace; agentes e sala seguem vivos |
 | `/close sim` | Encerra panes e sessões da sala; histórico e charter ficam |
 | `/quit` | Sai do console; os agentes continuam rodando |
+
+Colar é uma coisa só. O console liga bracketed paste (`DECSET 2004`), então o
+terminal marca onde a colagem começa e termina; o filtro tira esse bloco do
+stream antes do readline — que descarta os marcadores e quebraria em uma
+mensagem por linha — e o guarda no rascunho. Enter envia tudo como **uma**
+mensagem, com as quebras de linha preservadas, e vale uma entrada de histórico,
+um incremento de não lidas e um wake. Digitar e apertar Enter continua idêntico.
+`/show` inspeciona o rascunho, `/clear` descarta. Sem TTY (saída redirecionada,
+`screen`) não há como distinguir colagem de digitação e o comportamento antigo
+permanece.
+
+O mouse é opt-in: `ai-room open <room> --mouse`. Por padrão o tmux não captura o
+mouse, então a seleção nativa do terminal e o Cmd+C continuam funcionando como
+em qualquer janela. Com `--mouse`, arrastar no pane e `y` em copy-mode copiam
+para o clipboard do sistema via `pbcopy` (macOS) ou `wl-copy`/`xclip` (Linux) —
+sem depender de OSC 52 e sem tocar no seu `~/.tmux.conf`: os bindings vivem no
+servidor tmux em execução. Sem nenhuma dessas ferramentas, ai-room liga
+`set-clipboard on` e deixa o terminal tentar.
 
 O status de cada agente é o que ele publicou por último. O monitor só apresenta
 isso como verdade atual quando há evidência: `idle` é o agente que encerrou o

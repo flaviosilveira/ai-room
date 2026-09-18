@@ -164,7 +164,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   if (!room) {
     console.error(
       'usage: ai-room open <room> [--brief "..."] [--convention caveman] [--tool graphify]\n' +
-        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--detached] [--dry-run]"
+        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--mouse] [--detached] [--dry-run]"
     );
     process.exit(1);
   }
@@ -228,7 +228,10 @@ async function open(room: string, argv: string[]): Promise<void> {
 
   if (useWorkspace) {
     try {
-      const { plan, result } = openWorkspace(room, agents, { monitor: flags.monitor });
+      const { plan, result } = openWorkspace(room, agents, {
+        monitor: flags.monitor,
+        mouse: flags.mouse,
+      });
       if (plan.missing.length) {
         console.error(`not on PATH, skipped: ${plan.missing.join(", ")}`);
         process.exitCode = 1;

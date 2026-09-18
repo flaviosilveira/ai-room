@@ -17,6 +17,11 @@ import {
 } from "./session.js";
 import { closeRoom } from "./invite.js";
 import { STATUS_STALE_MS } from "./wait.js";
+import {
+  DISABLE_BRACKETED_PASTE,
+  ENABLE_BRACKETED_PASTE,
+  createPasteStream,
+} from "./paste.js";
 import type { MultiplexerDriver } from "./session.js";
 import type { MessageInfo, ParticipantView } from "./types.js";
 
@@ -128,11 +133,57 @@ ${C.bold}Comandos${C.reset}
   ${C.bold}/who${C.reset}               participantes: idle/working/wait(live) e não lidas
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
   ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
+  ${C.bold}/show${C.reset}              mostra o que está colado no rascunho
+  ${C.bold}/clear${C.reset}             descarta o rascunho
   ${C.bold}/help${C.reset}              esta ajuda
   ${C.bold}/quit${C.reset}              sai do console (os agentes continuam rodando)
 
 Qualquer outra linha é enviada à sala como mensagem sua.
 `;
+
+/**
+ * What the human is about to send. Typing and Enter behave exactly as before;
+ * a paste lands here instead of being chopped into one message per line, so
+ * what leaves the console is one message with its line breaks intact.
+ */
+export class Composer {
+  private readonly pastes: string[] = [];
+
+  stage(paste: string): void {
+    // A paste usually ends with the newline that closed its last line; keeping
+    // it would put a blank line at the end of every pasted message.
+    this.pastes.push(paste.replace(/\n+$/, ""));
+  }
+
+  get pending(): number {
+    return this.pastes.length;
+  }
+
+  /** A one-line receipt for a paste the console will not echo in full. */
+  summary(paste: string): string {
+    const lines = paste.split("\n").length;
+    return `[colado: ${lines} linha${lines === 1 ? "" : "s"}, ${paste.length} chars]`;
+  }
+
+  staged(): string {
+    return this.pastes.join("\n\n");
+  }
+
+  clear(): void {
+    this.pastes.length = 0;
+  }
+
+  /** Typed line plus everything staged, as a single message. */
+  compose(typed: string): string {
+    return [typed.trim(), ...this.pastes].filter(Boolean).join("\n\n");
+  }
+
+  take(typed: string): string {
+    const message = this.compose(typed);
+    this.clear();
+    return message;
+  }
+}
 
 const CONFIRMATIONS = new Set(["sim", "yes", "y", "s", "--confirm", "confirmar"]);
 
@@ -193,11 +244,29 @@ export async function runConsole(
   const me = options.agent ?? "human";
   const driver = detectMultiplexer();
 
+  // Pastes are pulled out of the stream before readline sees them: readline
+  // drops the markers and splits on every newline, which turned one paste into
+  // one message per line.
+  const interactive = Boolean(process.stdin.isTTY);
+  const composer = new Composer();
+  const pasteStream = interactive ? createPasteStream() : null;
+  if (pasteStream) {
+    process.stdin.setRawMode?.(true);
+    process.stdin.pipe(pasteStream);
+    process.stdout.write(ENABLE_BRACKETED_PASTE);
+  }
+
   const rl = readline.createInterface({
-    input: process.stdin,
+    input: pasteStream ?? process.stdin,
     output: process.stdout,
     prompt: `${C.human}${me}>${C.reset} `,
+    terminal: true,
   });
+
+  const stopBracketedPaste = () => {
+    if (pasteStream) process.stdout.write(DISABLE_BRACKETED_PASTE);
+  };
+  process.on("exit", stopBracketedPaste);
 
   console.log(`${C.bold}ai-room console${C.reset} — sala ${C.bold}${room}${C.reset}`);
   console.log(
@@ -212,8 +281,16 @@ export async function runConsole(
   const handOver = (label: string, run: () => void) => {
     emit(rl, `${C.dim}anexando a ${label}…${C.reset}`);
     rl.pause();
+    // The child owns the terminal while it runs, including its own paste mode.
+    stopBracketedPaste();
+    process.stdin.unpipe?.(pasteStream ?? undefined);
     process.stdin.setRawMode?.(false);
     run();
+    if (pasteStream) {
+      process.stdin.setRawMode?.(true);
+      process.stdin.pipe(pasteStream);
+      process.stdout.write(ENABLE_BRACKETED_PASTE);
+    }
     emit(rl, `${C.dim}de volta ao console.${C.reset}`);
     rl.resume();
     rl.prompt(true);
@@ -322,6 +399,15 @@ export async function runConsole(
     }
   };
 
+  pasteStream?.on("paste", (paste: string) => {
+    if (!paste.trim()) return;
+    composer.stage(paste);
+    emit(
+      rl,
+      `${C.dim}${composer.summary(paste)} — Enter envia, /show inspeciona, /clear descarta${C.reset}`
+    );
+  });
+
   // --- live feed -----------------------------------------------------------
   let alerted = "";
   const controller = new AbortController();
@@ -391,7 +477,9 @@ export async function runConsole(
 
   rl.on("line", (line) => {
     const text = line.trim();
-    if (!text) return rl.prompt();
+    // Enter with something staged sends it, even with nothing typed. Enter on
+    // an empty prompt with nothing staged still does nothing, as before.
+    if (!text && composer.pending === 0) return rl.prompt();
 
     if (text.startsWith("/")) {
       const [cmd, ...rest] = text.slice(1).split(/\s+/);
@@ -418,6 +506,20 @@ export async function runConsole(
         case "close":
           close(rest);
           break;
+        case "show":
+          emit(
+            rl,
+            composer.pending
+              ? `${C.dim}rascunho (${composer.pending} colagem(ns)):${C.reset}\n${composer.staged()}`
+              : `${C.dim}nada colado no rascunho.${C.reset}`
+          );
+          break;
+        case "clear":
+          if (composer.pending) {
+            composer.clear();
+            emit(rl, `${C.dim}rascunho descartado.${C.reset}`);
+          } else emit(rl, `${C.dim}nada para descartar.${C.reset}`);
+          break;
         case "help":
           emit(rl, HELP);
           break;
@@ -431,12 +533,14 @@ export async function runConsole(
       return rl.prompt();
     }
 
-    void say(text);
+    // One message, whatever it is made of: typed text, pasted blocks, or both.
+    void say(composer.take(text));
     rl.prompt();
   });
 
   await new Promise<void>((resolve) => {
     rl.on("close", () => {
+      stopBracketedPaste();
       controller.abort();
       console.log(`\n${C.dim}console encerrado. Os agentes continuam rodando.${C.reset}`);
       resolve();

@@ -249,11 +249,66 @@ export function detachWorkspace(
  * pane. Reopening a room attaches to what is already there and only adds panes
  * for agents that are missing, so `ai-room open` is safe to run twice.
  */
+export interface WorkspaceOptions {
+  /** Hand the mouse to tmux, and wire copying so it still reaches the clipboard. */
+  mouse?: boolean;
+}
+
+/**
+ * The command tmux pipes a copy-mode selection into. Going through the local
+ * clipboard tool avoids depending on the terminal emulator supporting OSC 52,
+ * which is what usually makes "copy from tmux" silently do nothing.
+ */
+export function clipboardCommand(
+  platform: string = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  has: (bin: string) => boolean = onPath
+): string | null {
+  if (platform === "darwin") return has("pbcopy") ? "pbcopy" : null;
+  if (env.WAYLAND_DISPLAY && has("wl-copy")) return "wl-copy";
+  if (has("xclip")) return "xclip -selection clipboard -in";
+  if (has("xsel")) return "xsel --clipboard --input";
+  return null;
+}
+
+/**
+ * Mouse on, plus the bindings that make a selection reach the system clipboard:
+ * drag to copy, and `y` in copy-mode. These live in the running tmux server for
+ * as long as it lasts — no file of the human's is touched.
+ */
+export function enableMouse(
+  driver: MultiplexerDriver,
+  session: string,
+  cwd: string,
+  clipboard: string | null = clipboardCommand()
+): { mouse: boolean; clipboard: string | null } {
+  run(driver.name, ["set-option", "-t", session, "mouse", "on"], cwd);
+  if (!clipboard) {
+    // Nothing local to pipe into: let tmux try the terminal's own OSC 52.
+    run(driver.name, ["set-option", "-t", session, "set-clipboard", "on"], cwd);
+    return { mouse: true, clipboard: null };
+  }
+  for (const key of ["MouseDragEnd1Pane", "y"]) {
+    run(
+      driver.name,
+      ["bind-key", "-T", "copy-mode", key, "send-keys", "-X", "copy-pipe-and-cancel", clipboard],
+      cwd
+    );
+    run(
+      driver.name,
+      ["bind-key", "-T", "copy-mode-vi", key, "send-keys", "-X", "copy-pipe-and-cancel", clipboard],
+      cwd
+    );
+  }
+  return { mouse: true, clipboard };
+}
+
 export function ensureWorkspace(
   driver: MultiplexerDriver,
   session: string,
   cwd: string,
-  panes: PaneSpec[]
+  panes: PaneSpec[],
+  options?: WorkspaceOptions
 ): WorkspaceResult {
   if (!driver.supportsPanes) {
     throw new Error(`${driver.name} cannot host a pane workspace.`);
@@ -286,7 +341,10 @@ export function ensureWorkspace(
 
   if (added.length) {
     run(driver.name, ["set-option", "-t", session, "pane-border-status", "top"], cwd);
-    run(driver.name, ["set-option", "-t", session, "mouse", "on"], cwd);
+    // Mouse mode is opt-in: turning it on takes selection away from the
+    // terminal, and copying with the mouse stops working the way it does in
+    // every other window.
+    if (options?.mouse) enableMouse(driver, session, cwd);
   }
 
   return {

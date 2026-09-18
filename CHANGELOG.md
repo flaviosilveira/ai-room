@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Human input
+
+- **A paste is one message again.** The console read the prompt through
+  readline, which emits one event per newline, so pasting five lines wrote five
+  room messages, five history entries and five unread increments. The console
+  now asks the terminal for bracketed paste and pulls the marked block out of
+  the stream before readline sees it: the paste lands in a draft, Enter sends it
+  as a single message with its line breaks intact, and `/show` and `/clear`
+  inspect or discard it. Typing and Enter behave exactly as before, and without
+  a TTY the old behaviour stands, since nothing can tell a paste from typing
+  there. No timing heuristics: the boundary is the terminal's own.
+
+### Workspace
+
+- **The mouse is opt-in.** Every workspace used to set `mouse on`, which takes
+  selection away from the terminal and makes copying with the mouse stop
+  working. It is now `--mouse`, and when asked for, dragging in a pane and `y`
+  in copy-mode pipe the selection into `pbcopy` (macOS) or `wl-copy`/`xclip`
+  (Linux), so copying does not depend on the terminal supporting OSC 52. The
+  bindings live in the running tmux server; no file of yours is touched.
+
 ## 0.4.0
 
 ### Idle instead of polling
