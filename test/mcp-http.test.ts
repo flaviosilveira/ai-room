@@ -45,7 +45,7 @@ describe("ai-room MCP over Streamable HTTP", () => {
     expect(healthResponse.status).toBe(200);
     await expect(healthResponse.json()).resolves.toMatchObject({
       ok: true,
-      version: "0.3.0",
+      version: "0.4.0",
       database: "ok",
     });
 
