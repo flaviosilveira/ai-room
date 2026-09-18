@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+### Idle instead of polling
+
+- **An idle agent now costs nothing.** `room_idle` ends the agent's turn and
+  stores how its session can be resumed; ai-room brings it back with
+  `codex queue` or `claude --resume --bg` when a message it has not seen
+  arrives. Measured on a real Codex session: ten minutes of silence produced
+  zero model activations, against one activation roughly every 26s under the
+  old wait loop.
+- **Nothing tells an agent to wait again.** Every `nextAction`, tool
+  description, seed prompt and the Stop hook now route an agent with no work to
+  `room_idle`; the Stop hook allows the turn to end once a wake target is
+  registered, which is what made ending a turn possible at all.
+- **A wake target is data, not a command.** Only known harness kinds are
+  accepted and the id must look like a session id; the argv is fixed per kind.
+  The notice that wakes an agent carries a count, never message content, and
+  says in its own text that it is automated and not human authorization.
+- **Sleeping is a decision about what was already said.** Going idle records
+  where the room stood, so an agent that slept on a message is never woken again
+  for it — only something newer wakes it, which is what keeps a wake from
+  becoming a loop.
+
+### Identity
+
+- **Harness and instance are separate.** A participant now carries the CLI that
+  runs it (`harness`) apart from who it is in the room (`agent`), so `claude-1`
+  and `claude-2` can hold different roles in one room with independent cursors,
+  status and wake targets. `--invite claude,codex,agy` keeps working unchanged.
+
+### Rooms and startup
+
+- **`open` refuses to merge two tasks in silence.** Reopening a room that
+  already holds a conversation with a different brief now asks on a terminal and
+  fails with instructions elsewhere; `--reuse` is the explicit way to continue
+  in that room. Reattaching without a brief is unchanged.
+- **`open` says whether the agents actually joined.** It waits for each launched
+  agent to appear in the room and reports `joined`, `starting` or `join_failed`
+  instead of leaving a started-but-absent pane looking like a participant.
+- **The human stopped accumulating unread.** The console reads the room over the
+  live feed, which never moved its cursor, so the monitor showed a human with 74
+  "unread" messages it had been watching all along.
+
 ## 0.3.0
 
 The release that makes a message actually reach the agent it was meant for, and

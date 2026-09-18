@@ -123,7 +123,8 @@ describe("ai-room MCP over Streamable HTTP", () => {
     };
     expect(waitResult.status).toBe("messages");
     expect(waitResult.messages).toMatchObject([{ content: "Final validation" }]);
-    expect(waitResult.nextAction).toMatch(/call room_wait again/i);
+    expect(waitResult.nextAction).toMatch(/room_idle/i);
+    expect(waitResult.nextAction).not.toMatch(/room_wait again/i);
 
     const activeResponse = await fetch(new URL("/active?agent=codex", baseUrl));
     expect(activeResponse.status).toBe(200);

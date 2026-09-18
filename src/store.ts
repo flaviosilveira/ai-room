@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { resolveConvention, resolveTool } from "./presets.js";
 import type {
   ActiveRoomInfo,
+  WakeSpec,
   AgentBriefing,
   RoomCharter,
   RosterEntry,
@@ -39,7 +40,8 @@ function ensureParticipant(
   room: string,
   agent: string,
   role: string | null,
-  explicitJoin = false
+  explicitJoin = false,
+  harness: string | null = null
 ): ParticipantInfo {
   const now = Date.now();
   const existing = db
@@ -47,16 +49,27 @@ function ensureParticipant(
     .get(room, agent);
 
   if (existing) {
+    // Any call from the agent means its turn is running, so it is no longer
+    // idle: leaving the row idle would let the monitor show a sleeping agent
+    // that is working, and let the room "resume" a session already awake.
     db.prepare(
       `UPDATE participants
        SET last_seen_at = ?, active = 1, role = COALESCE(?, role),
-           status = CASE WHEN ? = 1 OR status = 'done' THEN 'working' ELSE status END,
-           status_detail = CASE WHEN ? = 1 OR status = 'done' THEN NULL ELSE status_detail END,
-           status_updated_at = CASE WHEN ? = 1 OR status = 'done' THEN ? ELSE status_updated_at END
+           harness = COALESCE(?, harness),
+           wake_kind = CASE WHEN status = 'idle' THEN NULL ELSE wake_kind END,
+           wake_id = CASE WHEN status = 'idle' THEN NULL ELSE wake_id END,
+           status = CASE
+                      WHEN ? = 1 OR status = 'done' THEN 'working'
+                      WHEN status = 'idle' THEN 'working'
+                      ELSE status
+                    END,
+           status_detail = CASE WHEN ? = 1 OR status IN ('done', 'idle') THEN NULL ELSE status_detail END,
+           status_updated_at = CASE WHEN ? = 1 OR status IN ('done', 'idle') THEN ? ELSE status_updated_at END
        WHERE room = ? AND agent = ?`
     ).run(
       now,
       role,
+      harness,
       explicitJoin ? 1 : 0,
       explicitJoin ? 1 : 0,
       explicitJoin ? 1 : 0,
@@ -67,9 +80,9 @@ function ensureParticipant(
   } else {
     db.prepare(
       `INSERT INTO participants
-         (room, agent, role, joined_at, last_seen_at, active, status, status_updated_at)
-       VALUES (?, ?, ?, ?, ?, 1, 'working', ?)`
-    ).run(room, agent, role, now, now, now);
+         (room, agent, harness, role, joined_at, last_seen_at, active, status, status_updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 'working', ?)`
+    ).run(room, agent, harness, role, now, now, now);
 
     // New participants start listening from "now" — they don't get flooded
     // with pre-existing history through room_listen (use room_history for that).
@@ -86,27 +99,46 @@ function ensureParticipant(
   return getParticipant(db, room, agent)!;
 }
 
+interface ParticipantRow extends Omit<ParticipantInfo, "active" | "wake"> {
+  active: number;
+  wakeKind: string | null;
+  wakeId: string | null;
+}
+
+function toParticipant(row: ParticipantRow): ParticipantInfo {
+  const { wakeKind, wakeId, ...rest } = row;
+  return {
+    ...rest,
+    active: !!row.active,
+    wake: wakeKind && wakeId ? { kind: wakeKind as WakeSpec["kind"], id: wakeId } : null,
+  };
+}
+
+const PARTICIPANT_COLUMNS = `room, agent, harness, role, joined_at as joinedAt,
+        last_seen_at as lastSeenAt, active, status, status_detail as statusDetail,
+        status_updated_at as statusUpdatedAt, wake_kind as wakeKind, wake_id as wakeId,
+        wake_error as wakeError`;
+
 function getParticipant(
   db: Database.Database,
   room: string,
   agent: string
 ): ParticipantInfo | null {
   const row = db
-    .prepare(
-      `SELECT room, agent, role, joined_at as joinedAt, last_seen_at as lastSeenAt, active,
-              status, status_detail as statusDetail, status_updated_at as statusUpdatedAt
-       FROM participants WHERE room = ? AND agent = ?`
-    )
-    .get(room, agent) as
-    | (Omit<ParticipantInfo, "active"> & { active: number })
-    | undefined;
-  if (!row) return null;
-  return { ...row, active: !!row.active };
+    .prepare(`SELECT ${PARTICIPANT_COLUMNS} FROM participants WHERE room = ? AND agent = ?`)
+    .get(room, agent) as ParticipantRow | undefined;
+  return row ? toParticipant(row) : null;
 }
 
 export function roomJoin(
   db: Database.Database,
-  params: { room: string; agent: string; role?: string; createIfMissing?: boolean }
+  params: {
+    room: string;
+    agent: string;
+    role?: string;
+    harness?: string;
+    createIfMissing?: boolean;
+  }
 ): {
   room: RoomInfo;
   participant: ParticipantInfo;
@@ -119,16 +151,17 @@ export function roomJoin(
   // The charter's roster stays the single source of truth for roles; the
   // participant row only mirrors it, so `room_who` can show who is playing what
   // without a second lookup. An explicit role argument still wins.
-  const rosterRole = roomCharter(db, params.room)?.roster.find(
+  const rosterEntry = roomCharter(db, params.room)?.roster.find(
     (entry) => entry.agent === params.agent
-  )?.role;
+  );
 
   const participant = ensureParticipant(
     db,
     params.room,
     params.agent,
-    params.role ?? rosterRole ?? null,
-    true
+    params.role ?? rosterEntry?.role ?? null,
+    true,
+    params.harness ?? rosterEntry?.harness ?? null
   );
   const briefing = roomBriefing(db, params.room, params.agent);
   return {
@@ -231,6 +264,45 @@ export function roomListen(
   return listen(params.room, params.agent);
 }
 
+/**
+ * Marks everything up to `upToId` as seen by `agent`, without returning it.
+ *
+ * The console reads the room over the live feed, never through room_listen, so
+ * the human's cursor never moved and the monitor showed a human with dozens of
+ * "unread" messages it had been watching scroll by all along.
+ */
+export function markRead(
+  db: Database.Database,
+  params: { room: string; agent: string; upToId: number }
+): void {
+  // Only for a viewer that reads by watching. An agent's cursor is what decides
+  // whether it gets resumed, so a feed opened under its name must not advance
+  // it — that would be the room deciding the agent had read something.
+  const participant = getParticipant(db, params.room, params.agent);
+  if (participant?.wake || participant?.status === "idle") return;
+
+  const row = db
+    .prepare(`SELECT last_message_id as lastMessageId FROM cursors WHERE room = ? AND agent = ?`)
+    .get(params.room, params.agent) as { lastMessageId: number } | undefined;
+  if (row === undefined) {
+    // No cursor row means this viewer never joined; nothing to track for it.
+    if (!participant) return;
+    db.prepare(`INSERT INTO cursors (room, agent, last_message_id) VALUES (?, ?, ?)`).run(
+      params.room,
+      params.agent,
+      params.upToId
+    );
+    return;
+  }
+  if (params.upToId > row.lastMessageId) {
+    db.prepare(`UPDATE cursors SET last_message_id = ? WHERE room = ? AND agent = ?`).run(
+      params.upToId,
+      params.room,
+      params.agent
+    );
+  }
+}
+
 export function roomHistory(
   db: Database.Database,
   params: {
@@ -288,15 +360,145 @@ export function roomHistory(
  * Wait liveness lives in the wait registry, so callers that have it decorate
  * these rows with `waitActive`.
  */
+/**
+ * An agent goes idle by ending its turn, which means it can no longer notice
+ * anything by itself. It registers how it can be resumed first; without that
+ * target there is nothing to wake and idle would be indistinguishable from gone.
+ */
+export function roomIdle(
+  db: Database.Database,
+  params: { room: string; agent: string; wake: WakeSpec; detail?: string | null }
+): ParticipantInfo {
+  ensureRoom(db, params.room, false);
+  const existing = getParticipant(db, params.room, params.agent);
+  if (!existing) {
+    throw new Error(`Agent "${params.agent}" has not joined room "${params.room}".`);
+  }
+  const now = Date.now();
+  // The mark is what this agent has actually read, not what exists: a message
+  // that landed between its last drain and this call was never seen, and using
+  // MAX(id) here would bury it until somebody else happened to speak.
+  const latest = db
+    .prepare(`SELECT COALESCE(last_message_id, 0) as id FROM cursors WHERE room = ? AND agent = ?`)
+    .get(params.room, params.agent) as { id: number } | undefined;
+  db.prepare(
+    `UPDATE participants
+     SET status = 'idle', status_detail = ?, status_updated_at = ?, last_seen_at = ?,
+         active = 1, wake_kind = ?, wake_id = ?, wake_error = NULL, idle_mark = ?
+     WHERE room = ? AND agent = ?`
+  ).run(
+    params.detail ?? null,
+    now,
+    now,
+    params.wake.kind,
+    params.wake.id,
+    latest?.id ?? 0,
+    params.room,
+    params.agent
+  );
+  return getParticipant(db, params.room, params.agent)!;
+}
+
+export interface WakeTarget {
+  agent: string;
+  wakeKind: WakeSpec["kind"];
+  wakeId: string;
+  unread: number;
+  /** The agent's read position when this target was selected. */
+  cursor: number;
+}
+
+/** Idle agents in this room that have something to come back for. */
+export function idleParticipantsWithUnread(
+  db: Database.Database,
+  room: string
+): WakeTarget[] {
+  return db
+    .prepare(
+      `SELECT p.agent, p.wake_kind as wakeKind, p.wake_id as wakeId,
+              COALESCE((SELECT c.last_message_id FROM cursors c
+                         WHERE c.room = p.room AND c.agent = p.agent), 0) as cursor,
+              (SELECT COUNT(*) FROM messages m
+                WHERE m.room = p.room AND m.agent != p.agent
+                  AND m.id > COALESCE((SELECT c.last_message_id FROM cursors c
+                                        WHERE c.room = p.room AND c.agent = p.agent), 0)
+              ) as unread
+       FROM participants p
+       WHERE p.room = ? AND p.active = 1 AND p.status = 'idle'
+         AND p.wake_kind IS NOT NULL AND p.wake_id IS NOT NULL
+         -- Something it has not read, that arrived after it fell asleep.
+         AND EXISTS (SELECT 1 FROM messages m
+                      WHERE m.room = p.room AND m.agent != p.agent AND m.id > p.idle_mark)
+         -- And it has not already been resumed twice for this same position.
+         AND (p.wake_cursor != COALESCE((SELECT c.last_message_id FROM cursors c
+                                          WHERE c.room = p.room AND c.agent = p.agent), 0)
+              OR p.wake_attempts < ${WAKE_ATTEMPT_LIMIT})`
+    )
+    .all(room) as WakeTarget[];
+}
+
+/**
+ * Counts one resume against the agent's current read position. The counter
+ * resets as soon as it reads something, so an agent that keeps up is never
+ * throttled, and one that ignores the room stops being resumed.
+ */
+export function recordWakeAttempt(
+  db: Database.Database,
+  room: string,
+  agent: string,
+  cursor: number
+): void {
+  db.prepare(
+    `UPDATE participants
+     SET wake_attempts = CASE WHEN wake_cursor = ? THEN wake_attempts + 1 ELSE 1 END,
+         wake_cursor = ?
+     WHERE room = ? AND agent = ?`
+  ).run(cursor, cursor, room, agent);
+}
+
+/**
+ * How many times an agent may be resumed without reading anything before the
+ * room stops trying. Waking is cheap for the server and expensive for the
+ * agent: two ignored resumes are a problem to show, not to repeat.
+ */
+export const WAKE_ATTEMPT_LIMIT = 2;
+
+/** Records the outcome of a wake so a silent failure cannot look like sleep. */
+export function touchWake(
+  db: Database.Database,
+  room: string,
+  agent: string,
+  ok: boolean,
+  error?: string
+): void {
+  db.prepare(`UPDATE participants SET wake_error = ? WHERE room = ? AND agent = ?`).run(
+    ok ? null : (error ?? "wake failed").slice(0, 300),
+    room,
+    agent
+  );
+}
+
+export function roomMessageCount(db: Database.Database, room: string): number {
+  const row = db.prepare(`SELECT COUNT(*) as count FROM messages WHERE room = ?`).get(room) as {
+    count: number;
+  };
+  return row.count;
+}
+
+export function roomExists(db: Database.Database, room: string): boolean {
+  return Boolean(db.prepare(`SELECT 1 FROM rooms WHERE name = ?`).get(room));
+}
+
 export function roomWho(
   db: Database.Database,
   params: { room: string }
 ): (ParticipantInfo & { unread: number })[] {
   const rows = db
     .prepare(
-      `SELECT p.room, p.agent, p.role, p.joined_at as joinedAt, p.last_seen_at as lastSeenAt,
-              p.active, p.status, p.status_detail as statusDetail,
-              p.status_updated_at as statusUpdatedAt,
+      `SELECT p.room, p.agent, p.harness, p.role, p.joined_at as joinedAt,
+              p.last_seen_at as lastSeenAt, p.active, p.status, p.status_detail as statusDetail,
+              p.status_updated_at as statusUpdatedAt, p.wake_kind as wakeKind,
+              p.wake_id as wakeId, p.wake_error as wakeError,
               (SELECT COUNT(*) FROM messages m
                 WHERE m.room = p.room
                   AND m.agent != p.agent
@@ -306,9 +508,9 @@ export function roomWho(
               ) as unread
        FROM participants p WHERE p.room = ? ORDER BY p.last_seen_at DESC`
     )
-    .all(params.room) as (Omit<ParticipantInfo, "active"> & { active: number; unread: number })[];
+    .all(params.room) as (ParticipantRow & { unread: number })[];
 
-  return rows.map((row) => ({ ...row, active: !!row.active }));
+  return rows.map((row) => ({ ...toParticipant(row), unread: row.unread }));
 }
 
 export function roomLeave(
@@ -318,7 +520,7 @@ export function roomLeave(
   db.prepare(
     `UPDATE participants
      SET active = 0, last_seen_at = ?, status = 'done', status_detail = NULL,
-         status_updated_at = ?
+         status_updated_at = ?, wake_kind = NULL, wake_id = NULL, wake_error = NULL
      WHERE room = ? AND agent = ?`
   ).run(Date.now(), Date.now(), params.room, params.agent);
 }
@@ -366,12 +568,26 @@ export function roomSetStatus(
   }
 
   const now = Date.now();
+  // Any status other than idle means a turn is running, so the wake target is
+  // stale: the agent is already awake and will register again when it stops.
   db.prepare(
     `UPDATE participants
      SET status = ?, status_detail = ?, status_updated_at = ?, last_seen_at = ?,
-         active = CASE WHEN ? = 'done' THEN 0 ELSE 1 END
+         active = CASE WHEN ? = 'done' THEN 0 ELSE 1 END,
+         wake_kind = CASE WHEN ? = 'idle' THEN wake_kind ELSE NULL END,
+         wake_id = CASE WHEN ? = 'idle' THEN wake_id ELSE NULL END
      WHERE room = ? AND agent = ?`
-  ).run(params.status, params.detail ?? null, now, now, params.status, params.room, params.agent);
+  ).run(
+    params.status,
+    params.detail ?? null,
+    now,
+    now,
+    params.status,
+    params.status,
+    params.status,
+    params.room,
+    params.agent
+  );
   return getParticipant(db, params.room, params.agent)!;
 }
 
@@ -388,6 +604,7 @@ export function agentActiveRooms(
     .prepare(
       `SELECT p.room, p.role, p.status, p.status_detail as statusDetail,
               p.last_seen_at as lastSeenAt,
+              (p.wake_kind IS NOT NULL AND p.wake_id IS NOT NULL) as wakeRegistered,
               (SELECT COUNT(*) FROM messages m
                 WHERE m.room = p.room
                   AND m.agent != p.agent

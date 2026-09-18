@@ -33,6 +33,7 @@ const C = {
 
 const STATUS_COLOR: Record<string, string> = {
   working: C.agent,
+  idle: C.dim,
   waiting: C.dim,
   blocked: C.warn,
   approval_required: C.alert,
@@ -81,20 +82,26 @@ export function renderParticipant(
 ): string {
   const since = now - p.statusUpdatedAt;
   const unread = p.unread > 0 ? ` unread:${p.unread}` : "";
+  const paint = (label: string, color: string) =>
+    `${color}${p.agent}:${label}${C.reset}${unread ? `${C.warn}${unread}${C.reset}` : ""}`;
 
-  if (p.waitActive) {
-    return `${C.dim}${p.agent}:wait(live)${C.reset}${unread ? `${C.warn}${unread}${C.reset}` : ""}`;
+  // Observed by the server, in order of how much evidence there is.
+  if (!p.active) return paint(p.status === "done" ? "finished" : "offline", C.dim);
+  if (p.wakeError) return paint(`wake_failed`, C.alert);
+  if (p.status === "idle" && p.wake) {
+    // Idle is a fact the agent declared AND backed with a way to be resumed:
+    // no model is running, and the room can reach it.
+    return paint(unread ? "idle(waking)" : "idle", C.dim);
   }
+  if (p.waitActive) return paint("wait(live)", C.dim);
+  if (p.status === "approval_required") return paint("blocked(approval)", C.alert);
+  if (p.status === "blocked") {
+    return paint(p.statusDetail ? `blocked (${p.statusDetail})` : "blocked", C.warn);
+  }
+  if (p.status === "waiting") return paint(`waiting?${age(since)}`, C.warn);
   const stale = since > staleMs;
-  const label =
-    p.status === "waiting"
-      ? `waiting?${age(since)}`
-      : stale
-        ? `${p.status}·${age(since)}`
-        : p.status;
-  const color = p.status === "waiting" ? C.warn : STATUS_COLOR[p.status] ?? C.dim;
   const detail = p.statusDetail ? ` (${p.statusDetail})` : "";
-  return `${color}${p.agent}:${label}${detail}${C.reset}${unread ? `${C.warn}${unread}${C.reset}` : ""}`;
+  return paint(`${p.status}${stale ? `·${age(since)}` : ""}${detail}`, STATUS_COLOR[p.status] ?? C.dim);
 }
 
 function renderStatus(participants: ParticipantView[]): string {
@@ -118,7 +125,7 @@ export const HELP = `
 ${C.bold}Comandos${C.reset}
   ${C.bold}/attach <agente>${C.reset}   foca o pane do agente (volta com ${DETACH_KEYS})
   ${C.bold}/agents${C.reset}            lista panes e sessões vivas da sala
-  ${C.bold}/who${C.reset}               participantes, wait ativo e não lidas
+  ${C.bold}/who${C.reset}               participantes: idle/working/wait(live) e não lidas
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
   ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
   ${C.bold}/help${C.reset}              esta ajuda
@@ -320,7 +327,7 @@ export async function runConsole(
   const controller = new AbortController();
 
   const stream = async () => {
-    const response = await fetch(`${options.baseUrl}/stream?room=${encodeURIComponent(room)}`, {
+    const response = await fetch(`${options.baseUrl}/stream?room=${encodeURIComponent(room)}&agent=${encodeURIComponent(me)}`, {
       signal: controller.signal,
       headers: { Accept: "text/event-stream" },
     });

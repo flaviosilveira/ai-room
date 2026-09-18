@@ -26,11 +26,17 @@ describe("reopening a room", () => {
     expect(charter.brief).toBe("Fix auth.");
     expect(charter.conventionPreset).toBe("caveman");
     expect(charter.tools.map((t) => t.name)).toEqual(["graphify"]);
-    expect(charter.roster).toEqual([{ agent: "claude" }, { agent: "codex", role: "reviewer" }]);
+    expect(charter.roster).toEqual([
+      { agent: "claude", harness: "claude" },
+      { agent: "codex", harness: "codex", role: "reviewer" },
+    ]);
   });
 
   it("only writes the fields that were given", () => {
     expect(charterPatch("r", parseOpenFlags([]))).toEqual({ room: "r" });
+    expect(charterPatch("r", parseOpenFlags(["--invite", "claude-2"])).roster).toEqual([
+      { agent: "claude-2", harness: "claude", role: undefined },
+    ]);
     expect(charterPatch("r", parseOpenFlags(["--brief", ""]))).toEqual({ room: "r", brief: "" });
   });
 

@@ -76,6 +76,19 @@ function migrate(db: Database.Database): void {
   ensureColumn(db, "participants", "status_detail", "TEXT");
   ensureColumn(db, "participants", "status_updated_at", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "messages", "origin", "TEXT NOT NULL DEFAULT 'agent'");
+  // Identity and wake-up target. `harness` separates which CLI runs an instance
+  // from who that instance is in the room, so one harness can hold several.
+  ensureColumn(db, "participants", "harness", "TEXT");
+  ensureColumn(db, "participants", "wake_kind", "TEXT");
+  ensureColumn(db, "participants", "wake_id", "TEXT");
+  ensureColumn(db, "participants", "wake_error", "TEXT");
+  // Where the room stood when the agent chose to sleep. Only messages newer
+  // than this may wake it, so going idle with something unread cannot turn into
+  // a wake loop over the same message.
+  ensureColumn(db, "participants", "idle_mark", "INTEGER NOT NULL DEFAULT 0");
+  // Guard against resuming an agent over and over for something it never reads.
+  ensureColumn(db, "participants", "wake_cursor", "INTEGER NOT NULL DEFAULT -1");
+  ensureColumn(db, "participants", "wake_attempts", "INTEGER NOT NULL DEFAULT 0");
 
   db.prepare(
     `UPDATE participants SET status_updated_at = last_seen_at WHERE status_updated_at = 0`

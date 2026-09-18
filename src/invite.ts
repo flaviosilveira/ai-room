@@ -33,6 +33,29 @@ export const LAUNCHERS: Record<string, AgentLauncher> = {
 };
 
 /**
+ * How each harness can be resumed once its turn has ended, and the environment
+ * variable where it hands its own session id to the processes it spawns. Ending
+ * the turn is the only state in which nothing is being inferred, so an agent
+ * that cannot be resumed must not be told to reach it.
+ */
+export const WAKE_BY_HARNESS: Record<string, { kind: string; env: string }> = {
+  codex: { kind: "codex-queue", env: "CODEX_THREAD_ID" },
+  claude: { kind: "claude-resume", env: "CLAUDE_CODE_SESSION_ID" },
+};
+
+/**
+ * An instance name may carry its own harness ("claude-2" runs claude), so a
+ * room can hold several instances of one CLI without the name becoming the
+ * product.
+ */
+export function harnessFor(agent: string, declared?: string): string {
+  if (declared) return declared;
+  if (LAUNCHERS[agent]) return agent;
+  const prefix = Object.keys(LAUNCHERS).find((name) => agent.startsWith(name + "-"));
+  return prefix ?? agent;
+}
+
+/**
  * Deliberately minimal. The charter is the source of the collaboration, so the
  * seed prompt only says how to go get it — it never restates the brief, roles,
  * conventions or tools. Duplicating them here would let the two drift apart.
@@ -41,35 +64,47 @@ export const LAUNCHERS: Record<string, AgentLauncher> = {
  * wait joins and waits, and the room stays silent until a human pushes it.
  * room_wait is for having nothing to do, not for having not started.
  */
-export function joinPrompt(room: string, agent: string): string {
+export function joinPrompt(room: string, agent: string, harness = harnessFor(agent)): string {
+  const wake = WAKE_BY_HARNESS[harness];
+  const idle = wake
+    ? [
+        "When you have no work left, call room_idle with",
+        `{room: "${room}", agent: "${agent}", wake: {kind: "${wake.kind}", id: <the value of $${wake.env} in your environment>}}`,
+        "and end your turn. Nothing runs while you are idle, and ai-room resumes you when a message arrives.",
+      ]
+    : [
+        "When you have no work left, say in the room that your harness cannot be resumed",
+        "automatically, then stop and end your turn. Do not call room_leave: you stay a",
+        "participant, and a human has to bring you back.",
+      ];
+
   return [
     `Join the ai-room "${room}" as agent "${agent}" by calling room_join`,
     `with {room: "${room}", agent: "${agent}"}.`,
     "Read your briefing and begin the work your role calls for immediately,",
     "without waiting to be told.",
     "Coordinate with your teammates through room_send.",
-    "Call room_wait only when you are blocked or waiting on someone,",
-    "and stay in that loop.",
-    "If a human talks to you here, answer them and then call room_wait again;",
+    ...idle,
+    "Never sit in a room_wait loop.",
+    "If a human talks to you here, answer them and then go back to work or to idle;",
     "that is not leaving the room. Only room_leave ends your participation,",
     "and only when a human explicitly tells you to leave.",
   ].join(" ");
 }
 
-/**
- * Identity for anything the agent's process spawns — in particular its hooks.
- * The launcher already knows exactly who this agent is in which room, so a hook
- * never has to infer it from model text, and an agent in one room can never ask
- * about another room's unread.
- */
-export function agentEnv(room: string, agent: string): Record<string, string> {
-  return { AI_ROOM_ROOM: room, AI_ROOM_AGENT: agent };
+export function agentEnv(
+  room: string,
+  agent: string,
+  harness = harnessFor(agent)
+): Record<string, string> {
+  return { AI_ROOM_ROOM: room, AI_ROOM_AGENT: agent, AI_ROOM_HARNESS: harness };
 }
 
-export function agentCommand(room: string, agent: string, launcherName = agent): string[] | null {
-  const launcher = LAUNCHERS[launcherName];
+export function agentCommand(room: string, agent: string, launcherName?: string): string[] | null {
+  const harness = harnessFor(agent, launcherName);
+  const launcher = LAUNCHERS[harness];
   if (!launcher) return null;
-  return [launcher.bin, ...launcher.args(joinPrompt(room, agent))];
+  return [launcher.bin, ...launcher.args(joinPrompt(room, agent, harness))];
 }
 
 export function onPath(bin: string): boolean {

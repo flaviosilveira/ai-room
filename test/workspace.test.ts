@@ -85,7 +85,7 @@ describe("launch commands", () => {
     // A direct terminal conversation interrupts room_wait; without this the
     // agent answers the human and silently stops participating.
     const prompt = joinPrompt("r", "codex");
-    expect(prompt).toMatch(/room_wait again/);
+    expect(prompt).toMatch(/that is not leaving the room/);
     expect(prompt).toMatch(/room_leave/);
   });
 
@@ -95,18 +95,21 @@ describe("launch commands", () => {
     const prompt = joinPrompt("r", "claude");
     expect(prompt).toMatch(/begin the work[\s\S]*immediately/i);
     expect(prompt).toMatch(/without waiting to be told/i);
-    expect(prompt).toMatch(/room_wait only when/i);
     expect(prompt).toMatch(/room_send/);
+    // Idling is the resting state now; looping on room_wait is what burned a
+    // quota window on an empty room.
+    expect(prompt).toMatch(/room_idle/);
+    expect(prompt).toMatch(/never sit in a room_wait loop/i);
   });
 
   it("keeps the seed prompt minimal: the charter is fetched, never inlined", () => {
     const prompt = joinPrompt("refactor-auth", "codex");
     expect(prompt).toMatch(/room_join/);
-    expect(prompt).toMatch(/room_wait/);
+    expect(prompt).toMatch(/room_idle/);
     expect(prompt).toMatch(/briefing/i);
     // The charter's own content must not be duplicated into the prompt.
     expect(prompt).not.toMatch(/caveman|graphify|reviewer|validator/i);
-    expect(prompt.length).toBeLessThan(600);
+    expect(prompt.length).toBeLessThan(900);
   });
 });
 
@@ -187,7 +190,7 @@ describe("charter is written before any agent starts", () => {
 describe("tool catalog", () => {
   it("lists every tool exactly once", () => {
     expect(new Set(TOOL_NAMES).size).toBe(TOOL_NAMES.length);
-    expect(TOOL_CATALOG).toHaveLength(11);
+    expect(TOOL_CATALOG).toHaveLength(12);
   });
 
   it("marks the read-only tools", () => {

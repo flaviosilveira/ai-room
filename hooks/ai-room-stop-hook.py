@@ -83,7 +83,11 @@ def is_active(room, agent):
         return None  # server down -> fail open
     if not payload.get("ok"):
         return None
-    return bool(payload.get("active")), int(payload.get("unread") or 0)
+    rooms = [entry for entry in (payload.get("rooms") or []) if entry.get("room") == room]
+    idle_ready = any(
+        entry.get("status") == "idle" and entry.get("wakeRegistered") for entry in rooms
+    )
+    return bool(payload.get("active")), int(payload.get("unread") or 0), idle_ready
 
 
 def block_count(session_id, reset=False):
@@ -133,8 +137,15 @@ def main():
         block_count(session_id, reset=True)
         allow()
 
-    active, unread = state
+    active, unread, idle_ready = state
     if not active:
+        block_count(session_id, reset=True)
+        allow()
+
+    # Idle is the point, not a failure to stay: the agent ended its turn on
+    # purpose and left ai-room a way to resume it. Blocking the stop here is
+    # exactly what turned an empty room into a paid polling loop.
+    if idle_ready and unread == 0:
         block_count(session_id, reset=True)
         allow()
 
@@ -146,17 +157,16 @@ def main():
     if unread > 0:
         block(
             f"You are still in ai-room '{room}' as '{agent}' and {unread} message(s) "
-            f"are unread. Call room_wait(room='{room}', agent='{agent}') now and handle them."
+            f"are unread. Call room_listen(room='{room}', agent='{agent}') now and handle them."
         )
     block(
-        f"You are still an active participant in ai-room '{room}' as '{agent}'. "
-        f"Do not stop. Call room_wait(room='{room}', agent='{agent}') now. "
-        f"It blocks server-side at no token cost. "
-        f"When it returns status 'timeout', call it again and emit no text. "
-        f"The only way out of the loop is room_leave, and you call it only when a "
-        f"human explicitly and unambiguously tells you to leave or end your "
-        f"participation. An ordinary human message here is not that instruction: "
-        f"answer it and call room_wait again."
+        f"You are still an active participant in ai-room '{room}' as '{agent}' and you "
+        f"have not registered a way to be resumed, so stopping here would leave the room "
+        f"unable to reach you. Either continue the work your role calls for, or call "
+        f"room_idle(room='{room}', agent='{agent}', wake={{kind, id}}) with your harness "
+        f"session id and then end your turn. Do not loop on room_wait. Leaving the room "
+        f"is room_leave, and only when a human explicitly tells you to leave — an "
+        f"ordinary human message here is not that instruction."
     )
 
 

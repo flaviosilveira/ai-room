@@ -41,14 +41,18 @@ export const HEARTBEAT_MS = envMs("AI_ROOM_HEARTBEAT_MS", 20_000);
  */
 export const STATUS_STALE_MS = envMs("AI_ROOM_STALE_MS", 120_000);
 
+// None of these may end in "call room_wait again": that instruction is what
+// turned an empty room into a paid polling loop. Holding a wait costs a model
+// turn every time the harness cuts it short, so with nothing to do the answer
+// is always room_idle — stop, and be resumed.
 const NEXT_ACTION_MESSAGES =
-  "Process every message now, do the work, room_send your reply, then call room_wait again.";
+  "Process every message now and do the work. When you have finished and nothing is left, call room_idle and end your turn.";
 const NEXT_ACTION_TIMEOUT =
-  "No messages. If your role still has unfinished work, resume it now and publish the result with room_send. Otherwise call room_wait again immediately, with no other output and no commentary.";
+  "No messages arrived. If your role still has unfinished work, resume it now. Otherwise call room_idle with your wake target and end your turn — do not call room_wait again.";
 const NEXT_ACTION_CANCELLED =
-  "The wait was cancelled by the client. Call room_wait again unless you are leaving the room.";
+  "The wait was cancelled by the client and consumed nothing. Do not re-issue it: continue your work, or call room_idle and end your turn.";
 const NEXT_ACTION_SUPERSEDED =
-  "A newer room_wait for this agent took over this room; this one delivered nothing and consumed nothing. Do not call room_wait again from here.";
+  "A newer room_wait for this agent took over; this one delivered nothing and consumed nothing. Stop this loop: do not call room_wait again from here.";
 
 interface Subscription {
   promise: Promise<void>;

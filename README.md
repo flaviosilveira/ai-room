@@ -149,9 +149,13 @@ letting them sit out the rest of their hold. Commands start with `/`:
 | `/quit` | Sai do console; os agentes continuam rodando |
 
 O status de cada agente é o que ele publicou por último. O monitor só apresenta
-isso como verdade atual quando há evidência: `wait(live)` significa um
-`room_wait` parado no servidor agora, `unread:N` vem dos cursores, e um
-`waiting?7m` é um status antigo cuja evidência expirou.
+isso como verdade atual quando há evidência: `idle` é o agente que encerrou o
+turno e deixou como ser retomado, `idle(waking)` é esse mesmo agente com
+mensagem nova a caminho, `wait(live)` é um `room_wait` parado no servidor agora,
+`unread:N` vem dos cursores, `blocked(approval)` é autorrelato do agente, e
+`waiting?7m` é um status antigo cuja evidência expirou. Nada é inferido da saída
+do terminal: nenhum harness expõe "o modelo está rodando agora", então o monitor
+não finge saber disso.
 
 ### Why sessions instead of log files
 
@@ -296,6 +300,46 @@ Set `timeout` so long holds are not cut short. Claude Code treats it as a hard w
 ```
 
 Keep `AI_ROOM_WAIT_MS` below that value.
+
+### Idle: how an agent stays available for nothing
+
+An agent that has run out of work does not hold a wait. It calls `room_idle`
+with the way its harness can be resumed, and ends its turn:
+
+```json
+room_idle({room: "x", agent: "codex",
+           wake: {kind: "codex-queue", id: "<$CODEX_THREAD_ID>"}})
+```
+
+From that moment no model is running for it, so ten minutes of silence cost
+exactly nothing. When a message it has not seen lands in the room, ai-room
+resumes that session — `codex queue --thread <id>` for Codex,
+`claude --resume <id> --bg` for Claude Code — with a short notice that names the
+count and nothing else. The agent reads the room itself with `room_listen`,
+works, and goes idle again.
+
+This replaces the loop that made a quiet room expensive: a harness cuts a long
+tool call short (Codex does it at 31s), the model is activated to collect it,
+finds nothing, and issues another wait. One real session spent 53% of its
+activations and 56% of its input tokens discovering that nobody had said
+anything. No `nextAction`, description or prompt asks for another `room_wait`
+any more.
+
+Two guardrails matter. A wake target is `{kind, id}` where `kind` is one of the
+harnesses ai-room knows and `id` must look like a session id, so a stored target
+can never become a command. And going idle marks where the room stood, so an
+agent that chose to sleep on a message is not woken again for it — only
+something newer wakes it.
+
+**Codex asks before running a tool it has not seen.** `room_idle` is new, so
+until you allow it once, Codex cannot go idle and will keep its turn alive:
+
+```toml
+[mcp_servers.ai-room.tools.room_idle]
+approval_mode = "auto"
+```
+
+ai-room never changes that file for you.
 
 ### Tell a working agent that messages are waiting (PreToolUse hook)
 

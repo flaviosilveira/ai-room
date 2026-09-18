@@ -22,6 +22,7 @@ export const TOOL_CATALOG: ToolSummary[] = [
   { name: "room_listen", summary: "Non-blocking single drain of unread messages.", mutates: true },
   { name: "room_wait", summary: "Block server-side until a message arrives. The correct way to wait.", mutates: true },
   { name: "room_list", summary: "List rooms, optionally filtered by query tokens.", mutates: false },
+  { name: "room_idle", summary: "End your turn with no model running until ai-room resumes you. The zero-cost way to stay available.", mutates: true },
   { name: "room_set_charter", summary: "Define a room's brief, conventions, declared tools and roster.", mutates: true },
   { name: "room_charter", summary: "Read a room's charter.", mutates: false },
   { name: "room_set_status", summary: "Publish observable agent state.", mutates: true },

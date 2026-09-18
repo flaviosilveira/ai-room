@@ -4,12 +4,16 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import type { Express } from "express";
 import { createAiRoomServer } from "./server.js";
-import { agentActiveRooms, roomHistory, roomSend, roomWho } from "./store.js";
+import { agentActiveRooms, markRead, roomHistory, roomSend, roomWho } from "./store.js";
 import { VERSION } from "./version.js";
 import { TOOL_CATALOG } from "./catalog.js";
 import { RoomWaitRegistry, withWaitLiveness } from "./wait.js";
+import { WakeService } from "./wake.js";
 
-export function createHttpApp(db: Database.Database): Express {
+export function createHttpApp(
+  db: Database.Database,
+  wakeService: WakeService = new WakeService()
+): Express {
   const app = createMcpExpressApp({ host: "127.0.0.1" });
   const startedAt = Date.now();
   const waitRegistry = new RoomWaitRegistry();
@@ -100,8 +104,10 @@ export function createHttpApp(db: Database.Database): Express {
     }
     try {
       const sent = roomSend(db, { room, agent, message, origin: "human" });
-      // Wake every waiter immediately instead of letting them sit out the hold.
+      // Wake every waiter immediately instead of letting them sit out the hold,
+      // and resume anyone who went idle — they have no way to notice by themselves.
       waitRegistry.notify(room);
+      wakeService.wakeRoom(db, room);
       res.json({ ok: true, message: sent });
     } catch (error) {
       res.status(400).json({
@@ -131,12 +137,23 @@ export function createHttpApp(db: Database.Database): Express {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
+    // Whoever is watching this feed is reading the room, so their cursor moves
+    // with it. Without this the console's viewer accumulated "unread" forever.
+    const viewer = typeof req.query.agent === "string" && req.query.agent ? req.query.agent : "human";
     const backlog = Number(req.query.backlog ?? 20);
     let lastId = 0;
     for (const message of roomHistory(db, { room, limit: Number.isFinite(backlog) ? backlog : 20 })) {
       send("message", message);
       lastId = Math.max(lastId, message.id);
     }
+    const seen = (id: number) => {
+      try {
+        markRead(db, { room, agent: viewer, upToId: id });
+      } catch {
+        /* the viewer may not be a participant; nothing to mark */
+      }
+    };
+    if (lastId) seen(lastId);
 
     let lastStatus = "";
     const poll = () => {
@@ -146,6 +163,7 @@ export function createHttpApp(db: Database.Database): Express {
           send("message", message);
           lastId = Math.max(lastId, message.id);
         }
+        if (fresh.length) seen(lastId);
         // Status is small and changes rarely; diffing it avoids a chatty stream.
         const participants = withWaitLiveness(room, roomWho(db, { room }), waitRegistry);
         const fingerprint = JSON.stringify(
@@ -187,7 +205,10 @@ export function createHttpApp(db: Database.Database): Express {
   });
 
   app.post("/mcp", async (req, res) => {
-    const server = createAiRoomServer(db, waitRegistry);
+    // One service for the whole app: a fresh one per request would give every
+    // request its own rate-limit window, and a burst of messages would resume
+    // the same agent once per message.
+    const server = createAiRoomServer(db, waitRegistry, wakeService);
     try {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

@@ -37,7 +37,7 @@ describe("room_wait", () => {
     const result = await roomWait(db, registry, { room: "r", agent: "codex", timeoutMs: 5 });
     expect(result.messages).toEqual([]);
     expect(result.status).toBe("timeout");
-    expect(result.nextAction).toMatch(/call room_wait again/i);
+    expect(result.nextAction).toMatch(/room_idle/i);
     expect(roomWho(db, { room: "r" }).find((p) => p.agent === "codex")?.status).toBe("waiting");
     expect(registry.size()).toBe(0);
   });

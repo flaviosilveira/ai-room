@@ -1,8 +1,18 @@
+import readline from "node:readline/promises";
 import { openDb, defaultDbPath } from "./db/index.js";
 import { VERSION } from "./version.js";
 import { createHttpApp } from "./http.js";
-import { roomHistory, roomJoin, roomList, roomSetCharter, roomWho } from "./store.js";
-import { closeRoom, invite, openWorkspace, planWorkspace } from "./invite.js";
+import {
+  roomCharter,
+  roomExists,
+  roomHistory,
+  roomJoin,
+  roomList,
+  roomMessageCount,
+  roomSetCharter,
+  roomWho,
+} from "./store.js";
+import { closeRoom, harnessFor, invite, openWorkspace, planWorkspace } from "./invite.js";
 import { runConsole } from "./console.js";
 import {
   INSTALL_HINT,
@@ -16,7 +26,13 @@ import {
   workspaceName,
 } from "./session.js";
 import { TOOL_CATALOG } from "./catalog.js";
-import { agentsToLaunch, charterPatch, parseOpenFlags } from "./open.js";
+import {
+  agentsToLaunch,
+  charterPatch,
+  classifyJoins,
+  parseOpenFlags,
+  reuseVerdict,
+} from "./open.js";
 import { hookSnippet, hookStatus } from "./hooks.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -129,17 +145,58 @@ function who(room: string): void {
  * to the workspace. For interactive use `open` means the whole experience, so
  * it ends attached; `--detached` is how you ask for the old behaviour.
  */
-function open(room: string, argv: string[]): void {
+/** Asks once, on a terminal, before two tasks are merged into one room. */
+async function confirmReuse(room: string, messages: number): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(
+      `Room "${room}" already holds ${messages} message(s) from another task.\n` +
+        `Continuing here keeps that history, those cursors and those identities.\n` +
+        `Type "reuse" to continue in this room, anything else to abort: `
+    );
+    return answer.trim().toLowerCase() === "reuse";
+  } finally {
+    rl.close();
+  }
+}
+
+async function open(room: string, argv: string[]): Promise<void> {
   if (!room) {
     console.error(
       'usage: ai-room open <room> [--brief "..."] [--convention caveman] [--tool graphify]\n' +
-        "                       [--invite codex,agy] [--role codex=reviewer] [--detached] [--dry-run]"
+        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--detached] [--dry-run]"
     );
     process.exit(1);
   }
 
   const flags = parseOpenFlags(argv);
   const db = openDb();
+
+  // A room is a task, not just a name: reopening one that already holds a
+  // conversation with a different brief silently merges two tasks.
+  const verdict = reuseVerdict({
+    roomExists: roomExists(db, room),
+    messages: roomExists(db, room) ? roomMessageCount(db, room) : 0,
+    currentBrief: roomExists(db, room) ? roomCharter(db, room)?.brief ?? null : null,
+    newBrief: flags.brief,
+    reuse: flags.reuse,
+  });
+  if (verdict.kind === "conflict" && process.stdin.isTTY && process.stdout.isTTY) {
+    if (!(await confirmReuse(room, verdict.messages))) {
+      console.error("aborted. the room was not touched.");
+      process.exit(2);
+    }
+  } else if (verdict.kind === "conflict") {
+    console.error(`room "${room}" already holds ${verdict.messages} message(s) from another task.`);
+    console.error(`current brief: ${verdict.currentBrief ?? "(none)"}`);
+    console.error("");
+    console.error("Opening it with a different brief would mix both tasks: the history, the");
+    console.error("cursors and the agents' identities are shared. Choose one:");
+    console.error(`  ai-room open ${room} --reuse --brief "..."   continue in this room, keeping its history`);
+    console.error(`  ai-room open <another-room> --brief "..."    start the new task in its own room`);
+    console.error(`  ai-room open ${room}                         just reattach, keeping the current brief`);
+    process.exit(2);
+  }
 
   roomJoin(db, { room, agent: "human", role: "host" });
 
@@ -183,6 +240,8 @@ function open(room: string, argv: string[]): void {
               (result.panes.length ? `, added panes: ${result.panes.join(", ")}` : " (nothing to add)")
       );
       if (result.skipped.length) console.log(`already running: ${result.skipped.join(", ")}`);
+
+      await reportJoins(db, room, plan.agents);
 
       if (!sessionExists(tmux!, result.session)) {
         console.log("nothing to attach to: no agent was launched and no workspace exists.");
@@ -234,6 +293,53 @@ function open(room: string, argv: string[]): void {
   }
 
   console.log(`\nwatch everything in one window:  ai-room console ${room}`);
+}
+
+const JOIN_GRACE_MS = Number(process.env.AI_ROOM_JOIN_GRACE_MS ?? 45_000);
+
+/**
+ * Waits for the agents `open` just launched to appear in the room, and says so.
+ * A pane that starts and never joins is the failure mode this makes visible:
+ * before, the workspace looked fine and the room was empty.
+ */
+async function reportJoins(db: ReturnType<typeof openDb>, room: string, agents: string[]): Promise<void> {
+  if (!agents.length) return;
+  const launched = agents.map((agent) => ({ agent, harness: harnessFor(agent) }));
+  const startedAt = Date.now();
+  let reports = classifyJoins(launched, new Set(), 0, JOIN_GRACE_MS);
+
+  console.log("");
+  while (Date.now() - startedAt < JOIN_GRACE_MS) {
+    const joined = new Set(
+      roomWho(db, { room })
+        .filter((p) => p.active && p.agent !== "human")
+        .map((p) => p.agent)
+    );
+    reports = classifyJoins(launched, joined, Date.now() - startedAt, JOIN_GRACE_MS);
+    if (reports.every((r) => r.state === "joined")) break;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  reports = classifyJoins(
+    launched,
+    new Set(
+      roomWho(db, { room })
+        .filter((p) => p.active && p.agent !== "human")
+        .map((p) => p.agent)
+    ),
+    Date.now() - startedAt,
+    JOIN_GRACE_MS
+  );
+
+  for (const report of reports) {
+    const seconds = (report.waitedMs / 1000).toFixed(0);
+    if (report.state === "joined") {
+      console.log(`${report.agent} (${report.harness}): joined in ${seconds}s`);
+    } else {
+      console.error(`${report.agent} (${report.harness}): ${report.state} after ${seconds}s`);
+      if (report.detail) console.error(`  ${report.detail}`);
+      process.exitCode = 1;
+    }
+  }
 }
 
 /** Closes only the tmux workspace. The room, its charter and history remain. */
@@ -326,7 +432,7 @@ switch (cmd) {
     who(arg);
     break;
   case "open":
-    open(arg, process.argv.slice(4));
+    await open(arg, process.argv.slice(4));
     break;
   case "console":
     if (!arg) {
