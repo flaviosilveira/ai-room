@@ -5,6 +5,7 @@ import { createHttpApp } from "./http.js";
 import {
   roomCharter,
   roomExists,
+  setWakeTarget,
   roomHistory,
   roomJoin,
   roomList,
@@ -12,7 +13,7 @@ import {
   roomSetCharter,
   roomWho,
 } from "./store.js";
-import { closeRoom, harnessFor, invite, openWorkspace, planWorkspace } from "./invite.js";
+import { PANE_WOKEN, closeRoom, harnessFor, invite, openWorkspace, planWorkspace } from "./invite.js";
 import { runConsole } from "./console.js";
 import {
   INSTALL_HINT,
@@ -336,6 +337,16 @@ async function reportJoins(db: ReturnType<typeof openDb>, room: string, agents: 
   for (const report of reports) {
     const seconds = (report.waitedMs / 1000).toFixed(0);
     if (report.state === "joined") {
+      // A TUI harness cannot hand a message to its own running session, so the
+      // way back to it is the pane it lives in — and only the launcher knows
+      // which pane that is.
+      if (PANE_WOKEN.has(report.harness)) {
+        setWakeTarget(db, {
+          room,
+          agent: report.agent,
+          wake: { kind: "tmux-pane", id: workspaceName(room) },
+        });
+      }
       console.log(`${report.agent} (${report.harness}): joined in ${seconds}s`);
     } else {
       console.error(`${report.agent} (${report.harness}): ${report.state} after ${seconds}s`);

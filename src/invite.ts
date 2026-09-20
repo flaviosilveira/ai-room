@@ -40,8 +40,14 @@ export const LAUNCHERS: Record<string, AgentLauncher> = {
  */
 export const WAKE_BY_HARNESS: Record<string, { kind: string; env: string }> = {
   codex: { kind: "codex-queue", env: "CODEX_THREAD_ID" },
-  claude: { kind: "claude-resume", env: "CLAUDE_CODE_SESSION_ID" },
 };
+
+/**
+ * Harnesses with no way to hand a message to a running session. They are woken
+ * through the pane they live in, which the launcher registers for them, so they
+ * have nothing to declare themselves.
+ */
+export const PANE_WOKEN = new Set(["claude"]);
 
 /**
  * An instance name may carry its own harness ("claude-2" runs claude), so a
@@ -66,7 +72,13 @@ export function harnessFor(agent: string, declared?: string): string {
  */
 export function joinPrompt(room: string, agent: string, harness = harnessFor(agent)): string {
   const wake = WAKE_BY_HARNESS[harness];
-  const idle = wake
+  const idle = PANE_WOKEN.has(harness)
+    ? [
+        `When you have no work left, call room_idle with {room: "${room}", agent: "${agent}"}`,
+        "and end your turn. Nothing runs while you are idle, and ai-room reaches you in this",
+        "same session when a message arrives.",
+      ]
+    : wake
     ? [
         "When you have no work left, call room_idle with",
         `{room: "${room}", agent: "${agent}", wake: {kind: "${wake.kind}", id: <the value of $${wake.env} in your environment>}}`,

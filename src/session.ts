@@ -69,6 +69,23 @@ function onPath(bin: string): boolean {
   });
 }
 
+/**
+ * Where tmux actually is.
+ *
+ * The server runs from a LaunchAgent whose PATH is the system default, and
+ * Homebrew's tmux is not on it — so a server that had to reach a pane found no
+ * tmux at all, and the wake failed with the room none the wiser. PATH first,
+ * then the places tmux is normally installed.
+ */
+const TMUX_FALLBACKS = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"];
+
+export function tmuxBin(): string | null {
+  const override = process.env.AI_ROOM_TMUX;
+  if (override) return fs.existsSync(override) ? override : null;
+  if (onPath("tmux")) return "tmux";
+  return TMUX_FALLBACKS.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
 export function detectMultiplexer(preferred?: Multiplexer): MultiplexerDriver | null {
   const order: Multiplexer[] = preferred ? [preferred] : ["tmux", "screen"];
   for (const name of order) if (onPath(name)) return DRIVERS[name];
@@ -188,6 +205,29 @@ export function workspacePanes(driver: MultiplexerDriver, session: string): stri
   return listTaggedPanes(driver, session).map((pane) => pane.agent);
 }
 
+/**
+ * The pane id first, then the tag: a pane id never contains a space, so the
+ * split is unambiguous whatever the tag holds. A tab separator looked tidier
+ * and came back mangled through some environments, which made every pane
+ * invisible and every wake fail with "no pane".
+ */
+const PANE_FORMAT = `#{pane_id} #{${PANE_TAG}}`;
+
+export function parseTaggedPanes(stdout: string): TaggedPane[] {
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const space = line.indexOf(" ");
+      if (space === -1) return null;
+      const paneId = line.slice(0, space);
+      const agent = line.slice(space + 1).trim();
+      return agent ? { agent, paneId } : null;
+    })
+    .filter((pane): pane is TaggedPane => pane !== null);
+}
+
 export interface TaggedPane {
   agent: string;
   paneId: string;
@@ -196,16 +236,26 @@ export interface TaggedPane {
 /** Every pane in the workspace that ai-room tagged, with its stable pane id. */
 export function listTaggedPanes(driver: MultiplexerDriver, session: string): TaggedPane[] {
   if (driver.name !== "tmux") return [];
-  const result = spawnSync(
-    driver.name,
-    ["list-panes", "-s", "-t", session, "-F", `#{${PANE_TAG}}\t#{pane_id}`],
-    { encoding: "utf8" }
+  return parseTaggedPanes(
+    `${spawnSync(driver.name, ["list-panes", "-s", "-t", session, "-F", PANE_FORMAT], {
+      encoding: "utf8",
+    }).stdout ?? ""}`
   );
-  return `${result.stdout ?? ""}`
-    .split("\n")
-    .map((line) => line.trim().split("\t"))
-    .filter(([agent, paneId]) => Boolean(agent) && Boolean(paneId))
-    .map(([agent, paneId]) => ({ agent, paneId }));
+}
+
+/**
+ * The pane an agent lives in, resolved without a driver and without PATH: the
+ * only two things needed to reach a running TUI harness are the workspace and
+ * the tag ai-room put on its pane.
+ */
+export function paneForAgent(session: string, agent: string): string | null {
+  const tmux = tmuxBin();
+  if (!tmux) return null;
+  const result = spawnSync(tmux, ["list-panes", "-s", "-t", session, "-F", PANE_FORMAT], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return null;
+  return parseTaggedPanes(`${result.stdout ?? ""}`).find((pane) => pane.agent === agent)?.paneId ?? null;
 }
 
 export function agentPane(
@@ -229,6 +279,50 @@ export function focusPane(
   const pane = run(driver.name, ["select-pane", "-t", paneId]);
   if (pane.ok || window.ok) return { ok: true };
   return { ok: false, error: pane.error || window.error };
+}
+
+/**
+ * Puts text into a pane as if it had been pasted there, then presses Enter.
+ *
+ * `load-buffer -` takes the payload on stdin, so nothing goes through a shell
+ * and no quoting can change what arrives. `paste-buffer -p` wraps it in the
+ * terminal's paste markers, so the harness on the other side sees one block
+ * instead of a line at a time.
+ */
+export function pasteIntoPane(paneId: string, text: string): { ok: boolean; error?: string } {
+  const tmux = tmuxBin();
+  if (!tmux) return { ok: false, error: "tmux is not installed where this process can see it" };
+  const buffer = `airoom-${Date.now().toString(36)}`;
+  const load = spawnSync(tmux, ["load-buffer", "-b", buffer, "-"], {
+    input: text,
+    encoding: "utf8",
+  });
+  if (load.status !== 0) {
+    return { ok: false, error: `tmux load-buffer failed: ${`${load.stderr ?? ""}`.trim()}` };
+  }
+  const paste = run(tmux, ["paste-buffer", "-p", "-b", buffer, "-d", "-t", paneId]);
+  if (!paste.ok) return { ok: false, error: `tmux paste-buffer failed: ${paste.error}` };
+  const enter = run(tmux, ["send-keys", "-t", paneId, "Enter"]);
+  return enter.ok ? { ok: true } : { ok: false, error: `tmux send-keys failed: ${enter.error}` };
+}
+
+/**
+ * How long ago anything happened in this pane. A wake is skipped while the pane
+ * is busy, so a notice never lands in the middle of what a human is typing.
+ */
+/**
+ * True while a human is reading this pane: copy-mode or scrollback. tmux tracks
+ * activity per window, not per pane, and the monitor pane keeps its window busy
+ * all the time, so elapsed time tells us nothing about a specific pane.
+ */
+export function paneBusy(paneId: string): boolean {
+  const tmux = tmuxBin();
+  if (!tmux) return false;
+  const result = spawnSync(tmux, ["display-message", "-p", "-t", paneId, "#{pane_in_mode}"], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return false;
+  return `${result.stdout ?? ""}`.trim() === "1";
 }
 
 /** Detaches every client of one workspace. Panes, agents and room keep running. */

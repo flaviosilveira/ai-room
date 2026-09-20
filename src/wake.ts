@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type Database from "better-sqlite3";
 import type { WakeSpec, WakeKind } from "./types.js";
 import { idleParticipantsWithUnread, recordWakeAttempt, touchWake } from "./store.js";
+import { paneBusy, paneForAgent, pasteIntoPane, tmuxBin } from "./session.js";
 
 /**
  * How an idle agent is brought back.
@@ -13,21 +14,37 @@ import { idleParticipantsWithUnread, recordWakeAttempt, touchWake } from "./stor
  * the agent supplies.
  */
 interface Adapter {
-  bin: string;
-  args: (id: string, message: string) => string[];
+  /** Fixed argv, or null when this kind is delivered another way. */
+  argv?: (id: string, message: string) => string[];
+  /** Delivery that is not a command of its own. */
+  deliver?: (id: string, agent: string, message: string) => { ok: boolean; error?: string };
 }
 
 const ADAPTERS: Record<WakeKind, Adapter> = {
   // `codex queue --thread <id> --message <text>` delivers into a live session,
   // idle or busy, and starts a turn when none is running.
   "codex-queue": {
-    bin: "codex",
-    args: (id, message) => ["queue", "--thread", id, "--message", message],
+    argv: (id, message) => ["codex", "queue", "--thread", id, "--message", message],
   },
-  // `claude --resume <id> --bg <text>` continues that session under the same id.
-  "claude-resume": {
-    bin: "claude",
-    args: (id, message) => ["--resume", id, "--bg", message],
+  // For a TUI harness the pane IS the session. Claude Code has no way to hand a
+  // message to a session that is running — its `--resume … --bg` starts a copy,
+  // which answers in the room while the session the human is looking at stays
+  // asleep: nine copies of one agent, in a measured session. Typing the notice
+  // into the pane keeps the same process, the same session id, the same working
+  // directory, and leaves approval prompts where the human can see them.
+  "tmux-pane": {
+    deliver: (session, agent, message) => {
+      // Resolved by absolute path when needed: the server usually runs from a
+      // LaunchAgent whose PATH does not include Homebrew, and a wake that
+      // cannot find tmux fails silently from the room's point of view.
+      if (!tmuxBin()) return { ok: false, error: "tmux is not available to reach the pane" };
+      const paneId = paneForAgent(session, agent);
+      if (!paneId) return { ok: false, error: `no pane for "${agent}" in ${session}` };
+      if (paneBusy(paneId)) {
+        return { ok: false, error: "pane is in copy-mode; not typing while it is being read" };
+      }
+      return pasteIntoPane(paneId, message);
+    },
   },
 };
 
@@ -52,9 +69,14 @@ export function parseWakeSpec(value: unknown): WakeSpec {
   return { kind: kind as WakeKind, id };
 }
 
-export function wakeArgv(spec: WakeSpec, message: string): string[] {
+export function wakeArgv(spec: WakeSpec, message: string): string[] | null {
   const adapter = ADAPTERS[spec.kind];
-  return [adapter.bin, ...adapter.args(spec.id, message)];
+  return adapter.argv ? adapter.argv(spec.id, message) : null;
+}
+
+/** True when this kind is delivered without spawning a command of its own. */
+export function isDirectDelivery(kind: WakeKind): boolean {
+  return Boolean(ADAPTERS[kind].deliver);
 }
 
 /**
@@ -149,8 +171,12 @@ export class WakeService {
       if (this.now() - last < this.minIntervalMs) continue;
 
       const spec: WakeSpec = { kind: target.wakeKind, id: target.wakeId };
-      const result = this.run(
-        wakeArgv(spec, wakeMessage(room, target.agent, target.unread)),
+      const notice = wakeMessage(room, target.agent, target.unread);
+      const adapter = ADAPTERS[spec.kind];
+      const result = adapter.deliver
+        ? adapter.deliver(spec.id, target.agent, notice)
+        : this.run(
+        wakeArgv(spec, notice)!,
         (error) => {
           try {
             touchWake(db, room, target.agent, false, error);

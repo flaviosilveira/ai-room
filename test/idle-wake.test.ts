@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { openDb } from "../src/db/index.js";
 import { createHttpApp } from "../src/http.js";
 import {
@@ -11,12 +14,28 @@ import {
   roomSend,
   roomSetStatus,
   roomWho,
+  setWakeTarget,
 } from "../src/store.js";
 import { RoomWaitRegistry, roomWait, withWaitLiveness } from "../src/wait.js";
-import { WakeService, parseWakeSpec, wakeArgv, wakeMessage } from "../src/wake.js";
+import {
+  WAKE_KINDS,
+  WakeService,
+  isDirectDelivery,
+  parseWakeSpec,
+  wakeArgv,
+  wakeMessage,
+} from "../src/wake.js";
 import { renderParticipant } from "../src/console.js";
 import { harnessFor, joinPrompt } from "../src/invite.js";
 import { reuseVerdict, classifyJoins } from "../src/open.js";
+import { spawnSync } from "node:child_process";
+import {
+  detectMultiplexer,
+  ensureWorkspace,
+  killWorkspace,
+  paneForAgent,
+  workspaceName,
+} from "../src/session.js";
 
 const CODEX_WAKE = { kind: "codex-queue" as const, id: "00000000-1111-2222-3333-444444444444" };
 const plain = (value: string) => value.replace(/\x1b\[[0-9;]*m/g, "");
@@ -75,11 +94,36 @@ describe("idle lifecycle", () => {
     expect(calls).toEqual([]);
   });
 
-  it("drops the wake target as soon as the agent reports working again", () => {
+  it("keeps the way back when the agent reports another status", () => {
+    // How to reach a session and what it is doing are different facts. Losing
+    // the route on every status change left an agent that reported
+    // approval_required unreachable, with messages waiting.
     roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
-    roomSetStatus(db, { room: "r", agent: "codex", status: "working" });
-    expect(who("codex").wake).toBeNull();
+    for (const status of ["working", "approval_required", "blocked"] as const) {
+      roomSetStatus(db, { room: "r", agent: "codex", status });
+      expect(who("codex").wake).toEqual(CODEX_WAKE);
+    }
+    // Reachable, but not woken: only an idle agent is resumed.
+    roomSend(db, { room: "r", agent: "claude", message: "oi" });
     expect(idleParticipantsWithUnread(db, "r")).toEqual([]);
+
+    roomIdle(db, { room: "r", agent: "codex" });
+    expect(idleParticipantsWithUnread(db, "r").map((t) => t.agent)).toEqual(["codex"]);
+  });
+
+  it("refuses to go idle with no way back", () => {
+    expect(() => roomIdle(db, { room: "r", agent: "claude" })).toThrow(/No way to resume/);
+  });
+
+  it("reuses the target the launcher registered", () => {
+    setWakeTarget(db, {
+      room: "r",
+      agent: "claude",
+      wake: { kind: "tmux-pane", id: "airoom-sala-abcdef1234" },
+    });
+    const idle = roomIdle(db, { room: "r", agent: "claude" });
+    expect(idle.status).toBe("idle");
+    expect(idle.wake).toEqual({ kind: "tmux-pane", id: "airoom-sala-abcdef1234" });
   });
 
   it("does not consume the messages it wakes for", () => {
@@ -103,6 +147,7 @@ describe("wake targets are data, never commands", () => {
   it("accepts only known harness kinds and id-shaped values", () => {
     expect(parseWakeSpec(CODEX_WAKE)).toEqual(CODEX_WAKE);
     expect(() => parseWakeSpec({ kind: "shell", id: "x" })).toThrow(/Unknown wake kind/);
+    expect(() => parseWakeSpec({ kind: "claude-resume", id: "abc12345" })).toThrow(/Unknown wake kind/);
     expect(() => parseWakeSpec({ kind: "codex-queue", id: "a; rm -rf /" })).toThrow(/session id/);
     expect(() => parseWakeSpec({ kind: "codex-queue", id: "$(whoami)" })).toThrow(/session id/);
     expect(() => parseWakeSpec({ kind: "codex-queue", id: "short" })).toThrow(/session id/);
@@ -112,13 +157,15 @@ describe("wake targets are data, never commands", () => {
   it("builds a fixed argv where only the id and the notice vary", () => {
     const argv = wakeArgv(CODEX_WAKE, "hello");
     expect(argv).toEqual(["codex", "queue", "--thread", CODEX_WAKE.id, "--message", "hello"]);
-    expect(wakeArgv({ kind: "claude-resume", id: "abc12345" }, "hi")).toEqual([
-      "claude",
-      "--resume",
-      "abc12345",
-      "--bg",
-      "hi",
-    ]);
+  });
+
+  it("reaches a TUI harness through its pane, not through a new process", () => {
+    // `claude --resume … --bg` starts a copy of a running session: the copy
+    // answers in the room while the session on screen stays asleep.
+    expect(WAKE_KINDS).toContain("tmux-pane");
+    expect(WAKE_KINDS).not.toContain("claude-resume");
+    expect(isDirectDelivery("tmux-pane")).toBe(true);
+    expect(wakeArgv({ kind: "tmux-pane", id: "airoom-sala-abcdef1234" }, "oi")).toBeNull();
   });
 
   it("says the notice is automated and carries no authority", () => {
@@ -161,9 +208,12 @@ describe("the protocol stops telling agents to poll", () => {
     expect((await cancelled).nextAction).not.toMatch(asksForAnotherWait);
   });
 
-  it("tells each harness how to be resumed, by its own env var", () => {
+  it("asks each harness only for what it can answer", () => {
+    // Codex can name its own session; a pane-hosted harness cannot, and the
+    // launcher registers the pane for it.
     expect(joinPrompt("r", "codex")).toContain("CODEX_THREAD_ID");
-    expect(joinPrompt("r", "claude")).toContain("CLAUDE_CODE_SESSION_ID");
+    expect(joinPrompt("r", "claude")).not.toContain("CLAUDE_CODE_SESSION_ID");
+    expect(joinPrompt("r", "claude")).toMatch(/room_idle/);
     expect(joinPrompt("r", "codex")).toMatch(/never sit in a room_wait loop/i);
   });
 });
@@ -191,9 +241,9 @@ describe("harness and instance are different things", () => {
     expect(who("claude-1").unread).toBe(0);
     expect(who("claude-2").unread).toBe(1);
 
-    roomIdle(db, { room: "r", agent: "claude-2", wake: { kind: "claude-resume", id: "sess-1234" } });
+    roomIdle(db, { room: "r", agent: "claude-2", wake: { kind: "tmux-pane", id: "airoom-sala-abcdef1234" } });
     expect(who("claude-1").wake).toBeNull();
-    expect(who("claude-2").wake).toMatchObject({ kind: "claude-resume" });
+    expect(who("claude-2").wake).toMatchObject({ kind: "tmux-pane" });
     db.close();
   });
 });
@@ -371,7 +421,7 @@ describe("no state where an agent is both asleep and running", () => {
     roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
     roomSend(db, { room: "r", agent: "codex", message: "acordei e respondi" });
     expect(who("codex").status).toBe("working");
-    expect(who("codex").wake).toBeNull();
+    expect(who("codex").wake).toEqual(CODEX_WAKE);
     // And a second message must not "resume" a session that is already running.
     roomSend(db, { room: "r", agent: "claude", message: "mais uma" });
     const calls: string[][] = [];
@@ -384,7 +434,7 @@ describe("no state where an agent is both asleep and running", () => {
     roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
     roomListen(db, { room: "r", agent: "codex" });
     expect(who("codex").status).toBe("working");
-    expect(who("codex").wake).toBeNull();
+    expect(who("codex").wake).toEqual(CODEX_WAKE);
   });
 
   it("never advances an agent's cursor from the human's feed", () => {
@@ -517,5 +567,76 @@ describe("the whole server shares one wake service", () => {
     await say("terceira");
     // A per-request service would have woken the agent three times.
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe.skipIf(!detectMultiplexer("tmux"))("waking the pane a TUI harness lives in", () => {
+  const tmux = detectMultiplexer("tmux")!;
+  const room = `vitest-pane-${process.pid}`;
+  const session = workspaceName(room);
+  let db: Database.Database;
+  let sink: string;
+
+  beforeEach(() => {
+    db = openDb(":memory:");
+    sink = path.join(os.tmpdir(), `airoom-pane-${process.pid}-${Date.now()}.txt`);
+    // A pane that writes whatever is typed into it, standing in for the harness
+    // prompt: what lands in the file is what the harness would have received.
+    ensureWorkspace(tmux, session, process.cwd(), [
+      { title: "claude", command: ["sh", "-c", `cat > ${sink}`] },
+    ]);
+    roomJoin(db, { room, agent: "claude", harness: "claude" });
+    roomJoin(db, { room, agent: "codex", harness: "codex" });
+  });
+
+  afterEach(() => {
+    killWorkspace(tmux, session);
+    db.close();
+    fs.rmSync(sink, { force: true });
+  });
+
+  it("types the notice into the agent's own pane, starting nothing new", async () => {
+    setWakeTarget(db, { room, agent: "claude", wake: { kind: "tmux-pane", id: session } });
+    roomIdle(db, { room, agent: "claude" });
+    roomSend(db, { room, agent: "codex", message: "mensagem de outro agente" });
+
+    // Real delivery: no injected runner, so this is the production path.
+    const attempts = new WakeService().wakeRoom(db, room);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({ agent: "claude", kind: "tmux-pane", ok: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const delivered = fs.readFileSync(sink, "utf8");
+    expect(delivered).toContain("1 unread message(s)");
+    expect(delivered).toContain(room);
+    // The notice says what it is, and never carries what was said.
+    expect(delivered).toContain("not a human instruction");
+    expect(delivered).not.toContain("mensagem de outro agente");
+    // Enter was pressed, so the harness sees a submitted line.
+    expect(delivered.endsWith("\n")).toBe(true);
+  });
+
+  it("does not type into a pane a human is reading", () => {
+    setWakeTarget(db, { room, agent: "claude", wake: { kind: "tmux-pane", id: session } });
+    roomIdle(db, { room, agent: "claude" });
+    roomSend(db, { room, agent: "codex", message: "agora" });
+
+    const paneId = paneForAgent(session, "claude")!;
+    spawnSync("tmux", ["copy-mode", "-t", paneId]);
+    const attempts = new WakeService().wakeRoom(db, room);
+    expect(attempts[0].ok).toBe(false);
+    expect(attempts[0].error).toMatch(/copy-mode/);
+    expect(roomWho(db, { room }).find((p) => p.agent === "claude")!.wakeError).toMatch(/copy-mode/);
+  });
+
+  it("reports a pane that is gone instead of pretending the agent sleeps", () => {
+    setWakeTarget(db, { room, agent: "claude", wake: { kind: "tmux-pane", id: session } });
+    roomIdle(db, { room, agent: "claude" });
+    killWorkspace(tmux, session);
+    roomSend(db, { room, agent: "codex", message: "ola" });
+
+    const attempts = new WakeService().wakeRoom(db, room);
+    expect(attempts[0].ok).toBe(false);
+    expect(attempts[0].error).toMatch(/no pane/);
   });
 });

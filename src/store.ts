@@ -51,13 +51,13 @@ function ensureParticipant(
   if (existing) {
     // Any call from the agent means its turn is running, so it is no longer
     // idle: leaving the row idle would let the monitor show a sleeping agent
-    // that is working, and let the room "resume" a session already awake.
+    // that is working, and let the room "resume" a session already awake. The
+    // wake target stays: it is how this session is reached, not a statement
+    // about what it is doing.
     db.prepare(
       `UPDATE participants
        SET last_seen_at = ?, active = 1, role = COALESCE(?, role),
            harness = COALESCE(?, harness),
-           wake_kind = CASE WHEN status = 'idle' THEN NULL ELSE wake_kind END,
-           wake_id = CASE WHEN status = 'idle' THEN NULL ELSE wake_id END,
            status = CASE
                       WHEN ? = 1 OR status = 'done' THEN 'working'
                       WHEN status = 'idle' THEN 'working'
@@ -367,12 +367,21 @@ export function roomHistory(
  */
 export function roomIdle(
   db: Database.Database,
-  params: { room: string; agent: string; wake: WakeSpec; detail?: string | null }
+  params: { room: string; agent: string; wake?: WakeSpec; detail?: string | null }
 ): ParticipantInfo {
   ensureRoom(db, params.room, false);
   const existing = getParticipant(db, params.room, params.agent);
   if (!existing) {
     throw new Error(`Agent "${params.agent}" has not joined room "${params.room}".`);
+  }
+  // The launcher registers how a pane-hosted agent is reached, so most agents
+  // have a way back already. Without one, going idle would be going away.
+  const wake = params.wake ?? existing.wake;
+  if (!wake) {
+    throw new Error(
+      `No way to resume "${params.agent}" in "${params.room}": pass a wake target, ` +
+        `or stay working — going idle without one would make you unreachable.`
+    );
   }
   const now = Date.now();
   // The mark is what this agent has actually read, not what exists: a message
@@ -390,13 +399,28 @@ export function roomIdle(
     params.detail ?? null,
     now,
     now,
-    params.wake.kind,
-    params.wake.id,
+    wake.kind,
+    wake.id,
     latest?.id ?? 0,
     params.room,
     params.agent
   );
   return getParticipant(db, params.room, params.agent)!;
+}
+
+/**
+ * Records how a session can be reached, without touching what it is doing. The
+ * launcher calls this for a pane it just created, so an agent is reachable from
+ * the moment it exists rather than only after it declares itself idle.
+ */
+export function setWakeTarget(
+  db: Database.Database,
+  params: { room: string; agent: string; wake: WakeSpec }
+): void {
+  db.prepare(
+    `UPDATE participants SET wake_kind = ?, wake_id = ?, wake_error = NULL
+     WHERE room = ? AND agent = ?`
+  ).run(params.wake.kind, params.wake.id, params.room, params.agent);
 }
 
 export interface WakeTarget {
@@ -568,26 +592,17 @@ export function roomSetStatus(
   }
 
   const now = Date.now();
-  // Any status other than idle means a turn is running, so the wake target is
-  // stale: the agent is already awake and will register again when it stops.
+  // The wake target says HOW this session can be reached; the status says
+  // WHETHER waking it is useful. Dropping the target on every status change
+  // confused the two: an agent that reported approval_required lost the only
+  // route back to it, and stayed unreachable with messages waiting even after
+  // the approval was answered. Only leaving the room clears it.
   db.prepare(
     `UPDATE participants
      SET status = ?, status_detail = ?, status_updated_at = ?, last_seen_at = ?,
-         active = CASE WHEN ? = 'done' THEN 0 ELSE 1 END,
-         wake_kind = CASE WHEN ? = 'idle' THEN wake_kind ELSE NULL END,
-         wake_id = CASE WHEN ? = 'idle' THEN wake_id ELSE NULL END
+         active = CASE WHEN ? = 'done' THEN 0 ELSE 1 END
      WHERE room = ? AND agent = ?`
-  ).run(
-    params.status,
-    params.detail ?? null,
-    now,
-    now,
-    params.status,
-    params.status,
-    params.status,
-    params.room,
-    params.agent
-  );
+  ).run(params.status, params.detail ?? null, now, now, params.status, params.room, params.agent);
   return getParticipant(db, params.room, params.agent)!;
 }
 

@@ -18,8 +18,15 @@ export type AgentStatus =
   | "approval_required"
   | "done";
 
-/** The harnesses ai-room knows how to wake, and the id each one wakes by. */
-export type WakeKind = "codex-queue" | "claude-resume";
+/**
+ * How ai-room can reach a live agent session.
+ *
+ * `codex-queue` hands a notice to a Codex session through its own CLI.
+ * `tmux-pane` types one into the pane a TUI harness is already living in —
+ * the only way to reach a running Claude Code session, whose `--resume` starts
+ * a copy instead of continuing the session that is on screen.
+ */
+export type WakeKind = "codex-queue" | "tmux-pane";
 
 export interface WakeSpec {
   kind: WakeKind;

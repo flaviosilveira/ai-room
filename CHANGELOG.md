@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Lifecycle
+
+- **A wake no longer forks the agent it is waking.** `claude --resume <id> --bg`
+  starts a copy when the session is already running, which every Claude session
+  in a pane is. The copy read the room, answered in it and went back to sleep,
+  while the session the human was looking at stayed idle and unaware — nine
+  copies of one agent in a single measured task, each carrying the whole
+  context and running in the server's working directory instead of the task's.
+  A TUI harness is reached where it lives: ai-room types the notice into its
+  pane as a bracketed paste. Same process, same session id, same pane, same
+  cwd, and an approval prompt still appears where the human can see it.
+  Measured: 8s from an agent's message, 7s from a human's, zero new sessions.
+- **The way back to a session is no longer thrown away by a status change.**
+  The wake target said how to reach a session and was being cleared on every
+  status other than idle, so an agent that reported `approval_required` lost the
+  only route back to it and stayed unreachable with messages waiting. Reaching
+  and running are now separate: the target is set when the agent is launched (or
+  by `room_idle`), survives `working`, `approval_required` and `blocked`, and is
+  cleared only by leaving the room. Only an idle agent is ever woken.
+- **The server finds tmux even when its PATH does not have it.** Under a
+  LaunchAgent the PATH is the system default, Homebrew's tmux is not on it, and
+  a wake that cannot find tmux fails where nobody sees it.
+- Pane lookups no longer separate fields with a tab, which came back mangled in
+  some environments and made every pane invisible.
+
 ### Human input
 
 - **A paste is one message again.** The console read the prompt through

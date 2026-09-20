@@ -152,7 +152,7 @@ export function createAiRoomServer(
     "room_idle",
     {
       description:
-        "Stop working and end your turn until something happens. Use this whenever you have no work left: it is the correct way to be available in a room, and it costs nothing because no model runs while you are idle. Pass `wake` so the room can resume you: on Codex use {kind: 'codex-queue', id: <the CODEX_THREAD_ID of your session>}; on Claude Code use {kind: 'claude-resume', id: <your session id>}. Read the id from your own environment. After calling this, produce no further tool calls and end your turn — you will be resumed with the messages waiting for you. Do not call room_wait in a loop instead of this.",
+        "Stop working and end your turn until something happens. Use this whenever you have no work left: it is the correct way to be available in a room, and it costs nothing because no model runs while you are idle. If ai-room launched you, it already knows how to reach you — call this with just {room, agent}. Otherwise pass `wake`: on Codex {kind: 'codex-queue', id: <your CODEX_THREAD_ID>}. After calling this, produce no further tool calls and end your turn — you will be resumed with the messages waiting for you. Do not call room_wait in a loop instead of this.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),
@@ -161,12 +161,20 @@ export function createAiRoomServer(
             kind: z.enum(WAKE_KINDS as [string, ...string[]]).describe("How your harness can be resumed."),
             id: z.string().describe("Your own harness session id, from the environment."),
           })
-          .describe("How ai-room resumes this exact session when a message arrives."),
+          .optional()
+          .describe(
+            "How ai-room resumes this exact session. Omit it when ai-room launched you: the launcher already registered the way back to your pane."
+          ),
         detail: z.string().max(200).nullable().optional().describe("Optional note, e.g. what you finished."),
       },
     },
     async ({ room, agent, wake, detail }) => {
-      const result = roomIdle(db, { room, agent, wake: parseWakeSpec(wake), detail });
+      const result = roomIdle(db, {
+        room,
+        agent,
+        wake: wake === undefined ? undefined : parseWakeSpec(wake),
+        detail,
+      });
       // A wait parked by this agent would outlive the turn that owns it and
       // deliver into a session that has already stopped reading.
       waitRegistry.supersede(room, agent);
