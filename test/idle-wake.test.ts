@@ -86,6 +86,59 @@ describe("idle lifecycle", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("comes back for a message that arrived inside the rate limit", () => {
+    // What the integrated smoke caught: an agent woken seconds earlier was
+    // skipped for the next message and never revisited, so it slept with
+    // something unread and nothing else on the way.
+    roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
+    roomSend(db, { room: "r", agent: "claude", message: "primeira" });
+
+    const calls: string[][] = [];
+    const pending: Array<() => void> = [];
+    let clock = 0;
+    const wake = new WakeService({
+      run: (argv) => (calls.push(argv), { ok: true }),
+      minIntervalMs: 10_000,
+      now: () => clock,
+      schedule: (run) => pending.push(run),
+    });
+
+    wake.wakeRoom(db, "r");
+    expect(calls).toHaveLength(1);
+
+    // Second message five seconds later: inside the window, so not now…
+    clock = 5_000;
+    roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
+    roomSend(db, { room: "r", agent: "claude", message: "segunda" });
+    wake.wakeRoom(db, "r");
+    expect(calls).toHaveLength(1);
+    expect(pending).toHaveLength(1);
+
+    // …but the retry does happen once the window is over.
+    clock = 10_100;
+    pending.pop()!();
+    expect(calls).toHaveLength(2);
+  });
+
+  it("does not pile up retries for the same agent", () => {
+    roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
+    const pending: Array<() => void> = [];
+    const wake = new WakeService({
+      run: () => ({ ok: true }),
+      minIntervalMs: 10_000,
+      now: () => 0,
+      schedule: (run) => pending.push(run),
+    });
+    roomSend(db, { room: "r", agent: "claude", message: "um" });
+    wake.wakeRoom(db, "r");
+    for (const message of ["dois", "tres", "quatro"]) {
+      roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
+      roomSend(db, { room: "r", agent: "claude", message });
+      wake.wakeRoom(db, "r");
+    }
+    expect(pending).toHaveLength(1);
+  });
+
   it("never wakes an agent that is not idle", () => {
     roomSetStatus(db, { room: "r", agent: "codex", status: "working" });
     roomSend(db, { room: "r", agent: "claude", message: "trabalhe" });
@@ -152,6 +205,35 @@ describe("wake targets are data, never commands", () => {
     expect(() => parseWakeSpec({ kind: "codex-queue", id: "$(whoami)" })).toThrow(/session id/);
     expect(() => parseWakeSpec({ kind: "codex-queue", id: "short" })).toThrow(/session id/);
     expect(() => parseWakeSpec("codex")).toThrow();
+  });
+
+  it("refuses a pane target an agent made up for itself", () => {
+    // Only the launcher knows which pane belongs to whom; a session id here is
+    // a route to nowhere that the agent would then sleep behind.
+    expect(() => parseWakeSpec({ kind: "tmux-pane", id: "c70eb6d8-a827-4459-8aeb-9b227d36ec02" })).toThrow(
+      /registered by the launcher/
+    );
+    expect(parseWakeSpec({ kind: "tmux-pane", id: "airoom-sala-abcdef1234" })).toMatchObject({
+      kind: "tmux-pane",
+    });
+  });
+
+  it("reports a wake kind it no longer knows instead of crashing the send", () => {
+    const db = openDb(":memory:");
+    roomJoin(db, { room: "r", agent: "codex" });
+    roomJoin(db, { room: "r", agent: "claude" });
+    roomIdle(db, { room: "r", agent: "codex", wake: CODEX_WAKE });
+    // A row left by an older version.
+    db.exec("UPDATE participants SET wake_kind = 'claude-resume' WHERE agent = 'codex'");
+    roomSend(db, { room: "r", agent: "claude", message: "oi" });
+
+    const attempts = new WakeService({ run: () => ({ ok: true }) }).wakeRoom(db, "r");
+    expect(attempts[0]).toMatchObject({ ok: false });
+    expect(attempts[0].error).toMatch(/unknown wake kind/);
+    expect(roomWho(db, { room: "r" }).find((p) => p.agent === "codex")!.wakeError).toMatch(
+      /unknown wake kind/
+    );
+    db.close();
   });
 
   it("builds a fixed argv where only the id and the notice vary", () => {

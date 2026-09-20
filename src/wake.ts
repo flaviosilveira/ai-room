@@ -57,6 +57,9 @@ export const WAKE_KINDS = Object.keys(ADAPTERS) as WakeKind[];
  */
 const WAKE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/;
 
+/** Every workspace ai-room creates is named this way. */
+export const WORKSPACE_PREFIX = "airoom-";
+
 export function parseWakeSpec(value: unknown): WakeSpec {
   if (!value || typeof value !== "object") throw new Error("wake must be an object");
   const { kind, id } = value as { kind?: unknown; id?: unknown };
@@ -65,6 +68,14 @@ export function parseWakeSpec(value: unknown): WakeSpec {
   }
   if (typeof id !== "string" || !WAKE_ID.test(id)) {
     throw new Error("wake.id must be the harness session id (letters, digits, dot, dash, underscore).");
+  }
+  if (kind === "tmux-pane" && !id.startsWith(WORKSPACE_PREFIX)) {
+    // A pane target names a workspace, and only the launcher knows which one.
+    // An agent guessing its own session id here would register a route to
+    // nowhere and then sleep behind it.
+    throw new Error(
+      `A ${kind} target is registered by the launcher, not by you. Call room_idle with just {room, agent}.`
+    );
   }
   return { kind: kind as WakeKind, id };
 }
@@ -109,6 +120,8 @@ export interface WakeServiceOptions {
   /** Floor between two wakes of the same agent, so a burst becomes one wake. */
   minIntervalMs?: number;
   now?: () => number;
+  /** How a deferred retry is scheduled; injected so tests can drive time. */
+  schedule?: (run: () => void, delayMs: number) => void;
 }
 
 /**
@@ -155,24 +168,54 @@ export class WakeService {
   private readonly run: (argv: string[], onFailure: (error: string) => void) => { ok: boolean; error?: string };
   private readonly minIntervalMs: number;
   private readonly now: () => number;
+  private readonly schedule: (run: () => void, delayMs: number) => void;
   private readonly lastWake = new Map<string, number>();
+  private readonly deferred = new Set<string>();
 
   constructor(options: WakeServiceOptions = {}) {
     this.run = options.run ?? spawnWake;
     this.minIntervalMs = options.minIntervalMs ?? 10_000;
     this.now = options.now ?? (() => Date.now());
+    this.schedule =
+      options.schedule ??
+      ((run, delayMs) => {
+        const timer = setTimeout(run, delayMs);
+        timer.unref?.();
+      });
   }
 
   wakeRoom(db: Database.Database, room: string): WakeAttempt[] {
     const attempts: WakeAttempt[] = [];
     for (const target of idleParticipantsWithUnread(db, room)) {
       const key = JSON.stringify([room, target.agent]);
-      const last = this.lastWake.get(key) ?? 0;
-      if (this.now() - last < this.minIntervalMs) continue;
+      // Absent means never woken, which is not the same as woken at time zero.
+      const last = this.lastWake.get(key);
+      const since = last === undefined ? Number.POSITIVE_INFINITY : this.now() - last;
+      if (since < this.minIntervalMs) {
+        // The rate limit exists to turn a burst into one wake, not to drop the
+        // messages that arrive during it. Skipping without coming back left an
+        // agent asleep with something unread and nothing else on its way.
+        this.deferWake(db, room, target.agent, this.minIntervalMs - since);
+        continue;
+      }
 
       const spec: WakeSpec = { kind: target.wakeKind, id: target.wakeId };
       const notice = wakeMessage(room, target.agent, target.unread);
       const adapter = ADAPTERS[spec.kind];
+      if (!adapter) {
+        // A row written by an older version, naming a way to wake that this one
+        // no longer has. Saying so beats crashing the send that found it.
+        touchWake(db, room, target.agent, false, `unknown wake kind "${spec.kind}"`);
+        attempts.push({
+          room,
+          agent: target.agent,
+          unread: target.unread,
+          kind: spec.kind,
+          ok: false,
+          error: `unknown wake kind "${spec.kind}"`,
+        });
+        continue;
+      }
       const result = adapter.deliver
         ? adapter.deliver(spec.id, target.agent, notice)
         : this.run(
@@ -197,5 +240,23 @@ export class WakeService {
       });
     }
     return attempts;
+  }
+
+  /**
+   * Comes back once the rate limit is over. By then the agent may have woken on
+   * its own or read the room, and `wakeRoom` will simply find nothing to do.
+   */
+  private deferWake(db: Database.Database, room: string, agent: string, delayMs: number): void {
+    const key = JSON.stringify(["deferred", room, agent]);
+    if (this.deferred.has(key)) return;
+    this.deferred.add(key);
+    this.schedule(() => {
+      this.deferred.delete(key);
+      try {
+        this.wakeRoom(db, room);
+      } catch {
+        /* the room may be gone by the time the retry runs */
+      }
+    }, delayMs + 50);
   }
 }
