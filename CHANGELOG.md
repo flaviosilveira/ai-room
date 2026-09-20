@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 ### Lifecycle
 
@@ -24,6 +24,19 @@
 - **The server finds tmux even when its PATH does not have it.** Under a
   LaunchAgent the PATH is the system default, Homebrew's tmux is not on it, and
   a wake that cannot find tmux fails where nobody sees it.
+- **A wake the rate limit skipped is now retried, not dropped.** The limit
+  exists so a burst of messages becomes one wake; it was discarding the wake
+  instead of postponing it, so an agent woken five seconds earlier was skipped
+  for the next message and sat idle with something unread and nothing else on
+  its way. The retry runs once the window closes, by which time the agent has
+  usually read the room anyway.
+- A wake target naming a pane is registered by the launcher, the only party that
+  knows which pane belongs to whom; an agent offering its own session id there
+  is refused instead of sleeping behind a route to nowhere. A target written by
+  an older version, naming a way to wake that no longer exists, is reported
+  through `wake_error` rather than thrown inside the message that found it.
+- **`claude-resume` is gone as a wake kind.** It never reached a running
+  session, and anything still naming it is reported instead of attempted.
 - Pane lookups no longer separate fields with a tab, which came back mangled in
   some environments and made every pane invisible.
 

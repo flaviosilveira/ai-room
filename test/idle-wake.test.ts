@@ -210,7 +210,7 @@ describe("wake targets are data, never commands", () => {
   it("refuses a pane target an agent made up for itself", () => {
     // Only the launcher knows which pane belongs to whom; a session id here is
     // a route to nowhere that the agent would then sleep behind.
-    expect(() => parseWakeSpec({ kind: "tmux-pane", id: "c70eb6d8-a827-4459-8aeb-9b227d36ec02" })).toThrow(
+    expect(() => parseWakeSpec({ kind: "tmux-pane", id: "11111111-2222-4333-8444-555555555555" })).toThrow(
       /registered by the launcher/
     );
     expect(parseWakeSpec({ kind: "tmux-pane", id: "airoom-sala-abcdef1234" })).toMatchObject({
