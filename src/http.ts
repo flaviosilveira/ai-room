@@ -4,7 +4,16 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import type { Express } from "express";
 import { createAiRoomServer } from "./server.js";
-import { agentActiveRooms, markRead, roomHistory, roomSend, roomWho } from "./store.js";
+import {
+  agentActiveRooms,
+  collectOrphanAttachments,
+  createAttachment,
+  markRead,
+  roomHistory,
+  roomSend,
+  roomWho,
+} from "./store.js";
+import { MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { VERSION } from "./version.js";
 import { TOOL_CATALOG } from "./catalog.js";
 import { RoomWaitRegistry, withWaitLiveness } from "./wait.js";
@@ -94,16 +103,49 @@ export function createHttpApp(
 
   // The human channel. `origin` is set here, server-side, so an agent can never
   // claim to be the human: room_send over MCP always writes "agent".
+  // The console uploads the bytes itself: the server may run as a LaunchAgent
+  // that macOS does not let read the human's Desktop, and a path from a client
+  // is never something the server should open.
+  app.post(
+    "/attachments",
+    express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
+    (req, res) => {
+      const room = typeof req.query.room === "string" ? req.query.room : "";
+      const name = typeof req.query.name === "string" ? req.query.name : undefined;
+      if (!room || !Buffer.isBuffer(req.body)) {
+        res.status(400).json({ ok: false, error: "room and a binary body are required" });
+        return;
+      }
+      try {
+        res.json({ ok: true, attachment: createAttachment(db, { room, bytes: req.body, name }) });
+      } catch (error) {
+        res.status(400).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  );
+
+  const orphanTimer = setInterval(() => {
+    try {
+      collectOrphanAttachments(db);
+    } catch {
+      /* retried on the next tick */
+    }
+  }, 10 * 60 * 1000);
+  orphanTimer.unref();
+
   app.post("/say", express.json(), (req, res) => {
     const room = typeof req.body?.room === "string" ? req.body.room : "";
     const message = typeof req.body?.message === "string" ? req.body.message : "";
     const agent = typeof req.body?.agent === "string" ? req.body.agent : "human";
-    if (!room || !message) {
+    const attachmentIds = Array.isArray(req.body?.attachmentIds)
+      ? (req.body.attachmentIds as unknown[]).filter((id): id is string => typeof id === "string")
+      : [];
+    if (!room || (!message && !attachmentIds.length)) {
       res.status(400).json({ ok: false, error: "room and message are required" });
       return;
     }
     try {
-      const sent = roomSend(db, { room, agent, message, origin: "human" });
+      const sent = roomSend(db, { room, agent, message, origin: "human", attachmentIds });
       // Wake every waiter immediately instead of letting them sit out the hold,
       // and resume anyone who went idle — they have no way to notice by themselves.
       waitRegistry.notify(room);

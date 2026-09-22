@@ -66,9 +66,13 @@ ai-room open refactor-auth --brief "..." --invite codex,agy
 ```
 
 `open` termina anexado ao workspace: cria/reutiliza a sala, grava o charter,
-lança os agentes e entrega o terminal ao tmux. Rodar `ai-room open refactor-auth`
-de novo apenas reanexa — o charter é preservado, o elenco do roster é
-reaproveitado e nenhum pane é duplicado.
+lança os agentes e entrega o terminal ao tmux **na hora** — o workspace inteiro
+sai de uma única chamada ao tmux, e o `open` não espera os agentes entrarem na
+sala (cada harness leva de 10 a 30s para subir; o pane monitor mostra cada um
+chegando). Sem terminal interativo (pipe, CI), o `open` espera os joins e
+reporta quem entrou. Rodar `ai-room open refactor-auth` de novo apenas reanexa —
+o charter é preservado, o elenco do roster é reaproveitado e nenhum pane é
+duplicado.
 
 ```
 ┌───────────────────────────┬───────────────────────────┐
@@ -82,6 +86,29 @@ reaproveitado e nenhum pane é duplicado.
 Each agent pane is a real interactive session of that harness, so selecting a
 pane lets you talk to that agent directly and answer its own approval prompts.
 The monitor pane runs `ai-room console` for the room feed.
+
+A second tab, **files**, holds a file browser for the working directory: the
+first of yazi, broot, lf, ranger or nnn that is installed, or vim's netrw as a
+NERDTree-style sidebar (tree on the left, the file opens beside it; with
+`--mouse` a click opens it too). `AI_ROOM_FILES="<command>"` picks any other
+command; `--no-files` leaves the tab out.
+
+The workspace runs on a tmux server of its own (`tmux -L ai-room`), so its keys
+never change your other tmux sessions. Your `~/.tmux.conf` is loaded first; on
+top of it:
+
+| Tecla | Efeito |
+| --- | --- |
+| `F12` | Sai do workspace (detach); agentes e sala seguem vivos |
+| `Ctrl-b d` · `Ctrl-b Ctrl-d` · `Ctrl-b q` | O mesmo detach |
+| `Ctrl-b m` | Menu dos panes: mostra/esconde cada agente, o humano (monitor) e os arquivos |
+| `Ctrl-b t` | Mostra/esconde a aba de arquivos |
+| `Ctrl-b X` | Fecha a sala (pede confirmação); histórico e charter ficam |
+
+Esconder um pane nunca o para: o processo, a sessão do agente e o wake
+continuam. Fora do tmux, `ai-room pane <room> <agent|monitor|files> [show|hide|toggle]`
+faz o mesmo. Fechar a janela do terminal é só um detach: `ai-room open <room>`
+reanexa.
 
 Two channels, deliberately separate:
 
@@ -141,11 +168,15 @@ letting them sit out the rest of their hold. Commands start with `/`:
 
 | Comando | Efeito |
 | --- | --- |
-| `/attach <agente>` | Foca o pane daquele agente (ou a sessão dele, em `--detached`). Detach com `Ctrl-b d` (tmux) ou `Ctrl-a d` (screen) |
+| `/attach <agente>` | Foca o pane daquele agente (ou a sessão dele, em `--detached`). Detach com `F12` ou `Ctrl-b d` (tmux), `Ctrl-a d` (screen) |
 | `/agents` | Lista os panes e as sessões vivas da sala |
 | `/who` | Participantes, `wait(live)` e não lidas |
-| `/show` | Mostra o que está colado no rascunho |
+| `/show` | Mostra o que está colado e anexado no rascunho |
 | `/clear` | Descarta o rascunho |
+| `Ctrl+V` ou `/paste` | Anexa a imagem do clipboard ao rascunho |
+| `/file <caminho>` | Anexa um arquivo (png, jpeg, gif, webp, pdf ou texto) |
+| `/drop <n>` | Remove o anexo n do rascunho |
+| `/panes` · `/hide <pane>` · `/show <pane>` | Lista, esconde e mostra panes do workspace |
 | `/detach` | Desanexa o workspace; agentes e sala seguem vivos |
 | `/close sim` | Encerra panes e sessões da sala; histórico e charter ficam |
 | `/quit` | Sai do console; os agentes continuam rodando |
@@ -159,6 +190,35 @@ um incremento de não lidas e um wake. Digitar e apertar Enter continua idêntic
 `/show` inspeciona o rascunho, `/clear` descarta. Sem TTY (saída redirecionada,
 `screen`) não há como distinguir colagem de digitação e o comportamento antigo
 permanece.
+
+### Anexos: screenshot no `human>`
+
+Tire um screenshot, aperte `Ctrl+V` no console, escreva "olha esse erro" e
+Enter: os agentes recebem **uma** mensagem com a imagem acessível.
+
+```
+anexos: [1] img clipboard-2026-09-22.png 412KB — Enter envia, /drop n remove
+human> olha esse erro▊
+```
+
+- O terminal só transporta texto, então o console lê o clipboard sozinho
+  (`osascript` no macOS, `wl-paste`/`xclip` no Linux) — por isso funciona
+  dentro do tmux. Arrastar um arquivo para o terminal também anexa, e `/file`
+  cobre SSH e qualquer arquivo já salvo.
+- O console envia os bytes ao servidor (`POST /attachments`); o servidor nunca
+  abre um caminho vindo de um cliente. O tipo vem dos magic bytes, não da
+  extensão; SVG é recusado. Limites: 10MB por arquivo, 5 por mensagem.
+- Os arquivos ficam em `~/.ai-room/attachments/<sha[0:2]>/<sha256>.<ext>` (0600,
+  deduplicados por SHA-256). `AI_ROOM_ATTACHMENT_DIR` troca o lugar; dentro de
+  um repositório git, ai-room grava um `.gitignore` para nada ir parar num commit.
+- A mensagem carrega só metadados (`attachments: [{id, name, mime, bytes, width,
+  height, path}]`), nunca os bytes: um screenshot custa contexto só para quem o
+  abre. Clientes antigos continuam vendo a mesma mensagem.
+- `room_attachment({room, agent, id})` abre um anexo. Claude recebe o path para
+  o Read (que mostra imagens), Codex o path para o `view_image`, e os demais
+  harnesses — ou quem pedir `inline: true` — recebem a imagem no resultado.
+- Uploads nunca enviados são apagados depois de 1h. `ai-room attachments prune
+  --older-than 30d` libera os arquivos antigos; o histórico mantém os metadados.
 
 O mouse é opt-in: `ai-room open <room> --mouse`. Por padrão o tmux não captura o
 mouse, então a seleção nativa do terminal e o Cmd+C continuam funcionando como
@@ -220,11 +280,13 @@ Agents that are not on the roster still receive the shared brief, with `you: nul
 
 ### Convention presets
 
-`caveman`, `concise`, `rigorous`. A preset is a style contract applied to every agent in the room, so it reaches Claude Code, Codex and AGY uniformly rather than needing a plugin installed per harness. Pass `--convention` or `conventionPreset`, or set `conventions` directly for literal text. The caveman rules are derived from the [caveman plugin](https://github.com/JuliusBrussee/caveman) by Julius Brussee (MIT).
+`caveman`, `ponytail`, `concise`, `rigorous`. A preset is a style contract applied to every agent in the room, so it reaches Claude Code, Codex and AGY uniformly rather than needing a plugin installed per harness. Presets combine: `--convention caveman,ponytail`. Pass `--convention` or `conventionPreset`, or set `conventions` directly for literal text. The caveman rules are derived from the [caveman plugin](https://github.com/JuliusBrussee/caveman) by Julius Brussee (MIT); the ponytail rules from [ponytail](https://github.com/DietrichGebert/ponytail) by Dietrich Gebert (MIT).
 
 ### Tool declarations
 
 A charter can declare the tooling a room expects, for example [graphify](https://github.com/Graphify-Labs/graphify) for querying a codebase as a knowledge graph. **ai-room only declares these — it never invokes them.** Each agent runs the tool through its own skills, so ai-room stays a message bus and takes on no dependency of its own. Unknown names are passed through as-is, so you can declare anything.
+
+Known presets: `graphify`, [`grill-me` and `grill-with-docs`](https://github.com/mattpocock/skills), [`rtk`](https://github.com/rtk-ai/rtk) and [`ponytail`](https://github.com/DietrichGebert/ponytail). `ai-room open` says which declared tools this machine lacks and how to install them; the room opens anyway.
 
 ## Typical Workflow
 

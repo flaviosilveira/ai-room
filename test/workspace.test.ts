@@ -1,4 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
 import { roomCharter, roomJoin, roomSetCharter } from "../src/store.js";
@@ -7,6 +11,12 @@ import {
   detectMultiplexer,
   ensureWorkspace,
   killWorkspace,
+  listTaggedPanes,
+  mux,
+  paneMenuArgv,
+  paneStates,
+  setPaneVisible,
+  tmuxConfig,
   sessionExists,
   sessionName,
   startSession,
@@ -17,6 +27,7 @@ import {
   LAUNCHERS,
   agentCommand,
   closeRoom,
+  filesCommand,
   joinPrompt,
   planWorkspace,
   roomSessions,
@@ -115,7 +126,7 @@ describe("launch commands", () => {
 
 describe("workspace planning", () => {
   it("adds a monitor pane alongside the agents", () => {
-    const plan = planWorkspace("r", []);
+    const plan = planWorkspace("r", [], { files: false });
     expect(plan.panes.map((p) => p.title)).toEqual(["monitor"]);
     // Must resolve to something runnable: a repo checkout has no ai-room on PATH.
     const [bin, ...rest] = plan.panes[0].command;
@@ -125,11 +136,27 @@ describe("workspace planning", () => {
   });
 
   it("omits the monitor when asked", () => {
-    expect(planWorkspace("r", [], { monitor: false }).panes).toEqual([]);
+    expect(planWorkspace("r", [], { monitor: false, files: false }).panes).toEqual([]);
+  });
+
+  it("puts the file browser in a tab of its own", () => {
+    const plan = planWorkspace("r", [], { monitor: false, filesCommand: ["yazi"] });
+    expect(plan.panes).toEqual([{ title: "files", command: ["yazi"], window: "files" }]);
+  });
+
+  it("skips the files tab when no browser is installed", () => {
+    expect(planWorkspace("r", [], { monitor: false, filesCommand: null }).panes).toEqual([]);
+  });
+
+  it("prefers a real file browser and falls back to vim's tree", () => {
+    expect(filesCommand({}, (bin) => bin === "yazi" || bin === "vim")).toEqual(["yazi"]);
+    expect(filesCommand({}, (bin) => bin === "vim")?.slice(0, 1)).toEqual(["vim"]);
+    expect(filesCommand({}, () => false)).toBeNull();
+    expect(filesCommand({ AI_ROOM_FILES: "tree -C | less" }, () => false)).toEqual(["sh", "-c", "tree -C | less"]);
   });
 
   it("reports harnesses that are not installed instead of failing", () => {
-    const plan = planWorkspace("r", ["definitely-not-a-real-agent"], { monitor: false });
+    const plan = planWorkspace("r", ["definitely-not-a-real-agent"], { monitor: false, files: false });
     expect(plan.missing).toEqual(["definitely-not-a-real-agent"]);
     expect(plan.agents).toEqual([]);
     expect(plan.panes).toEqual([]);
@@ -187,15 +214,46 @@ describe("charter is written before any agent starts", () => {
   });
 });
 
+describe("workspace tmux config", () => {
+  it("binds every way out a human reaches for", () => {
+    const config = tmuxConfig();
+    expect(config).toContain("bind-key -n F12 detach-client");
+    expect(config).toContain("bind-key C-d detach-client");
+    expect(config).toContain("bind-key d detach-client");
+    expect(config).toMatch(/bind-key X confirm-before .* kill-session/);
+    expect(config).toMatch(/bind-key m run-shell .*_pane-menu/);
+    expect(config).toMatch(/bind-key t run-shell .*_pane .* files toggle/);
+  });
+
+  it("loads in a real tmux without errors", () => {
+    if (!tmux) return;
+    const file = path.join(os.tmpdir(), `airoom-conf-${process.pid}.conf`);
+    fs.writeFileSync(file, tmuxConfig("ai-room"));
+    try {
+      const result = spawnSync("tmux", ["-L", `airoom-conf-${process.pid}`, "-f", "/dev/null", "start-server", ";", "source-file", file], { encoding: "utf8" });
+      expect(result.stderr).toBe("");
+    } finally {
+      spawnSync("tmux", ["-L", `airoom-conf-${process.pid}`, "kill-server"]);
+      fs.rmSync(file, { force: true });
+    }
+  });
+
+  it("keeps the human's own tmux config underneath", () => {
+    const config = tmuxConfig();
+    expect(config.indexOf("source-file -q ~/.tmux.conf")).toBeLessThan(config.indexOf("bind-key"));
+    expect(config).not.toContain("kill-server");
+  });
+});
+
 describe("tool catalog", () => {
   it("lists every tool exactly once", () => {
     expect(new Set(TOOL_NAMES).size).toBe(TOOL_NAMES.length);
-    expect(TOOL_CATALOG).toHaveLength(12);
+    expect(TOOL_CATALOG).toHaveLength(13);
   });
 
   it("marks the read-only tools", () => {
     const readOnly = TOOL_CATALOG.filter((t) => !t.mutates).map((t) => t.name).sort();
-    expect(readOnly).toEqual(["room_charter", "room_history", "room_list", "room_who"]);
+    expect(readOnly).toEqual(["room_attachment", "room_charter", "room_history", "room_list", "room_who"]);
   });
 });
 
@@ -291,6 +349,62 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
     expect(sessionExists(tmux!, sessionName(room, "claude"))).toBe(false);
     expect(sessionExists(tmux!, sessionName(other, "claude"))).toBe(true);
     killWorkspace(tmux!, sessionName(other, "claude"));
+  });
+
+  it("builds every pane in one pass, tagging each and keeping tabs apart", () => {
+    const result = ensureWorkspace(
+      tmux!,
+      session,
+      process.cwd(),
+      [pane("claude"), pane("codex"), { ...pane("files"), window: "files" }, pane("monitor")],
+      { room }
+    );
+    expect(result.panes.sort()).toEqual(["claude", "codex", "files", "monitor"]);
+    expect(listTaggedPanes(tmux!, session).map((p) => p.agent).sort()).toEqual(["claude", "codex", "files", "monitor"]);
+    const windows = mux(tmux!, ["list-windows", "-t", session, "-F", "#{window_name}:#{window_panes}"]).out.split("\n");
+    expect(windows).toEqual(["agents:3", "files:1"]);
+    expect(mux(tmux!, ["show-options", "-v", "-t", session, "@airoom_room"]).out).toBe(room);
+  });
+
+  it("hides and shows panes without stopping them", () => {
+    ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("codex"), { ...pane("files"), window: "files" }]);
+    const pid = (agent: string) =>
+      mux(tmux!, ["display-message", "-p", "-t", paneStates(tmux!, session).find((p) => p.agent === agent)!.paneId, "#{pane_pid}"]).out;
+    const before = pid("codex");
+
+    expect(setPaneVisible(tmux!, session, "codex", "toggle")).toMatchObject({ ok: true, hidden: true });
+    expect(paneStates(tmux!, session).find((p) => p.agent === "codex")).toMatchObject({ hidden: true, window: "_codex" });
+    expect(setPaneVisible(tmux!, session, "codex", "show")).toMatchObject({ ok: true, hidden: false });
+    expect(paneStates(tmux!, session).find((p) => p.agent === "codex")).toMatchObject({ hidden: false, window: "agents" });
+    expect(pid("codex")).toBe(before);
+
+    // A pane alone in its tab hides by renaming the tab.
+    expect(setPaneVisible(tmux!, session, "files", "hide")).toMatchObject({ ok: true, hidden: true });
+    expect(setPaneVisible(tmux!, session, "files", "show")).toMatchObject({ ok: true, hidden: false });
+    expect(paneStates(tmux!, session).find((p) => p.agent === "files")!.window).toBe("files");
+
+    // Every agent hidden, then a reopen: the new pane still has a window to go to.
+    setPaneVisible(tmux!, session, "claude", "hide");
+    setPaneVisible(tmux!, session, "codex", "hide");
+    ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("codex"), pane("agy")]);
+    expect(paneStates(tmux!, session).find((p) => p.agent === "agy")).toMatchObject({ window: "agents", hidden: false });
+    expect(setPaneVisible(tmux!, session, "codex", "show")).toMatchObject({ ok: true });
+    expect(setPaneVisible(tmux!, session, "nobody", "show").ok).toBe(false);
+  });
+
+  it("builds a pane menu tmux accepts", () => {
+    ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("monitor")]);
+    const argv = paneMenuArgv(session, "/dev/null", paneStates(tmux!, session), "ai-room");
+    expect(argv).toContain("[x] claude");
+    expect(argv).toContain("[x] human (monitor)");
+    expect(argv.join(" ")).toContain("_pane");
+  });
+
+  it("keeps an argument ending in a semicolon intact", () => {
+    ensureWorkspace(tmux!, session, process.cwd(), [
+      { title: "claude", command: ["sh", "-c", "sleep 60; echo fim;"] },
+    ]);
+    expect(workspacePanes(tmux!, session)).toEqual(["claude"]);
   });
 
   it("keeps rooms in separate sessions", () => {

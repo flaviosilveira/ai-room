@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Workspace
+
+- **`open` hands over the terminal immediately.** It used to wait for every
+  agent to call `room_join` — up to 45s, and each harness takes 10–30s to boot —
+  before attaching. The monitor pane now shows each arrival, and the pane wake
+  target is derived from the room when an agent goes idle instead of being
+  registered by a launcher that had to wait. The whole workspace is built in a
+  single tmux invocation, and the CLI no longer loads express and the MCP SDK
+  for commands that do not use them.
+- **A tmux server of its own, with keys that work.** Workspaces run on
+  `tmux -L ai-room`, sourcing `~/.tmux.conf` first. `F12`, `prefix d`,
+  `prefix C-d` and `prefix q` detach; `prefix X` closes the room after a
+  confirmation; the status line says so.
+- **Panes can be hidden and shown without stopping them.** `prefix m` opens a
+  menu of every pane (agents, the human's monitor, files); `prefix t` toggles
+  the files tab; `/hide`, `/show`, `/panes` in the console and
+  `ai-room pane <room> <agent>` do the same.
+- **A files tab** with the first installed file browser, or vim's netrw as a
+  NERDTree-style sidebar. `--no-files` omits it.
+
+### Attachments
+
+- Paste a screenshot with `Ctrl+V` (or `/paste`), attach a file with `/file`,
+  or drag one into the terminal: text and attachments go out as one message.
+  Files are stored content-addressed under `~/.ai-room/attachments`, typed by
+  magic bytes, and only their metadata travels in messages.
+  `room_attachment` opens one in the way each harness can see it.
+  `ai-room attachments prune` frees old files.
+
+### Presets
+
+- Tool presets `grill-me`, `grill-with-docs`, `rtk` and `ponytail`, and a
+  `ponytail` convention. Conventions combine (`caveman,ponytail`). `open`
+  reports declared tools that are not installed.
+
 ## 0.5.0
 
 ### Lifecycle

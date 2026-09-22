@@ -17,6 +17,7 @@ import {
   ensureWorkspace,
   killWorkspace,
   workspaceName,
+  tmuxArgv,
 } from "../src/session.js";
 import { parseOpenFlags } from "../src/open.js";
 
@@ -168,7 +169,7 @@ describe.skipIf(!tmux)("workspace mouse settings against real tmux", () => {
   const session = workspaceName(room);
   const pane = (title: string) => ({ title, command: ["sh", "-c", "sleep 30"] });
   const option = (name: string) =>
-    `${spawnSync("tmux", ["show-options", "-t", session, name], { encoding: "utf8" }).stdout ?? ""}`.trim();
+    `${spawnSync(...tmuxArgv(["show-options", "-t", session, name]), { encoding: "utf8" }).stdout ?? ""}`.trim();
 
   afterEach(() => {
     if (tmux) killWorkspace(tmux, session);
@@ -183,7 +184,7 @@ describe.skipIf(!tmux)("workspace mouse settings against real tmux", () => {
   it("turns it on with a copy binding when asked", () => {
     ensureWorkspace(tmux!, session, process.cwd(), [pane("claude")], { mouse: true });
     expect(option("mouse")).toMatch(/mouse on/);
-    const bindings = `${spawnSync("tmux", ["list-keys", "-T", "copy-mode"], { encoding: "utf8" }).stdout ?? ""}`;
+    const bindings = `${spawnSync(...tmuxArgv(["list-keys", "-T", "copy-mode"]), { encoding: "utf8" }).stdout ?? ""}`;
     expect(bindings).toMatch(/MouseDragEnd1Pane.*copy-pipe-and-cancel/);
   });
 });

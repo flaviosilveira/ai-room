@@ -4,6 +4,13 @@ import * as z from "zod/v4";
 import { VERSION } from "./version.js";
 import { CONVENTION_PRESETS, TOOL_PRESETS } from "./presets.js";
 import {
+  MAX_INLINE_IMAGE_BYTES,
+  NATIVE_IMAGE_VIEWERS,
+  readStoredFile,
+} from "./attachments.js";
+import {
+  getAttachment,
+  participantHarness,
   roomCharter,
   roomHistory,
   roomIdle,
@@ -84,7 +91,7 @@ export function createAiRoomServer(
     "room_listen",
     {
       description:
-        "Non-blocking single drain of unread messages. This is what you call after being resumed from idle, and for a one-shot catch-up. Never poll it in a loop — each empty return costs a full model turn. To stay available with no cost, call room_idle.",
+        "Non-blocking single drain of unread messages. A message may list attachments (metadata only); open one with room_attachment when it matters to your work. This is what you call after being resumed from idle, and for a one-shot catch-up. Never poll it in a loop — each empty return costs a full model turn. To stay available with no cost, call room_idle.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),
@@ -250,6 +257,55 @@ export function createAiRoomServer(
         roster,
       });
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.registerTool(
+    "room_attachment",
+    {
+      description:
+        "Open one attachment of a room message, by the id listed in message.attachments. Messages only carry attachment metadata; call this only when the attachment matters to your work. Returns the metadata and the stored file's path, the text of a text file, and — when your harness cannot open images from a path, or when you pass inline: true — the image itself.",
+      inputSchema: {
+        room: z.string(),
+        agent: z.string(),
+        id: z.string(),
+        inline: z.boolean().optional().describe("Include the image in the result even if your harness can open the path itself."),
+        maxChars: z.number().int().positive().max(200_000).optional().default(20_000),
+      },
+    },
+    async ({ room, agent, id, inline, maxChars }) => {
+      const attachment = getAttachment(db, room, id);
+      const reply = (value: unknown) => ({ type: "text" as const, text: JSON.stringify(value) });
+      if (!attachment) return { content: [reply({ ok: false, error: `no attachment "${id}" in room "${room}"` })] };
+      if (!attachment.path) return { content: [reply({ ok: false, status: "purged", attachment })] };
+
+      const harness = participantHarness(db, room, agent) ?? "";
+      const image = attachment.mime.startsWith("image/");
+      const embed = image && (inline ?? !NATIVE_IMAGE_VIEWERS[harness]) && attachment.bytes <= MAX_INLINE_IMAGE_BYTES;
+      const howToView = image || attachment.mime === "application/pdf"
+        ? embed
+          ? "The image is included in this result."
+          : NATIVE_IMAGE_VIEWERS[harness] ?? "Open the path with your own file tool, or call again with inline: true."
+        : "The text is included in this result.";
+
+      try {
+        const bytes = readStoredFile(attachment.path);
+        const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [
+          reply({ ok: true, attachment, howToView }),
+        ];
+        if (!image && attachment.mime !== "application/pdf") {
+          const text = bytes.toString("utf8");
+          content.push({
+            type: "text",
+            text: text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated: ${text.length - maxChars} more chars]` : text,
+          });
+        } else if (embed) {
+          content.push({ type: "image", data: bytes.toString("base64"), mimeType: attachment.mime });
+        }
+        return { content };
+      } catch (error) {
+        return { content: [reply({ ok: false, error: error instanceof Error ? error.message : String(error) })] };
+      }
     }
   );
 

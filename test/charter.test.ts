@@ -2,7 +2,11 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
 import { roomBriefing, roomCharter, roomJoin, roomSetCharter, roomWho } from "../src/store.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { LAUNCHERS, invite, joinPrompt } from "../src/invite.js";
+import { missingTools, resolveConvention, resolveTool } from "../src/presets.js";
 
 describe("room charter", () => {
   let db: Database.Database;
@@ -125,5 +129,35 @@ describe("invite launcher", () => {
     const result = invite("r", "nonexistent-agent", {});
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/No launcher/);
+  });
+});
+
+describe("tool and convention presets", () => {
+  it("declares the grill skills, rtk and ponytail as usage guidance", () => {
+    for (const name of ["grill-me", "grill-with-docs", "rtk", "ponytail"]) {
+      expect(resolveTool(name).purpose).toBeTruthy();
+      expect(resolveTool(name).howToUse).toBeTruthy();
+    }
+  });
+
+  it("combines convention presets in the order given", () => {
+    const text = resolveConvention("caveman,ponytail")!;
+    expect(text.indexOf("caveman")).toBeLessThan(text.indexOf("laziest"));
+    expect(() => resolveConvention("caveman,nope")).toThrow(/Unknown convention preset "nope"/);
+  });
+
+  it("reports only the declared tools this machine lacks", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "airoom-tools-"));
+    try {
+      fs.mkdirSync(path.join(home, ".agents", "skills", "grill-me"), { recursive: true });
+      const missing = missingTools(["grill-me", "rtk", "graphify", "custom-tool"], {
+        home,
+        has: (bin) => bin === "graphify",
+      });
+      expect(missing.map((tool) => tool.name)).toEqual(["rtk"]);
+      expect(missing[0].install).toMatch(/rtk init/);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });

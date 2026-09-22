@@ -100,18 +100,27 @@ function partialSuffix(data: string, marker: string): number {
   return 0;
 }
 
+/** Ctrl+V as the terminal sends it in raw mode. */
+export const CTRL_V = "\u0016";
+
 /**
  * The stream readline reads from. Pastes never reach it: they are announced on
  * the returned stream as "paste" events, so one paste stays one thing instead
  * of becoming one message per line.
+ *
+ * Ctrl+V and an empty paste are announced as "clipboard": a terminal cannot
+ * deliver an image, and with only an image on the clipboard some terminals
+ * send an empty paste, so both mean "go read the clipboard".
  */
 export function createPasteStream(): Transform {
   const filter = new PasteFilter();
   return new Transform({
     transform(chunk, _encoding, done) {
       const { forward, pastes } = filter.feed(chunk.toString("utf8"));
-      for (const paste of pastes) this.emit("paste", paste);
-      done(null, forward);
+      for (const paste of pastes) this.emit(paste.length ? "paste" : "clipboard", paste);
+      const presses = forward.split(CTRL_V).length - 1;
+      for (let i = 0; i < presses; i += 1) this.emit("clipboard");
+      done(null, presses ? forward.split(CTRL_V).join("") : forward);
     },
   });
 }

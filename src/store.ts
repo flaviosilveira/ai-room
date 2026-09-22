@@ -1,5 +1,10 @@
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
 import type Database from "better-sqlite3";
+import { MAX_ATTACHMENTS_PER_MESSAGE, attachmentRoot, blobPath, displayName, storeBlob } from "./attachments.js";
 import { resolveConvention, resolveTool } from "./presets.js";
+import { PANE_WOKEN, harnessFor } from "./invite.js";
+import { paneForAgent, workspaceName } from "./session.js";
 import type {
   ActiveRoomInfo,
   WakeSpec,
@@ -8,6 +13,7 @@ import type {
   RosterEntry,
   ToolDeclaration,
   AgentStatus,
+  AttachmentInfo,
   MessageInfo,
   ParticipantInfo,
   RoomInfo,
@@ -189,19 +195,41 @@ export function roomSend(
      * claim it, which is what keeps `origin` trustworthy as an authority signal.
      */
     origin?: MessageInfo["origin"];
+    /** Uploaded to this room beforehand; they become part of this one message. */
+    attachmentIds?: string[];
   }
 ): MessageInfo {
   const origin = params.origin ?? "agent";
+  const attachmentIds = [...new Set(params.attachmentIds ?? [])];
+  if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    throw new Error(`at most ${MAX_ATTACHMENTS_PER_MESSAGE} attachments per message`);
+  }
   ensureRoom(db, params.room, false, "Call room_join first; room_send never creates a room, so a typo cannot silently fork the conversation.");
   ensureParticipant(db, params.room, params.agent, null);
 
   const now = Date.now();
-  const info = db
-    .prepare(
-      `INSERT INTO messages (room, agent, origin, content, created_at)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    .run(params.room, params.agent, origin, params.message, now);
+  // One message and its attachments land together or not at all: a reader
+  // must never see the text without the image it refers to.
+  const info = db.transaction(() => {
+    for (const id of attachmentIds) {
+      const found = db
+        .prepare(`SELECT 1 FROM attachments WHERE id = ? AND room = ? AND purged_at IS NULL`)
+        .get(id, params.room);
+      if (!found) throw new Error(`attachment "${id}" does not exist in room "${params.room}"`);
+    }
+    const inserted = db
+      .prepare(
+        `INSERT INTO messages (room, agent, origin, content, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(params.room, params.agent, origin, params.message, now);
+    attachmentIds.forEach((id, position) => {
+      db.prepare(
+        `INSERT INTO message_attachments (message_id, attachment_id, position) VALUES (?, ?, ?)`
+      ).run(inserted.lastInsertRowid, id, position);
+    });
+    return inserted;
+  })();
 
   db.prepare(`UPDATE participants SET last_seen_at = ? WHERE room = ? AND agent = ?`).run(
     now,
@@ -216,6 +244,7 @@ export function roomSend(
     origin,
     content: params.message,
     createdAt: now,
+    ...(attachmentIds.length ? { attachments: attachmentIds.map((id) => getAttachment(db, params.room, id)!) } : {}),
   };
 }
 
@@ -258,7 +287,7 @@ export function roomListen(
       `UPDATE participants SET last_seen_at = ? WHERE room = ? AND agent = ?`
     ).run(Date.now(), room, agent);
 
-    return rows;
+    return withAttachments(db, rows);
   });
 
   return listen(params.room, params.agent);
@@ -351,7 +380,150 @@ export function roomHistory(
     )
     .all(...args) as MessageInfo[];
 
-  return rows;
+  return withAttachments(db, rows);
+}
+
+/* ----------------------------------------------------------- attachments */
+
+interface AttachmentRow {
+  id: string;
+  sha256: string;
+  ext: string;
+  name: string;
+  mime: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  createdAt: number;
+  purgedAt: number | null;
+}
+
+const ATTACHMENT_COLUMNS = `a.id, a.sha256, a.ext, a.name, a.mime, a.bytes, a.width, a.height,
+       a.created_at as createdAt, a.purged_at as purgedAt`;
+
+function toAttachment(row: AttachmentRow): AttachmentInfo {
+  return {
+    id: row.id,
+    name: row.name,
+    mime: row.mime,
+    bytes: row.bytes,
+    width: row.width,
+    height: row.height,
+    path: row.purgedAt ? null : blobPath(row.sha256, row.ext),
+    createdAt: row.createdAt,
+  };
+}
+
+function withAttachments(db: Database.Database, messages: MessageInfo[]): MessageInfo[] {
+  if (!messages.length) return messages;
+  const ids = messages.map((m) => m.id);
+  const rows = db
+    .prepare(
+      `SELECT ma.message_id as messageId, ${ATTACHMENT_COLUMNS}
+       FROM message_attachments ma JOIN attachments a ON a.id = ma.attachment_id
+       WHERE ma.message_id IN (${ids.map(() => "?").join(",")})
+       ORDER BY ma.message_id, ma.position`
+    )
+    .all(...ids) as (AttachmentRow & { messageId: number })[];
+  if (!rows.length) return messages;
+  const byMessage = new Map<number, AttachmentInfo[]>();
+  for (const row of rows) {
+    const list = byMessage.get(row.messageId) ?? [];
+    list.push(toAttachment(row));
+    byMessage.set(row.messageId, list);
+  }
+  return messages.map((m) => (byMessage.has(m.id) ? { ...m, attachments: byMessage.get(m.id) } : m));
+}
+
+/** Stores the bytes and registers them in the room, not yet part of any message. */
+export function createAttachment(
+  db: Database.Database,
+  params: { room: string; bytes: Buffer; name?: string }
+): AttachmentInfo {
+  ensureRoom(db, params.room, false);
+  const blob = storeBlob(params.bytes, params.name, attachmentRoot());
+  const id = `att_${randomBytes(8).toString("hex")}`;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO attachments (id, room, sha256, mime, ext, bytes, width, height, name, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    params.room,
+    blob.sha256,
+    blob.mime,
+    blob.ext,
+    blob.bytes,
+    blob.width,
+    blob.height,
+    displayName(params.name, `${blob.kind}.${blob.ext}`),
+    now
+  );
+  return getAttachment(db, params.room, id)!;
+}
+
+/** Scoped to the room: an id from another room reads as nonexistent. */
+export function getAttachment(db: Database.Database, room: string, id: string): AttachmentInfo | null {
+  const row = db
+    .prepare(`SELECT ${ATTACHMENT_COLUMNS} FROM attachments a WHERE a.id = ? AND a.room = ?`)
+    .get(id, room) as AttachmentRow | undefined;
+  return row ? toAttachment(row) : null;
+}
+
+function deleteUnreferencedBlob(db: Database.Database, sha256: string, ext: string): void {
+  const alive = db
+    .prepare(`SELECT 1 FROM attachments WHERE sha256 = ? AND purged_at IS NULL`)
+    .get(sha256);
+  if (!alive) fs.rmSync(blobPath(sha256, ext), { force: true });
+}
+
+/**
+ * Uploads the console staged and never sent. They belong to no message, so
+ * nothing will ever point at them.
+ */
+export function collectOrphanAttachments(db: Database.Database, olderThanMs = 60 * 60 * 1000): number {
+  const cutoff = Date.now() - olderThanMs;
+  const orphans = db
+    .prepare(
+      `SELECT id, sha256, ext FROM attachments a
+       WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM message_attachments ma WHERE ma.attachment_id = a.id)`
+    )
+    .all(cutoff) as { id: string; sha256: string; ext: string }[];
+  for (const orphan of orphans) {
+    db.prepare(`DELETE FROM attachments WHERE id = ?`).run(orphan.id);
+    deleteUnreferencedBlob(db, orphan.sha256, orphan.ext);
+  }
+  return orphans.length;
+}
+
+/**
+ * Frees the files of old attachments while the messages keep their metadata,
+ * so history still says what was sent and the tool answers "purged" instead
+ * of pointing at a file that is gone.
+ */
+export function pruneAttachments(
+  db: Database.Database,
+  params: { olderThanMs: number; room?: string }
+): number {
+  const cutoff = Date.now() - params.olderThanMs;
+  const rows = db
+    .prepare(
+      `SELECT id, sha256, ext FROM attachments
+       WHERE purged_at IS NULL AND created_at < ? ${params.room ? "AND room = ?" : ""}`
+    )
+    .all(...(params.room ? [cutoff, params.room] : [cutoff])) as { id: string; sha256: string; ext: string }[];
+  const now = Date.now();
+  for (const row of rows) {
+    db.prepare(`UPDATE attachments SET purged_at = ? WHERE id = ?`).run(now, row.id);
+    deleteUnreferencedBlob(db, row.sha256, row.ext);
+  }
+  return rows.length;
+}
+
+export function participantHarness(db: Database.Database, room: string, agent: string): string | null {
+  const participant = getParticipant(db, room, agent);
+  if (!participant) return null;
+  return participant.harness ?? harnessFor(participant.agent);
 }
 
 /**
@@ -365,6 +537,13 @@ export function roomHistory(
  * anything by itself. It registers how it can be resumed first; without that
  * target there is nothing to wake and idle would be indistinguishable from gone.
  */
+/** Only for an agent that really has a pane: an agent outside the workspace would sleep behind a route to nowhere. */
+function paneWake(room: string, participant: ParticipantInfo): WakeSpec | null {
+  if (!PANE_WOKEN.has(participant.harness ?? harnessFor(participant.agent))) return null;
+  const session = workspaceName(room);
+  return paneForAgent(session, participant.agent) ? { kind: "tmux-pane", id: session } : null;
+}
+
 export function roomIdle(
   db: Database.Database,
   params: { room: string; agent: string; wake?: WakeSpec; detail?: string | null }
@@ -374,9 +553,11 @@ export function roomIdle(
   if (!existing) {
     throw new Error(`Agent "${params.agent}" has not joined room "${params.room}".`);
   }
-  // The launcher registers how a pane-hosted agent is reached, so most agents
-  // have a way back already. Without one, going idle would be going away.
-  const wake = params.wake ?? existing.wake;
+  // A pane-hosted harness is reached through the workspace pane tagged with
+  // its name, and that workspace's name follows from the room alone. Waiting
+  // for the launcher to register it held `open` until every agent had joined.
+  // Without any way back, going idle would be going away.
+  const wake = params.wake ?? existing.wake ?? paneWake(params.room, existing);
   if (!wake) {
     throw new Error(
       `No way to resume "${params.agent}" in "${params.room}": pass a wake target, ` +

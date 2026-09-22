@@ -143,6 +143,39 @@ export function monitorCommand(room: string): string[] {
   return [process.execPath, cli, "console", room];
 }
 
+/**
+ * The file browser for the workspace's "files" tab: the first one installed,
+ * with vim's own netrw tree as the fallback every machine already has.
+ * `AI_ROOM_FILES` names any other command, run through the shell.
+ */
+const FILE_BROWSERS: { bin: string; args: string[] }[] = [
+  { bin: "yazi", args: [] },
+  { bin: "broot", args: [] },
+  { bin: "lf", args: [] },
+  { bin: "ranger", args: [] },
+  { bin: "nnn", args: [] },
+  // netrw as a NERDTree-style sidebar: the tree on the left, the file opened
+  // (Enter, or a click with --mouse) in the window beside it.
+  ...["nvim", "vim"].map((bin) => ({
+    bin,
+    args: [
+      "-c",
+      "let g:netrw_liststyle = 3 | let g:netrw_banner = 0 | let g:netrw_browse_split = 4 | let g:netrw_altv = 1 | let g:netrw_winsize = 25 | set mouse=a",
+      "-c",
+      "Lexplore",
+    ],
+  })),
+];
+
+export function filesCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  has: (bin: string) => boolean = onPath
+): string[] | null {
+  if (env.AI_ROOM_FILES) return ["sh", "-c", env.AI_ROOM_FILES];
+  const browser = FILE_BROWSERS.find((candidate) => has(candidate.bin));
+  return browser ? [browser.bin, ...browser.args] : null;
+}
+
 export function logDir(): string {
   return process.env.AI_ROOM_LOG_DIR || path.join(os.homedir(), ".ai-room", "logs");
 }
@@ -263,7 +296,7 @@ export interface WorkspacePlan {
 export function planWorkspace(
   room: string,
   agents: string[],
-  options: { monitor?: boolean; monitorCommand?: string[] } = {}
+  options: { monitor?: boolean; monitorCommand?: string[]; files?: boolean; filesCommand?: string[] | null } = {}
 ): WorkspacePlan {
   const panes: PaneSpec[] = [];
   const missing: string[] = [];
@@ -286,13 +319,25 @@ export function planWorkspace(
     });
   }
 
+  if (options.files !== false) {
+    const command = options.filesCommand !== undefined ? options.filesCommand : filesCommand();
+    if (command) panes.push({ title: "files", command, window: "files" });
+  }
+
   return { agents: launched, missing, panes };
 }
 
 export function openWorkspace(
   room: string,
   agents: string[],
-  options: { cwd?: string; monitorCommand?: string[]; monitor?: boolean; mouse?: boolean } = {}
+  options: {
+    cwd?: string;
+    monitorCommand?: string[];
+    monitor?: boolean;
+    files?: boolean;
+    mouse?: boolean;
+    size?: { columns: number; rows: number };
+  } = {}
 ): { plan: WorkspacePlan; result: WorkspaceResult } {
   const driver = detectMultiplexer("tmux");
   if (!driver) throw new Error(`tmux is required for the pane workspace. ${INSTALL_HINT}`);
@@ -302,7 +347,7 @@ export function openWorkspace(
     workspaceName(room),
     options.cwd ?? process.cwd(),
     plan.panes,
-    { mouse: options.mouse }
+    { mouse: options.mouse, room, size: options.size }
   );
   return { plan, result };
 }

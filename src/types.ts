@@ -50,6 +50,18 @@ export interface ParticipantInfo {
   wakeError: string | null;
 }
 
+export interface AttachmentInfo {
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  /** Absolute path of the stored file; null once pruned. */
+  path: string | null;
+  createdAt: number;
+}
+
 export interface MessageInfo {
   id: number;
   room: string;
@@ -57,6 +69,8 @@ export interface MessageInfo {
   origin: "agent" | "human" | "system";
   content: string;
   createdAt: number;
+  /** Present only when the message has attachments, so older readers see what they always did. */
+  attachments?: AttachmentInfo[];
 }
 
 /**

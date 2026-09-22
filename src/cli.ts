@@ -1,32 +1,35 @@
 import readline from "node:readline/promises";
 import { openDb, defaultDbPath } from "./db/index.js";
 import { VERSION } from "./version.js";
-import { createHttpApp } from "./http.js";
 import {
   roomCharter,
   roomExists,
-  setWakeTarget,
   roomHistory,
+  pruneAttachments,
   roomJoin,
   roomList,
   roomMessageCount,
   roomSetCharter,
   roomWho,
 } from "./store.js";
-import { PANE_WOKEN, closeRoom, harnessFor, invite, openWorkspace, planWorkspace } from "./invite.js";
-import { runConsole } from "./console.js";
+import { closeRoom, harnessFor, invite, openWorkspace, planWorkspace } from "./invite.js";
 import {
   INSTALL_HINT,
   attachWorkspace,
   canAttach,
   detectMultiplexer,
-  insideMultiplexer,
+  insideWorkspaceServer,
   liveSessions,
+  mux,
+  paneMenuArgv,
+  paneStates,
   sessionExists,
+  setPaneVisible,
   sessionName,
   workspaceName,
 } from "./session.js";
 import { TOOL_CATALOG } from "./catalog.js";
+import { missingTools } from "./presets.js";
 import {
   agentsToLaunch,
   charterPatch,
@@ -35,8 +38,6 @@ import {
   reuseVerdict,
 } from "./open.js";
 import { hookSnippet, hookStatus } from "./hooks.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const DEFAULT_PORT = 49375;
 
@@ -45,7 +46,10 @@ function port(): number {
   return raw ? Number(raw) : DEFAULT_PORT;
 }
 
-function serve(): void {
+async function serve(): Promise<void> {
+  // Loaded here, not at the top: express and the MCP SDK are most of the
+  // start-up time, and every other command runs without them.
+  const { createHttpApp } = await import("./http.js");
   const db = openDb();
   const app = createHttpApp(db);
   const p = port();
@@ -101,6 +105,8 @@ async function status(asJson = false): Promise<void> {
   console.log(`multiplexer: ${report.multiplexer ?? "none"}`);
   console.log(`mcp tools: ${TOOL_CATALOG.length} (ai-room tools --json)`);
 
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
   const client = new Client({ name: "ai-room-status", version: VERSION });
   try {
     await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
@@ -164,8 +170,8 @@ async function confirmReuse(room: string, messages: number): Promise<boolean> {
 async function open(room: string, argv: string[]): Promise<void> {
   if (!room) {
     console.error(
-      'usage: ai-room open <room> [--brief "..."] [--convention caveman] [--tool graphify]\n' +
-        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--mouse] [--detached] [--dry-run]"
+      'usage: ai-room open <room> [--brief "..."] [--convention caveman|ponytail] [--tool graphify,rtk,grill-me]\n' +
+        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--mouse] [--no-files] [--detached] [--dry-run]"
     );
     process.exit(1);
   }
@@ -209,6 +215,10 @@ async function open(room: string, argv: string[]): Promise<void> {
   console.log(`tools: ${charter.tools.map((t) => t.name).join(", ") || "(none)"}`);
   console.log(`roster: ${charter.roster.map((r) => r.role ? `${r.agent} (${r.role})` : r.agent).join(", ") || "(none)"}`);
 
+  for (const tool of missingTools(charter.tools.map((t) => t.name))) {
+    console.log(`tool ${tool.name} is not installed here; agents will skip it. install: ${tool.install}`);
+  }
+
   const agents = agentsToLaunch(flags, charter.roster);
 
   console.log("");
@@ -217,7 +227,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   const useWorkspace = !flags.detached && Boolean(tmux);
 
   if (flags.dryRun) {
-    const plan = planWorkspace(room, agents, { monitor: flags.monitor });
+    const plan = planWorkspace(room, agents, { monitor: flags.monitor, files: flags.files });
     console.log(`mode: ${useWorkspace ? "tmux workspace" : flags.detached ? "detached" : "detached (no tmux)"}`);
     for (const pane of plan.panes) {
       console.log(`  ${pane.title}: ${pane.command.join(" ")}`);
@@ -231,7 +241,11 @@ async function open(room: string, argv: string[]): Promise<void> {
     try {
       const { plan, result } = openWorkspace(room, agents, {
         monitor: flags.monitor,
+        files: flags.files,
         mouse: flags.mouse,
+        size: process.stdout.isTTY
+          ? { columns: process.stdout.columns, rows: Math.max(10, process.stdout.rows - 1) }
+          : undefined,
       });
       if (plan.missing.length) {
         console.error(`not on PATH, skipped: ${plan.missing.join(", ")}`);
@@ -245,20 +259,21 @@ async function open(room: string, argv: string[]): Promise<void> {
       );
       if (result.skipped.length) console.log(`already running: ${result.skipped.join(", ")}`);
 
-      await reportJoins(db, room, plan.agents);
-
       if (!sessionExists(tmux!, result.session)) {
         console.log("nothing to attach to: no agent was launched and no workspace exists.");
         return;
       }
       // A piped or non-interactive run has no terminal to hand over, so it
-      // prints the command instead of failing inside tmux.
+      // waits for the joins and reports them instead. Interactively the human
+      // goes straight in: agents take tens of seconds to boot, and the monitor
+      // pane shows each one arrive.
       if (!canAttach()) {
+        await reportJoins(db, room, plan.agents);
         console.log(`\nattach with:  ${result.attachWith}`);
         return;
       }
       const attached = attachWorkspace(tmux!, result.session, {
-        insideMultiplexer: insideMultiplexer(),
+        insideMultiplexer: insideWorkspaceServer(),
       });
       if (!attached.ok) {
         console.error(`attach failed: ${attached.error}`);
@@ -337,16 +352,6 @@ async function reportJoins(db: ReturnType<typeof openDb>, room: string, agents: 
   for (const report of reports) {
     const seconds = (report.waitedMs / 1000).toFixed(0);
     if (report.state === "joined") {
-      // A TUI harness cannot hand a message to its own running session, so the
-      // way back to it is the pane it lives in — and only the launcher knows
-      // which pane that is.
-      if (PANE_WOKEN.has(report.harness)) {
-        setWakeTarget(db, {
-          room,
-          agent: report.agent,
-          wake: { kind: "tmux-pane", id: workspaceName(room) },
-        });
-      }
       console.log(`${report.agent} (${report.harness}): joined in ${seconds}s`);
     } else {
       console.error(`${report.agent} (${report.harness}): ${report.state} after ${seconds}s`);
@@ -371,6 +376,57 @@ function close(room: string): void {
     console.log(agent ? `closed ${agent} session ${session}.` : `closed workspace ${session}.`);
   }
   console.log(`the room, its charter and its history are untouched.`);
+}
+
+function parseDuration(value: string): number | null {
+  const match = /^(\d+)(m|h|d)$/.exec(value.trim());
+  if (!match) return null;
+  return Number(match[1]) * { m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2] as "m" | "h" | "d"];
+}
+
+/** Frees attachment files; history keeps saying what was sent. */
+function attachments(argv: string[]): void {
+  const [action, ...rest] = argv;
+  const flag = (name: string) => {
+    const i = rest.indexOf(name);
+    return i === -1 ? undefined : rest[i + 1];
+  };
+  const olderThan = parseDuration(flag("--older-than") ?? "30d");
+  if (action !== "prune" || olderThan === null) {
+    console.error("usage: ai-room attachments prune [--older-than 30d] [--room <room>]");
+    process.exit(1);
+  }
+  const pruned = pruneAttachments(openDb(), { olderThanMs: olderThan, room: flag("--room") });
+  console.log(`pruned ${pruned} attachment(s). the messages keep their metadata.`);
+}
+
+const PANE_MODES = new Set(["show", "hide", "toggle"]);
+
+/**
+ * Shows or hides one pane of a workspace without stopping what runs in it.
+ * `_pane` takes the tmux session straight from a key binding; `pane` is the
+ * same thing addressed by room, for a human at a shell.
+ */
+function pane(session: string, agent: string, mode = "toggle"): void {
+  const tmux = detectMultiplexer("tmux");
+  if (!session || !agent || !PANE_MODES.has(mode) || !tmux) {
+    console.error("usage: ai-room pane <room> <agent|monitor|files> [show|hide|toggle]");
+    process.exit(1);
+  }
+  const result = setPaneVisible(tmux, session, agent, mode as "show" | "hide" | "toggle");
+  if (!result.ok) {
+    console.error(result.error);
+    process.exitCode = 1;
+  } else if (process.stdout.isTTY) {
+    console.log(`${agent}: ${result.hidden ? "hidden" : "shown"}`);
+  }
+}
+
+function paneMenu(session: string, client: string): void {
+  const tmux = detectMultiplexer("tmux");
+  if (!tmux || !session || !client) process.exit(1);
+  const states = paneStates(tmux, session);
+  if (states.length) mux(tmux, paneMenuArgv(session, client, states));
 }
 
 function tools(json: boolean): void {
@@ -431,7 +487,7 @@ const [, , cmd, arg] = process.argv;
 
 switch (cmd) {
   case "serve":
-    serve();
+    await serve();
     break;
   case "status":
     await status(process.argv.includes("--json"));
@@ -453,13 +509,25 @@ switch (cmd) {
       console.error("usage: ai-room console <room>");
       process.exit(1);
     }
-    await runConsole(arg, { baseUrl: `http://127.0.0.1:${port()}` });
+    await (await import("./console.js")).runConsole(arg, { baseUrl: `http://127.0.0.1:${port()}` });
     break;
   case "agents":
     agents(arg);
     break;
   case "close":
     close(arg);
+    break;
+  case "pane":
+    pane(arg ? workspaceName(arg) : "", process.argv[4], process.argv[5]);
+    break;
+  case "_pane":
+    pane(arg, process.argv[4], process.argv[5]);
+    break;
+  case "_pane-menu":
+    paneMenu(arg, process.argv[4]);
+    break;
+  case "attachments":
+    attachments(process.argv.slice(3));
     break;
   case "hooks":
     hooks(process.argv.includes("--json"));
@@ -470,8 +538,8 @@ switch (cmd) {
   default:
     console.error(
       "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
-        "console <room>|open <room> [flags]|close <room>|agents <room>|" +
-        "rooms [query]|messages <room>|who <room>>"
+        "console <room>|open <room> [flags]|close <room>|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
+        "rooms [query]|messages <room>|who <room>|attachments prune [--older-than 30d]>"
     );
     process.exit(1);
 }

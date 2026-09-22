@@ -64,6 +64,29 @@ function migrate(db: Database.Database): void {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS attachments (
+      id TEXT PRIMARY KEY,
+      room TEXT NOT NULL REFERENCES rooms(name),
+      sha256 TEXT NOT NULL,
+      mime TEXT NOT NULL,
+      ext TEXT NOT NULL,
+      bytes INTEGER NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      purged_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_attachments_sha ON attachments(sha256);
+
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      message_id INTEGER NOT NULL REFERENCES messages(id),
+      attachment_id TEXT NOT NULL REFERENCES attachments(id),
+      position INTEGER NOT NULL,
+      PRIMARY KEY (message_id, position)
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_attachments_attachment ON message_attachments(attachment_id);
+
     CREATE TABLE IF NOT EXISTS cursors (
       room TEXT NOT NULL REFERENCES rooms(name),
       agent TEXT NOT NULL,

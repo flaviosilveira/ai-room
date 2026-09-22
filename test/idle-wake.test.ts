@@ -35,6 +35,7 @@ import {
   killWorkspace,
   paneForAgent,
   workspaceName,
+  tmuxArgv,
 } from "../src/session.js";
 
 const CODEX_WAKE = { kind: "codex-queue" as const, id: "00000000-1111-2222-3333-444444444444" };
@@ -704,7 +705,7 @@ describe.skipIf(!detectMultiplexer("tmux"))("waking the pane a TUI harness lives
     roomSend(db, { room, agent: "codex", message: "agora" });
 
     const paneId = paneForAgent(session, "claude")!;
-    spawnSync("tmux", ["copy-mode", "-t", paneId]);
+    spawnSync(...tmuxArgv(["copy-mode", "-t", paneId]));
     const attempts = new WakeService().wakeRoom(db, room);
     expect(attempts[0].ok).toBe(false);
     expect(attempts[0].error).toMatch(/copy-mode/);

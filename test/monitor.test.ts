@@ -29,12 +29,13 @@ import {
   sessionExists,
   workspaceName,
   workspacePanes,
+  tmuxArgv,
 } from "../src/session.js";
 
 const plain = (value: string) => value.replace(/\x1b\[[0-9;]*m/g, "");
 
 const spawnSyncTmux = (args: string[]): string =>
-  `${spawnSync("tmux", args, { encoding: "utf8" }).stdout ?? ""}`.trim();
+  `${spawnSync(...tmuxArgv(args), { encoding: "utf8" }).stdout ?? ""}`.trim();
 
 describe("monitor shows only what the server can observe", () => {
   let db: Database.Database;

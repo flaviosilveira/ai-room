@@ -9,10 +9,12 @@ import {
   detachWorkspace,
   detectMultiplexer,
   focusPane,
-  insideMultiplexer,
+  insideWorkspaceServer,
   liveSessions,
+  paneStates,
   sessionExists,
   sessionName,
+  setPaneVisible,
   workspaceName,
 } from "./session.js";
 import { closeRoom } from "./invite.js";
@@ -22,8 +24,10 @@ import {
   ENABLE_BRACKETED_PASTE,
   createPasteStream,
 } from "./paste.js";
+import { formatBytes } from "./attachments.js";
+import { pastedFilePath, readAttachableFile, readClipboard } from "./clipboard.js";
 import type { MultiplexerDriver } from "./session.js";
-import type { MessageInfo, ParticipantView } from "./types.js";
+import type { AttachmentInfo, MessageInfo, ParticipantView } from "./types.js";
 
 const C = {
   reset: "\x1b[0m",
@@ -60,10 +64,16 @@ function emit(rl: readline.Interface, line: string): void {
   rl.prompt(true);
 }
 
+export function attachmentChip(a: Pick<AttachmentInfo, "name" | "mime" | "bytes">): string {
+  const kind = a.mime.startsWith("image/") ? "img" : a.mime === "application/pdf" ? "pdf" : "file";
+  return `[${kind} ${a.name} ${formatBytes(a.bytes)}]`;
+}
+
 function renderMessage(m: MessageInfo): string {
   const color = m.origin === "human" ? C.human : m.origin === "system" ? C.system : C.agent;
   const who = m.origin === "human" ? `${m.agent} (você)` : m.agent;
-  return `${C.dim}${stamp(m.createdAt)}${C.reset} ${color}${C.bold}${who}${C.reset}  ${m.content}`;
+  const chips = m.attachments?.length ? ` ${C.warn}${m.attachments.map(attachmentChip).join(" ")}${C.reset}` : "";
+  return `${C.dim}${stamp(m.createdAt)}${C.reset} ${color}${C.bold}${who}${C.reset}  ${m.content}${chips}`;
 }
 
 function age(ms: number): string {
@@ -123,17 +133,23 @@ function needsAttention(participants: ParticipantView[]): ParticipantView[] {
   );
 }
 
-/** tmux binds detach to lowercase `d`; `Ctrl-b D` is choose-client and looks like nothing happened. */
-export const DETACH_KEYS = "Ctrl-b d (tmux) · Ctrl-a d (screen)";
+/** The workspace's own tmux server binds all of these; screen keeps its default. */
+export const DETACH_KEYS = "F12 · Ctrl-b d · Ctrl-b Ctrl-d (tmux) · Ctrl-a d (screen)";
 
 export const HELP = `
 ${C.bold}Comandos${C.reset}
   ${C.bold}/attach <agente>${C.reset}   foca o pane do agente (volta com ${DETACH_KEYS})
   ${C.bold}/agents${C.reset}            lista panes e sessões vivas da sala
   ${C.bold}/who${C.reset}               participantes: idle/working/wait(live) e não lidas
+  ${C.bold}/panes${C.reset}             panes do workspace e quais estão visíveis
+  ${C.bold}/hide <pane>${C.reset}       esconde um pane (agente, monitor ou files) sem pará-lo
+  ${C.bold}/show <pane>${C.reset}       mostra de novo um pane escondido
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
   ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
-  ${C.bold}/show${C.reset}              mostra o que está colado no rascunho
+  ${C.bold}/paste${C.reset}             anexa a imagem do clipboard (o mesmo que Ctrl+V)
+  ${C.bold}/file <caminho>${C.reset}    anexa um arquivo (imagem, pdf ou texto)
+  ${C.bold}/drop <n>${C.reset}          remove o anexo n do rascunho
+  ${C.bold}/show${C.reset}              mostra o que está colado e anexado no rascunho
   ${C.bold}/clear${C.reset}             descarta o rascunho
   ${C.bold}/help${C.reset}              esta ajuda
   ${C.bold}/quit${C.reset}              sai do console (os agentes continuam rodando)
@@ -148,6 +164,30 @@ Qualquer outra linha é enviada à sala como mensagem sua.
  */
 export class Composer {
   private readonly pastes: string[] = [];
+  private readonly files: AttachmentInfo[] = [];
+
+  attach(attachment: AttachmentInfo): void {
+    this.files.push(attachment);
+  }
+
+  get attachments(): readonly AttachmentInfo[] {
+    return this.files;
+  }
+
+  /** 1-based, as the draft line shows it. */
+  drop(position: number): AttachmentInfo | null {
+    if (!Number.isInteger(position) || position < 1 || position > this.files.length) return null;
+    return this.files.splice(position - 1, 1)[0];
+  }
+
+  /** The draft line shown above the prompt while anything is attached. */
+  draftLine(): string {
+    return this.files.map((file, i) => `[${i + 1}] ${attachmentChip(file).slice(1, -1)}`).join(" · ");
+  }
+
+  get empty(): boolean {
+    return this.pastes.length === 0 && this.files.length === 0;
+  }
 
   stage(paste: string): void {
     // A paste usually ends with the newline that closed its last line; keeping
@@ -171,6 +211,7 @@ export class Composer {
 
   clear(): void {
     this.pastes.length = 0;
+    this.files.length = 0;
   }
 
   /** Typed line plus everything staged, as a single message. */
@@ -179,9 +220,15 @@ export class Composer {
   }
 
   take(typed: string): string {
+    return this.takeAll(typed).message;
+  }
+
+  /** Everything in the draft, as the one message Enter sends. */
+  takeAll(typed: string): { message: string; attachmentIds: string[] } {
     const message = this.compose(typed);
+    const attachmentIds = this.files.map((file) => file.id);
     this.clear();
-    return message;
+    return { message, attachmentIds };
   }
 }
 
@@ -272,7 +319,7 @@ export async function runConsole(
   console.log(
     `${C.dim}multiplexador: ${driver?.name ?? `nenhum (${INSTALL_HINT})`} · /help para comandos${C.reset}`
   );
-  console.log(`${C.dim}detach: ${DETACH_KEYS} ou /detach · encerrar a sala: /close sim${C.reset}\n`);
+  console.log(`${C.dim}detach: ${DETACH_KEYS} ou /detach · encerrar a sala: Ctrl-b X ou /close sim${C.reset}\n`);
 
   const workspace = workspaceName(room);
 
@@ -310,7 +357,7 @@ export async function runConsole(
         emit(rl, `${C.warn}não foi possível focar ${agent}: ${focused.error}${C.reset}`);
         return;
       }
-      if (insideMultiplexer()) {
+      if (insideWorkspaceServer()) {
         emit(rl, `${C.dim}foco no pane de ${agent}. volte com ${DETACH_KEYS.split(" ·")[0]}.${C.reset}`);
         return;
       }
@@ -328,7 +375,7 @@ export async function runConsole(
     }
     const { session } = target;
     handOver(agent, () => {
-      spawnSync(driver.name, driver.name === "tmux" ? ["attach", "-t", session] : ["-r", session], {
+      spawnSync(driver.bin(), [...driver.base(), ...(driver.name === "tmux" ? ["attach", "-t", session] : ["-r", session])], {
         stdio: "inherit",
       });
     });
@@ -383,12 +430,12 @@ export async function runConsole(
     emit(rl, lines.join("\n") || `${C.dim}nada vivo nesta sala.${C.reset}`);
   };
 
-  const say = async (text: string) => {
+  const say = async (draft: { message: string; attachmentIds: string[] }) => {
     try {
       const response = await fetch(`${options.baseUrl}/say`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room, agent: me, message: text }),
+        body: JSON.stringify({ room, agent: me, message: draft.message, attachmentIds: draft.attachmentIds }),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -399,8 +446,51 @@ export async function runConsole(
     }
   };
 
+  // Uploaded as soon as it is staged, so a bad file is refused while the
+  // human is still composing; Enter then only ties the ids to the message.
+  const upload = async (bytes: Buffer, name: string) => {
+    try {
+      const response = await fetch(
+        `${options.baseUrl}/attachments?room=${encodeURIComponent(room)}&name=${encodeURIComponent(name)}`,
+        { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(bytes) }
+      );
+      const body = (await response.json().catch(() => ({}))) as { attachment?: AttachmentInfo; error?: string };
+      if (!response.ok || !body.attachment) {
+        emit(rl, `${C.warn}anexo recusado: ${body.error ?? response.status}${C.reset}`);
+        return;
+      }
+      composer.attach(body.attachment);
+      emit(rl, `${C.dim}anexos: ${composer.draftLine()} — Enter envia, /drop n remove${C.reset}`);
+    } catch (error) {
+      emit(rl, `${C.warn}servidor inacessível: ${error instanceof Error ? error.message : error}${C.reset}`);
+    }
+  };
+
+  const attachFile = (file: string) => {
+    try {
+      const { bytes, name } = readAttachableFile(file);
+      void upload(bytes, name);
+    } catch (error) {
+      emit(rl, `${C.warn}não foi possível anexar: ${error instanceof Error ? error.message : error}${C.reset}`);
+    }
+  };
+
+  const attachClipboard = () => {
+    const clip = readClipboard();
+    if (clip.kind === "image") void upload(clip.bytes, clip.name);
+    else if (clip.kind === "file") attachFile(clip.path);
+    else emit(rl, `${C.dim}${clip.reason}${C.reset}`);
+  };
+
+  pasteStream?.on("clipboard", attachClipboard);
+
   pasteStream?.on("paste", (paste: string) => {
     if (!paste.trim()) return;
+    const dropped = pastedFilePath(paste);
+    if (dropped) {
+      attachFile(dropped);
+      return;
+    }
     composer.stage(paste);
     emit(
       rl,
@@ -479,7 +569,7 @@ export async function runConsole(
     const text = line.trim();
     // Enter with something staged sends it, even with nothing typed. Enter on
     // an empty prompt with nothing staged still does nothing, as before.
-    if (!text && composer.pending === 0) return rl.prompt();
+    if (!text && composer.empty) return rl.prompt();
 
     if (text.startsWith("/")) {
       const [cmd, ...rest] = text.slice(1).split(/\s+/);
@@ -500,22 +590,62 @@ export async function runConsole(
             })
             .catch(() => emit(rl, `${C.warn}servidor inacessível${C.reset}`));
           break;
+        case "panes":
+        case "hide":
+        case "show": {
+          if (!driver || driver.name !== "tmux" || !sessionExists(driver, workspace)) {
+            emit(rl, `${C.warn}sem workspace tmux para esta sala.${C.reset}`);
+            break;
+          }
+          if (cmd === "panes") {
+            const states = paneStates(driver, workspace);
+            emit(rl, states.map((p) => `${p.hidden ? C.dim + "[ ]" : "[x]"} ${p.agent}${C.reset}`).join("  ") || `${C.dim}nenhum pane.${C.reset}`);
+            break;
+          }
+          if (!rest[0]) {
+            emit(rl, `${C.warn}uso: /${cmd} <pane>${C.reset}`);
+            break;
+          }
+          const result = setPaneVisible(driver, workspace, rest[0], cmd);
+          emit(rl, result.ok ? `${C.dim}${rest[0]}: ${result.hidden ? "escondido" : "visível"}${C.reset}` : `${C.warn}${result.error}${C.reset}`);
+          break;
+        }
         case "detach":
           detach();
           break;
         case "close":
           close(rest);
           break;
+        case "paste":
+          attachClipboard();
+          break;
+        case "file":
+          if (!rest.length) emit(rl, `${C.warn}uso: /file <caminho>${C.reset}`);
+          else attachFile(text.slice(text.indexOf(" ") + 1).trim());
+          break;
+        case "drop": {
+          const dropped = composer.drop(Number(rest[0]));
+          emit(
+            rl,
+            dropped
+              ? `${C.dim}removido: ${dropped.name}${composer.attachments.length ? ` · anexos: ${composer.draftLine()}` : ""}${C.reset}`
+              : `${C.warn}uso: /drop <n> — anexos: ${composer.draftLine() || "nenhum"}${C.reset}`
+          );
+          break;
+        }
         case "show":
           emit(
             rl,
-            composer.pending
-              ? `${C.dim}rascunho (${composer.pending} colagem(ns)):${C.reset}\n${composer.staged()}`
-              : `${C.dim}nada colado no rascunho.${C.reset}`
+            composer.empty
+              ? `${C.dim}nada colado nem anexado no rascunho.${C.reset}`
+              : [
+                  composer.pending ? `${C.dim}rascunho (${composer.pending} colagem(ns)):${C.reset}\n${composer.staged()}` : "",
+                  composer.attachments.length ? `${C.dim}anexos:${C.reset} ${composer.draftLine()}` : "",
+                ].filter(Boolean).join("\n")
           );
           break;
         case "clear":
-          if (composer.pending) {
+          if (!composer.empty) {
             composer.clear();
             emit(rl, `${C.dim}rascunho descartado.${C.reset}`);
           } else emit(rl, `${C.dim}nada para descartar.${C.reset}`);
@@ -534,7 +664,7 @@ export async function runConsole(
     }
 
     // One message, whatever it is made of: typed text, pasted blocks, or both.
-    void say(composer.take(text));
+    void say(composer.takeAll(text));
     rl.prompt();
   });
 
