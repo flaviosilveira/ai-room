@@ -105,7 +105,9 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 
 The files tab is a separate tab (window 1), not a pane beside the agents.
 Closing the terminal window is only a detach: `ai-room attach <room>` gets you back.
-Hiding a pane never stops its agent.
+Hiding a pane never stops its agent. To stop one for good, use `ai-room remove`:
+it leaves the roster (reopening will not relaunch it), is no longer woken, and
+the room is told so the others pick up its part.
 
 ---
 
@@ -120,6 +122,7 @@ Hiding a pane never stops its agent.
 | `/attach <agent>` | Goes to the agent's pane |
 | `/panes` · `/hide <x>` · `/show <x>` | Lists, hides and shows panes |
 | `/agents` | Live panes and sessions |
+| `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
 | `/detach` | Leaves the workspace |
 | `/close yes` | Closes the room |
 | `/help` · `/quit` | Help · leaves the console |
@@ -151,6 +154,8 @@ the file with `room_attachment` when they need it.
 | `ai-room who <room>` | Participants and status |
 | `ai-room messages <room>` | History |
 | `ai-room pane <room> <pane> [show\|hide\|toggle]` | Shows/hides a pane from the shell |
+| `ai-room remove <room> <agent>` | Takes one agent out (e.g. it hit its usage limit); the rest keep working |
+| `ai-room add <room> <agent> [--role <role>]` | Brings an agent in, or back, with its own pane |
 | `ai-room close <room>` | Closes the panes; history and charter stay |
 | `ai-room delete <room> [<room>...]` | Deletes one or more rooms for good (one confirmation); `--yes` for scripts |
 | `ai-room rooms test --names \| xargs -o ai-room delete` | Deletes every room matching the query |

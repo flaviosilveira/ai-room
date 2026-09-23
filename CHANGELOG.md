@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `ai-room remove <room> <agent>` and `ai-room add <room> <agent>` (also
+  `/remove` and `/add` in the console) change who is in a running room: a
+  removed agent leaves the roster and the participants, its pane closes, and
+  the room is told so the others take over.
+- `ai-room service start|restart|install` wait until the server answers.
+
 - The console reconnects when the server restarts and resumes after the last
   message it showed; before, the monitor went silent with "feed interrompido"
   while the room kept talking.

@@ -697,6 +697,23 @@ switch (cmd) {
     if (checks.some((check) => check.level === "fail")) process.exitCode = 1;
     break;
   }
+  case "remove":
+  case "add": {
+    const agent = process.argv[4];
+    if (!arg || !agent) {
+      console.error(`usage: ai-room ${cmd} <room> <agent>${cmd === "add" ? " [--role <role>]" : ""}`);
+      process.exit(1);
+    }
+    const { addAgent, removeAgent } = await import("./cast.js");
+    const roleAt = process.argv.indexOf("--role");
+    const result =
+      cmd === "remove"
+        ? removeAgent(openDb(), arg, agent)
+        : addAgent(openDb(), arg, agent, roleAt > 0 ? process.argv[roleAt + 1] : undefined);
+    (result.ok ? console.log : console.error)(result.detail);
+    if (!result.ok) process.exitCode = 1;
+    break;
+  }
   case "service":
     await (await import("./service.js")).service(arg, port());
     break;
@@ -712,7 +729,7 @@ switch (cmd) {
   default:
     console.error(
       "usage: ai-room <serve|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
-        "console <room>|open <room> [flags]|attach <room>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
+        "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);

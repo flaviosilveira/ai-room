@@ -144,6 +144,8 @@ ${C.bold}Comandos${C.reset}
   ${C.bold}/panes${C.reset}             panes do workspace e quais estão visíveis (files é a aba 1: Ctrl-b t)
   ${C.bold}/hide <pane>${C.reset}       esconde um pane (agente, monitor ou files) sem pará-lo
   ${C.bold}/show <pane>${C.reset}       mostra de novo um pane escondido
+  ${C.bold}/remove <agente>${C.reset}    tira um agente da sala (ex.: bateu no limite); os outros seguem
+  ${C.bold}/add <agente> [papel]${C.reset} traz um agente (novo ou de volta) para a sala
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
   ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
   ${C.bold}/paste${C.reset}             anexa a imagem do clipboard (o mesmo que Ctrl+V)
@@ -651,6 +653,24 @@ export async function runConsole(
           }
           const result = setPaneVisible(driver, workspace, rest[0], cmd);
           emit(rl, result.ok ? `${C.dim}${rest[0]}: ${result.hidden ? "escondido" : "visível"}${C.reset}` : `${C.warn}${result.error}${C.reset}`);
+          break;
+        }
+        case "remove":
+        case "add": {
+          if (!rest[0]) {
+            emit(rl, `${C.warn}uso: /${cmd} <agente>${cmd === "add" ? " [papel]" : ""}${C.reset}`);
+            break;
+          }
+          void Promise.all([import("./cast.js"), import("./db/index.js")]).then(([cast, dbModule]) => {
+            const db = dbModule.openDb();
+            try {
+              const result =
+                cmd === "remove" ? cast.removeAgent(db, room, rest[0]) : cast.addAgent(db, room, rest[0], rest.slice(1).join(" ") || undefined);
+              emit(rl, result.ok ? `${C.dim}${result.detail}${C.reset}` : `${C.warn}${result.detail}${C.reset}`);
+            } finally {
+              db.close();
+            }
+          });
           break;
         }
         case "detach":
