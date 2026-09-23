@@ -9,7 +9,7 @@ import { roomCharter, roomExists, roomLeave, roomSend, roomSetCharter, roomWho }
  * out of the participants, so nothing tries to wake it; and its pane gone. The
  * rest of the room is told, so someone picks up its part.
  */
-const NOT_AGENTS = new Set(["human", "monitor", "files"]);
+const NOT_AGENTS = new Set(["human", "monitor", "files", "editor"]);
 
 export function removeAgent(db: Database.Database, room: string, agent: string): { ok: boolean; detail: string } {
   if (!roomExists(db, room)) return { ok: false, detail: `no room "${room}"` };

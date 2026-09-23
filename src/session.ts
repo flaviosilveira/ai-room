@@ -306,6 +306,8 @@ export interface PaneSpec {
   env?: Record<string, string>;
   /** A pane of its own window (a tab) with this name, instead of a split. */
   window?: string;
+  /** In a window that already has a pane: split beside it, taking this % of the width. */
+  beside?: number;
 }
 
 /** tmux takes one `-e KEY=value` per variable, for new-session and split-window alike. */
@@ -558,8 +560,8 @@ export function ensureWorkspace(
   let created = existed;
   // Every agent pane can be hidden, and with all of them hidden the agents
   // window is gone; the next split then has nothing to split.
-  let agentsWindow =
-    existed && mux(driver, ["list-windows", "-t", session, "-F", "#{window_name}"]).out.split("\n").includes(AGENTS_WINDOW);
+  const windows = new Set(existed ? mux(driver, ["list-windows", "-t", session, "-F", "#{window_name}"]).out.split("\n") : []);
+  let agentsWindow = windows.has(AGENTS_WINDOW);
   for (const pane of missing) {
     const env = envArgs(pane.env).map(literal);
     const command = pane.command.map(literal);
@@ -571,6 +573,9 @@ export function ensureWorkspace(
       if (options?.room) batch.push(["set-option", "-t", session, ROOM_TAG, literal(options.room)]);
       created = true;
       if (!pane.window) agentsWindow = true;
+    } else if (pane.window && windows.has(pane.window)) {
+      // The files tab holds the browser and, beside it, the editor it opens files in.
+      batch.push(["split-window", "-h", "-l", `${pane.beside ?? 50}%`, "-t", target, "-c", cwd, ...env, ...command]);
     } else if (pane.window || !agentsWindow) {
       batch.push(["new-window", "-d", "-t", `=${session}:`, "-n", window, "-c", cwd, ...env, ...command]);
       if (!pane.window) agentsWindow = true;
@@ -580,6 +585,8 @@ export function ensureWorkspace(
     batch.push(["set-option", "-p", "-t", target, PANE_TAG, literal(pane.title)]);
     batch.push(["set-option", "-p", "-t", target, HOME_TAG, window]);
     if (!pane.window) batch.push(["select-layout", "-t", target, "tiled"]);
+    if (pane.beside !== undefined && windows.has(window)) batch.push(["last-pane", "-t", target]);
+    windows.add(window);
   }
 
   if (batch.length) {
@@ -712,6 +719,33 @@ export function paneMenuCommand(session: string, states: PaneState[], self = sel
 
 export function paneMenuFile(session: string): string {
   return path.join(path.dirname(tmuxConfigPath()), "menus", `${session}.tmux`);
+}
+
+/** A path as Vim's command line reads it back, like its own fnameescape(). */
+export function vimEscape(file: string): string {
+  return file.replace(/[ \t%#|"'*?[{<!\\$`]/g, "\\$&");
+}
+
+/**
+ * The files tab's editor pane opens what the browser picked. This types into
+ * a pane on purpose: the human's own tool, in the files tab, never an agent
+ * and never the human's console.
+ */
+export function openInEditorPane(
+  driver: MultiplexerDriver,
+  session: string,
+  files: string[]
+): { ok: boolean; error?: string } {
+  const editor = paneStates(driver, session).find((state) => state.agent === "editor");
+  if (!editor) return { ok: false, error: "no editor pane in this workspace" };
+  if (editor.hidden) setPaneVisible(driver, session, "editor", "show");
+  const commands = files.map((file, i) => `:${i ? "badd" : "e"} ${vimEscape(path.resolve(file))}`);
+  for (const command of commands) {
+    const typed = mux(driver, ["send-keys", "-t", editor.paneId, "Escape", ";", "send-keys", "-t", editor.paneId, "-l", command, ";", "send-keys", "-t", editor.paneId, "Enter"]);
+    if (!typed.ok) return { ok: false, error: typed.error };
+  }
+  mux(driver, ["select-pane", "-t", editor.paneId]);
+  return { ok: true };
 }
 
 /* ----------------------------------------------------------------- attach */

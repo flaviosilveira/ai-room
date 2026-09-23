@@ -32,6 +32,7 @@ import {
   sessionExists,
   setPaneVisible,
   toggleFilesTab,
+  openInEditorPane,
   sessionName,
   workspaceName,
 } from "./session.js";
@@ -681,6 +682,18 @@ switch (cmd) {
   case "_pane":
     pane(arg, process.argv[4], process.argv[5]);
     break;
+  case "_edit": {
+    // $EDITOR of the files tab's browser: into the editor pane, or a plain
+    // editor right here when there is none.
+    const files = process.argv.slice(4);
+    const tmux = detectMultiplexer("tmux");
+    const sent = tmux && arg ? openInEditorPane(tmux, arg, files) : { ok: false };
+    if (!sent.ok) {
+      const { spawnSync } = await import("node:child_process");
+      process.exitCode = spawnSync(process.env.AI_ROOM_FALLBACK_EDITOR || "vim", files, { stdio: "inherit" }).status ?? 1;
+    }
+    break;
+  }
   case "_files":
     filesTab(arg, process.argv[4]);
     break;

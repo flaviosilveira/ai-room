@@ -12,6 +12,7 @@ import {
   sessionExists,
   sessionName,
   startSession,
+  selfCommand,
   workspaceName,
 } from "./session.js";
 import type { MultiplexerDriver, PaneSpec, WorkspaceResult } from "./session.js";
@@ -181,6 +182,38 @@ export function filesCommand(
   return browser ? [browser.bin, ...browser.args] : null;
 }
 
+/**
+ * The editor beside the file browser in the files tab. `hidden` keeps unsaved
+ * buffers when another file arrives; closing NERDTree after startup undoes a
+ * vimrc that opens it whenever vim starts without a file.
+ */
+export function editorCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  has: (bin: string) => boolean = onPath
+): string[] | null {
+  if (env.AI_ROOM_EDITOR) return ["sh", "-c", env.AI_ROOM_EDITOR];
+  const bin = ["vim", "nvim"].find(has);
+  return bin ? [bin, "-c", "set hidden", "-c", "autocmd VimEnter * silent! NERDTreeClose"] : null;
+}
+
+/**
+ * What the file browser runs as $EDITOR: a script that hands the file to the
+ * editor pane instead of opening another editor over the browser.
+ */
+export function editInPaneScript(self = selfCommand()): string {
+  const file = path.join(os.homedir(), ".ai-room", "bin", "edit-in-pane");
+  const body = `#!/bin/sh\nexec ${self} _edit "$AI_ROOM_WORKSPACE" "$@"\n`;
+  try {
+    if (!fs.existsSync(file) || fs.readFileSync(file, "utf8") !== body) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, body, { mode: 0o755 });
+    }
+  } catch {
+    /* the browser falls back to its own editor */
+  }
+  return file;
+}
+
 export function logDir(): string {
   return process.env.AI_ROOM_LOG_DIR || path.join(os.homedir(), ".ai-room", "logs");
 }
@@ -301,7 +334,13 @@ export interface WorkspacePlan {
 export function planWorkspace(
   room: string,
   agents: string[],
-  options: { monitor?: boolean; monitorCommand?: string[]; files?: boolean; filesCommand?: string[] | null } = {}
+  options: {
+    monitor?: boolean;
+    monitorCommand?: string[];
+    files?: boolean;
+    filesCommand?: string[] | null;
+    editorCommand?: string[] | null;
+  } = {}
 ): WorkspacePlan {
   const panes: PaneSpec[] = [];
   const missing: string[] = [];
@@ -326,7 +365,19 @@ export function planWorkspace(
 
   if (options.files !== false) {
     const command = options.filesCommand !== undefined ? options.filesCommand : filesCommand();
-    if (command) panes.push({ title: "files", command, window: "files" });
+    // A vim-based browser already edits in place; any other gets an editor beside it.
+    const editor = command && !["vim", "nvim"].includes(command[0])
+      ? options.editorCommand !== undefined ? options.editorCommand : editorCommand()
+      : null;
+    if (command) {
+      panes.push({
+        title: "files",
+        command,
+        window: "files",
+        env: editor ? { EDITOR: editInPaneScript(), VISUAL: editInPaneScript(), AI_ROOM_WORKSPACE: workspaceName(room) } : undefined,
+      });
+    }
+    if (editor) panes.push({ title: "editor", command: editor, window: "files", beside: 70 });
   }
 
   return { agents: launched, missing, panes };

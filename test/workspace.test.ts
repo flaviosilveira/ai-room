@@ -14,8 +14,10 @@ import {
   listTaggedPanes,
   mux,
   paneMenuCommand,
+  openInEditorPane,
   paneStates,
   setPaneVisible,
+  vimEscape,
   tmuxConfig,
   toggleFilesTab,
   sessionExists,
@@ -158,8 +160,23 @@ describe("workspace planning", () => {
   });
 
   it("puts the file browser in a tab of its own", () => {
-    const plan = planWorkspace("r", [], { monitor: false, filesCommand: ["yazi"] });
+    const plan = planWorkspace("r", [], { monitor: false, filesCommand: ["yazi"], editorCommand: null });
     expect(plan.panes).toEqual([{ title: "files", command: ["yazi"], window: "files" }]);
+  });
+
+  it("puts an editor beside the browser, and points the browser's EDITOR at it", () => {
+    const plan = planWorkspace("r", [], { monitor: false, filesCommand: ["yazi"], editorCommand: ["vim"] });
+    expect(plan.panes.map((p) => [p.title, p.window, p.beside])).toEqual([
+      ["files", "files", undefined],
+      ["editor", "files", 70],
+    ]);
+    expect(plan.panes[0].env?.EDITOR).toMatch(/edit-in-pane$/);
+    expect(plan.panes[0].env?.AI_ROOM_WORKSPACE).toBe(workspaceName("r"));
+  });
+
+  it("gives a vim-based browser no second editor", () => {
+    const plan = planWorkspace("r", [], { monitor: false, filesCommand: ["vim", "-c", "Lexplore"], editorCommand: ["vim"] });
+    expect(plan.panes.map((p) => p.title)).toEqual(["files"]);
   });
 
   it("skips the files tab when no browser is installed", () => {
@@ -229,6 +246,12 @@ describe("charter is written before any agent starts", () => {
     expect(tool.howToUse).toMatch(/graphify/);
     // Guidance may mention how to install; it must never order it.
     expect(JSON.stringify(tool)).not.toMatch(/you must install|install it first|required before/i);
+  });
+});
+
+describe("vim paths", () => {
+  it("escapes what vim's command line would expand", () => {
+    expect(vimEscape("/a b/c%d#e|f.ts")).toBe("/a\\ b/c\\%d\\#e\\|f.ts");
   });
 });
 
@@ -430,6 +453,24 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
     expect(toggleFilesTab(tmux!, session, "agents").ok).toBe(true);
     expect(paneStates(tmux!, session).find((p) => p.agent === "files")).toMatchObject({ hidden: false });
     expect(current()).toBe("files");
+  });
+
+  it("builds the files tab as browser beside editor, and sends picked files to the editor", async () => {
+    const sink = path.join(os.tmpdir(), `airoom-editor-${process.pid}.txt`);
+    ensureWorkspace(tmux!, session, process.cwd(), [
+      pane("claude"),
+      { ...pane("files"), window: "files" },
+      { title: "editor", command: ["sh", "-c", `cat > ${sink}`], window: "files", beside: 70 },
+    ]);
+    const windows = mux(tmux!, ["list-windows", "-t", session, "-F", "#{window_name}:#{window_panes}"]).out.split("\n");
+    expect(windows).toEqual(["agents:1", "files:2"]);
+    const active = mux(tmux!, ["display-message", "-p", "-t", `=${session}:files`, "#{@airoom_agent}"]).out;
+    expect(active).toBe("files");
+
+    expect(openInEditorPane(tmux!, session, ["/tmp/my file.ts"]).ok).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(fs.readFileSync(sink, "utf8")).toContain(":e /tmp/my\\ file.ts");
+    fs.rmSync(sink, { force: true });
   });
 
   it("builds a pane menu tmux accepts", () => {

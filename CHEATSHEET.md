@@ -103,7 +103,10 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 | `Ctrl-b z` | Pane full screen (again to restore) |
 | `Ctrl-b X` | Closes the room (asks first) |
 
-The files tab is a separate tab (window 1), not a pane beside the agents.
+The files tab is a separate tab (window 1): the file browser on the left and
+Vim on the right. In the browser, Enter opens the file in that Vim; `:w` saves,
+and `Ctrl-b arrows` moves between the two. With yazi: `a` creates, `r` renames,
+`d` deletes, `/` searches, `s` greps. Set `AI_ROOM_EDITOR` to use another editor.
 Closing the terminal window is only a detach: `ai-room attach <room>` gets you back.
 Hiding a pane never stops its agent. To stop one for good, use `ai-room remove`:
 it leaves the roster (reopening will not relaunch it), is no longer woken, and

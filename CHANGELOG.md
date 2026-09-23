@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The files tab puts Vim beside the file browser: opening a file in the
+  browser loads it in that Vim, and the browser stays where it was. The
+  browser's `$EDITOR` points at the editor pane; `AI_ROOM_EDITOR` picks another
+  editor.
+
 ## 0.6.1
 
 ### Rooms
