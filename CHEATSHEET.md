@@ -46,9 +46,12 @@ Também aceita `"invite": ["claude", "codex", "agy"]`.
 | Comando | Faz |
 |---|---|
 | `~/dev/ai-agent-config/scripts/ai-room-service.sh status` | Está rodando? |
-| `... ai-room-service.sh stop` · `start` · `restart` | Derruba · sobe · reinicia (em segundo plano) |
-| `... ai-room-service.sh logs` | Log ao vivo (`Ctrl+C` sai, o servidor continua) |
-| `cd ~/dev/ai-room && pnpm build` | Recompila depois de mudar o código; depois `restart` |
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh start` | Sobe o servidor (em segundo plano) |
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh stop` | Derruba o servidor (volta no próximo login ou `start`) |
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh restart` | Reinicia o servidor |
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh logs` | Log ao vivo (`Ctrl+C` sai, o servidor continua) |
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh uninstall` | Remove o serviço (repo, banco e configs ficam) |
+| `cd ~/dev/ai-room && pnpm build && ~/dev/ai-agent-config/scripts/ai-room-service.sh restart` | Recompila e reinicia depois de mudar o código |
 
 Roda como LaunchAgent (sobe no login, volta sozinho se cair), sem Docker:
 um `node` em `127.0.0.1:49375` e o SQLite em `~/.ai-room/ai-room.sqlite`.
