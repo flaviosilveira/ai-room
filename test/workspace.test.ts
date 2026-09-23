@@ -17,6 +17,7 @@ import {
   paneStates,
   setPaneVisible,
   tmuxConfig,
+  toggleFilesTab,
   sessionExists,
   sessionName,
   startSession,
@@ -222,7 +223,16 @@ describe("workspace tmux config", () => {
     expect(config).toContain("bind-key d detach-client");
     expect(config).toMatch(/bind-key X confirm-before .* kill-session/);
     expect(config).toMatch(/bind-key m run-shell .*_pane-menu/);
-    expect(config).toMatch(/bind-key t run-shell .*_pane .* files toggle/);
+    expect(config).toMatch(/bind-key t run-shell .*_files/);
+  });
+
+  it("answers the Ctrl variant of every prefix key, so C-z never suspends the client", () => {
+    const config = tmuxConfig("ai-room");
+    for (const key of ["m", "t", "z", "x", "d", "q"]) {
+      expect(config).toMatch(new RegExp(`^bind-key C-${key} `, "m"));
+    }
+    expect(config).toContain("bind-key C-z resize-pane -Z");
+    expect(config).toMatch(/^bind-key M \{ set -g mouse/m);
   });
 
   it("loads in a real tmux without errors", () => {
@@ -390,6 +400,19 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
     expect(paneStates(tmux!, session).find((p) => p.agent === "agy")).toMatchObject({ window: "agents", hidden: false });
     expect(setPaneVisible(tmux!, session, "codex", "show")).toMatchObject({ ok: true });
     expect(setPaneVisible(tmux!, session, "nobody", "show").ok).toBe(false);
+  });
+
+  it("jumps to the files tab, showing it first when hidden", () => {
+    ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), { ...pane("files"), window: "files" }]);
+    const current = () => mux(tmux!, ["display-message", "-p", "-t", session, "#{window_name}"]).out;
+    expect(current()).toBe("agents");
+    expect(toggleFilesTab(tmux!, session, "agents").ok).toBe(true);
+    expect(current()).toBe("files");
+
+    setPaneVisible(tmux!, session, "files", "hide");
+    expect(toggleFilesTab(tmux!, session, "agents").ok).toBe(true);
+    expect(paneStates(tmux!, session).find((p) => p.agent === "files")).toMatchObject({ hidden: false });
+    expect(current()).toBe("files");
   });
 
   it("builds a pane menu tmux accepts", () => {

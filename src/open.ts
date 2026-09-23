@@ -16,6 +16,7 @@ export interface OpenFlags {
   monitor: boolean;
   files: boolean;
   mouse: boolean;
+  mouseOff: boolean;
   defaults: boolean;
 }
 
@@ -30,6 +31,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     monitor: true,
     files: true,
     mouse: false,
+    mouseOff: false,
     defaults: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -49,6 +51,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--no-files") flags.files = false;
     else if (arg === "--no-defaults") flags.defaults = false;
     else if (arg === "--mouse") flags.mouse = true;
+    else if (arg === "--no-mouse") flags.mouseOff = true;
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;
@@ -58,6 +61,7 @@ export interface OpenDefaults {
   tools?: string[];
   convention?: string;
   invite?: string[];
+  mouse?: boolean;
 }
 
 export function defaultsPath(): string {
@@ -75,6 +79,7 @@ export function loadOpenDefaults(file = defaultsPath()): OpenDefaults {
       tools: list(d.tools),
       convention: typeof d.convention === "string" && d.convention ? d.convention : undefined,
       invite: list(d.invite),
+      mouse: typeof d.mouse === "boolean" ? d.mouse : undefined,
     };
   } catch {
     return {};
@@ -87,9 +92,14 @@ export function loadOpenDefaults(file = defaultsPath()): OpenDefaults {
  * with whatever the defaults say today.
  */
 export function withDefaults(flags: OpenFlags, defaults: OpenDefaults, roomIsNew: boolean): OpenFlags {
-  if (!roomIsNew || !flags.defaults) return flags;
+  if (!flags.defaults) return flags;
+  // The mouse is how this terminal is used, not part of a room's charter, so
+  // it applies on every open.
+  const mouse = flags.mouseOff ? false : flags.mouse || defaults.mouse === true;
+  if (!roomIsNew) return { ...flags, mouse };
   return {
     ...flags,
+    mouse,
     tools: flags.tools.length ? flags.tools : defaults.tools ?? [],
     convention: flags.convention ?? defaults.convention,
     invite: flags.invite.length ? flags.invite : defaults.invite ?? [],

@@ -141,7 +141,7 @@ ${C.bold}Comandos${C.reset}
   ${C.bold}/attach <agente>${C.reset}   foca o pane do agente (volta com ${DETACH_KEYS})
   ${C.bold}/agents${C.reset}            lista panes e sessões vivas da sala
   ${C.bold}/who${C.reset}               participantes: idle/working/wait(live) e não lidas
-  ${C.bold}/panes${C.reset}             panes do workspace e quais estão visíveis
+  ${C.bold}/panes${C.reset}             panes do workspace e quais estão visíveis (files é a aba 1: Ctrl-b t)
   ${C.bold}/hide <pane>${C.reset}       esconde um pane (agente, monitor ou files) sem pará-lo
   ${C.bold}/show <pane>${C.reset}       mostra de novo um pane escondido
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
@@ -593,6 +593,19 @@ export async function runConsole(
         case "panes":
         case "hide":
         case "show": {
+          // Bare /show is the draft; /show <pane> is a pane.
+          if (cmd === "show" && !rest[0]) {
+            emit(
+              rl,
+              composer.empty
+                ? `${C.dim}nada colado nem anexado no rascunho.${C.reset}`
+                : [
+                    composer.pending ? `${C.dim}rascunho (${composer.pending} colagem(ns)):${C.reset}\n${composer.staged()}` : "",
+                    composer.attachments.length ? `${C.dim}anexos:${C.reset} ${composer.draftLine()}` : "",
+                  ].filter(Boolean).join("\n")
+            );
+            break;
+          }
           if (!driver || driver.name !== "tmux" || !sessionExists(driver, workspace)) {
             emit(rl, `${C.warn}sem workspace tmux para esta sala.${C.reset}`);
             break;
@@ -633,17 +646,6 @@ export async function runConsole(
           );
           break;
         }
-        case "show":
-          emit(
-            rl,
-            composer.empty
-              ? `${C.dim}nada colado nem anexado no rascunho.${C.reset}`
-              : [
-                  composer.pending ? `${C.dim}rascunho (${composer.pending} colagem(ns)):${C.reset}\n${composer.staged()}` : "",
-                  composer.attachments.length ? `${C.dim}anexos:${C.reset} ${composer.draftLine()}` : "",
-                ].filter(Boolean).join("\n")
-          );
-          break;
         case "clear":
           if (!composer.empty) {
             composer.clear();

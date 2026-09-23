@@ -44,7 +44,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | Command | Does |
 |---|---|
 | `ai-room open <room> --brief "..." --invite ...` | Creates the room, launches the agents and attaches to the workspace |
-| `ai-room open <room>` | Reopens the room with the same charter and cast |
+| `ai-room open <room>` · `ai-room attach <room>` | Reopens the room with the same charter and cast |
 
 | Flag | Does |
 |---|---|
@@ -53,7 +53,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--role codex=reviewer` | One agent's role |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
 | `--no-files` | No files tab |
-| `--mouse` | Mouse in tmux (click in the file tree) |
+| `--mouse` · `--no-mouse` | Mouse in tmux (click to focus a pane, click in the file tree) |
 | `--reuse` | Reuses a room that already holds another task's history |
 | `--detached` · `--dry-run` | One session per agent · only print the plan |
 
@@ -64,23 +64,29 @@ Defaults for new rooms, in `~/.ai-room/config.json`:
 ```
 
 Flags given on the command line win; an existing room keeps its own charter.
-`"invite": ["claude", "codex", "agy"]` is accepted too.
+`"invite": ["claude", "codex", "agy"]` and `"mouse": true` are accepted too.
 
 ---
 
 ## 3. Inside the workspace
 
+Press `Ctrl-b`, let go, then the key. Holding Ctrl for the second key works
+too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
+
 | Key | Does |
 |---|---|
 | `F12` | Leaves the workspace; agents keep running |
-| `Ctrl-b d` · `Ctrl-b Ctrl-d` · `Ctrl-b q` | Same detach |
+| `Ctrl-b d` · `Ctrl-b q` | Same detach |
 | `Ctrl-b m` | Menu: show/hide agents, the human (monitor) and files |
-| `Ctrl-b t` | Shows/hides the files tab |
+| `Ctrl-b t` | Goes to the files tab, and back |
+| `Ctrl-b 0` · `Ctrl-b 1` | Agents tab · files tab |
+| `Ctrl-b M` | Mouse on/off: click a pane to focus it, scroll, drag to copy |
 | `Ctrl-b arrows` | Moves between panes |
 | `Ctrl-b z` | Pane full screen (again to restore) |
 | `Ctrl-b X` | Closes the room (asks first) |
 
-Closing the terminal window is only a detach: `ai-room open <room>` gets you back.
+The files tab is a separate tab (window 1), not a pane beside the agents.
+Closing the terminal window is only a detach: `ai-room attach <room>` gets you back.
 Hiding a pane never stops its agent.
 
 ---

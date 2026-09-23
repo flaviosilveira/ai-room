@@ -30,6 +30,7 @@ import {
   paneStates,
   sessionExists,
   setPaneVisible,
+  toggleFilesTab,
   sessionName,
   workspaceName,
 } from "./session.js";
@@ -559,6 +560,13 @@ function pane(session: string, agent: string, mode = "toggle"): void {
   }
 }
 
+function filesTab(session: string, currentWindow: string): void {
+  const tmux = detectMultiplexer("tmux");
+  if (!tmux || !session) process.exit(1);
+  const result = toggleFilesTab(tmux, session, currentWindow ?? "");
+  if (!result.ok) mux(tmux, ["display-message", "-t", session, result.error ?? "files tab unavailable"]);
+}
+
 function paneMenu(session: string, client: string): void {
   const tmux = detectMultiplexer("tmux");
   if (!tmux || !session || !client) process.exit(1);
@@ -669,6 +677,12 @@ switch (cmd) {
   case "_pane":
     pane(arg, process.argv[4], process.argv[5]);
     break;
+  case "_files":
+    filesTab(arg, process.argv[4]);
+    break;
+  case "attach":
+    await open(arg, []);
+    break;
   case "_pane-menu":
     paneMenu(arg, process.argv[4]);
     break;
@@ -684,7 +698,7 @@ switch (cmd) {
   default:
     console.error(
       "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
-        "console <room>|open <room> [flags]|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
+        "console <room>|open <room> [flags]|attach <room>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);
