@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `/<skill> @agent text` in the console types the skill into that agent's
+  pane the way its harness runs one (`/skill` for Claude Code and agy,
+  `$skill` for Codex, verified live), after checking the agent can see it.
+  Without `@agent` the room is asked.
+- The prompt shows the pending draft (`human [2 img · 1 texto]>`), so agents
+  talking above it no longer hide what Enter will send.
+
 - `/skills [filter]` in the console lists the project's, the user's and the
   installed plugins' skills from their `SKILL.md`; `Tab` after `/` completes
   console commands and skill names.

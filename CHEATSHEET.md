@@ -139,6 +139,8 @@ the room is told so the others pick up its part.
 | `/close yes` | Closes the room |
 | `/skills [filter]` | Project, user and plugin skills, with their descriptions |
 | `/` + `Tab` | Completes console commands and skill names |
+| `/<skill> @agent text` | Asks that agent to run the skill: types `/skill text` (Claude, agy) or `$skill text` (Codex) in its pane |
+| `/<skill> text` | Without `@`: asks the room, and whoever fits runs it |
 | `/help` · `/quit` | Help · leaves the console |
 
 ---
@@ -146,6 +148,8 @@ the room is told so the others pick up its part.
 ## 5. Attachments
 
 Everything in the draft (text and attachments) goes out as one message on Enter.
+While something is waiting, the prompt says so — `human [2 img · 1 texto]>` — so
+messages scrolling past never hide it. `/show` lists it, `/clear` drops it.
 
 | Command | Does |
 |---|---|
