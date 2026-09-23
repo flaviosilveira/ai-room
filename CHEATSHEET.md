@@ -20,6 +20,7 @@ if it crashes.
 | Command | Does |
 |---|---|
 | `ai-room status` | Are the server, database and MCP answering? |
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh install` | Installs (or repairs) the service and starts it |
 | `~/dev/ai-agent-config/scripts/ai-room-service.sh status` | Is the service installed and running? |
 | `~/dev/ai-agent-config/scripts/ai-room-service.sh start` | Starts the server (in the background) |
 | `~/dev/ai-agent-config/scripts/ai-room-service.sh stop` | Stops the server (back at next login or `start`) |
