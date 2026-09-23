@@ -132,6 +132,22 @@ async function answers(port: number): Promise<boolean> {
   }
 }
 
+/**
+ * The service manager relaunches the server a few seconds after a restart, so
+ * "restarted" alone left a window where every client saw a dead port.
+ */
+async function waitReady(port: number, timeoutMs = 20_000): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await answers(port)) {
+      ok(`answering on port ${port} after ${((Date.now() - started) / 1000).toFixed(1)}s`);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  fail(`port ${port} still not answering after ${timeoutMs / 1000}s: ai-room service logs`);
+}
+
 /** Writes the file only when it changed, so reinstalling a current service never restarts it. */
 function writeIfChanged(file: string, content: string): boolean {
   if (fs.existsSync(file) && fs.readFileSync(file, "utf8") === content) return false;
@@ -177,6 +193,7 @@ export async function service(action: string | undefined, port: number): Promise
           if (!run("launchctl", ["print", target])) run("launchctl", ["bootstrap", domain(), file]);
         }
         ok(`node pinned: ${spec.node}`);
+        await waitReady(port);
         break;
       }
       case "status": {
@@ -192,12 +209,15 @@ export async function service(action: string | undefined, port: number): Promise
         if (!fs.existsSync(file)) return fail("not installed: ai-room service install");
         run("launchctl", ["bootstrap", domain(), file]) || run("launchctl", ["kickstart", target]);
         ok("started");
+        await waitReady(port);
         break;
       case "stop":
         run("launchctl", ["bootout", target]) ? ok("stopped") : warn("was not running");
         break;
       case "restart":
-        run("launchctl", ["kickstart", "-k", target]) ? ok("restarted") : fail("not loaded: ai-room service start");
+        if (!run("launchctl", ["kickstart", "-k", target])) return fail("not loaded: ai-room service start");
+        ok("restarted");
+        await waitReady(port);
         break;
       case "logs": {
         const logs = serviceSpec(port).logDir;
@@ -234,7 +254,9 @@ export async function service(action: string | undefined, port: number): Promise
     case "start":
     case "stop":
     case "restart":
-      systemctl(action, SERVICE_NAME) ? ok(`${action === "stop" ? "stopped" : `${action}ed`}`) : fail(`systemctl --user ${action} failed`);
+      if (!systemctl(action, SERVICE_NAME)) return fail(`systemctl --user ${action} failed`);
+      ok(action === "stop" ? "stopped" : `${action}ed`);
+      if (action !== "stop") await waitReady(port);
       break;
     case "logs":
       run("journalctl", ["--user", "-u", SERVICE_NAME, "-n", "50", "-f"], false);
