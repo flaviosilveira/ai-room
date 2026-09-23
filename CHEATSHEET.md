@@ -13,25 +13,27 @@
 
 ## 1. Server
 
-Runs as a macOS LaunchAgent, no Docker: one `node` process on `127.0.0.1:49375`
-and SQLite at `~/.ai-room/ai-room.sqlite`. Starts at login and restarts itself
-if it crashes.
+Runs as a user service (LaunchAgent on macOS, systemd on Linux), no Docker: one
+`node` process on `127.0.0.1:49375` and SQLite at `~/.ai-room/ai-room.sqlite`.
+Starts at login and restarts itself if it crashes.
 
 | Command | Does |
 |---|---|
+| `ai-room doctor` | Checks everything ai-room needs and prints the fix for each gap |
 | `ai-room status` | Are the server, database and MCP answering? |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh install` | Installs (or repairs) the service and starts it |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh status` | Is the service installed and running? |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh start` | Starts the server (in the background) |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh stop` | Stops the server (back at next login or `start`) |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh restart` | Restarts the server |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh logs` | Live log (`Ctrl+C` exits, the server keeps running) |
-| `~/dev/ai-agent-config/scripts/ai-room-service.sh uninstall` | Removes the service (repo, database and config stay) |
+| `ai-room service install` | Installs (or repairs) the service and starts it |
+| `ai-room service status` | Is the service installed and running? |
+| `ai-room service start` | Starts the server (in the background) |
+| `ai-room service stop` | Stops the server (back at next login or `start`) |
+| `ai-room service restart` | Restarts the server |
+| `ai-room service logs` | Live log (`Ctrl+C` exits, the server keeps running) |
+| `ai-room service uninstall` | Removes the service (database, rooms and config stay) |
+| `ai-room serve` | Runs the server in the foreground, without a service |
 
 After changing ai-room's code:
 
 ```bash
-cd ~/dev/ai-room && pnpm build && ~/dev/ai-agent-config/scripts/ai-room-service.sh restart
+pnpm build && ai-room service restart
 ```
 
 ---
@@ -154,12 +156,9 @@ the file with `room_attachment` when they need it.
 `--tool` only declares a tool in the briefing; it never installs or runs it.
 `--convention` puts the rule in every agent's briefing, agy included.
 
-Install, repair and check:
-
-```bash
-~/dev/ai-agent-config/scripts/install-agent-tools.sh
-~/dev/ai-agent-config/scripts/doctor.sh
-```
+`ai-room doctor` lists which of these are installed and the install command
+for each one that is not. Installing plugins and hooks is left to you: it
+changes each agent's own configuration.
 
 ---
 

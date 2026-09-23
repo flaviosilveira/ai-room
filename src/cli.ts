@@ -686,6 +686,16 @@ switch (cmd) {
   case "_pane-menu":
     paneMenu(arg, process.argv[4]);
     break;
+  case "doctor": {
+    const { renderChecks, runChecks } = await import("./doctor.js");
+    const checks = await runChecks(port());
+    console.log(process.argv.includes("--json") ? JSON.stringify(checks, null, 2) : renderChecks(checks));
+    if (checks.some((check) => check.level === "fail")) process.exitCode = 1;
+    break;
+  }
+  case "service":
+    await (await import("./service.js")).service(arg, port());
+    break;
   case "attachments":
     attachments(process.argv.slice(3));
     break;
@@ -697,7 +707,7 @@ switch (cmd) {
     break;
   default:
     console.error(
-      "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
+      "usage: ai-room <serve|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );

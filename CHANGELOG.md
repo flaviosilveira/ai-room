@@ -31,6 +31,16 @@
   `room_attachment` opens one in the way each harness can see it.
   `ai-room attachments prune` frees old files.
 
+### Setup
+
+- `ai-room service install|status|start|stop|restart|logs|uninstall` runs
+  the server as a LaunchAgent (macOS) or systemd user unit (Linux), pinning
+  the node that installed it. Reinstalling an unchanged service never
+  restarts it.
+- `ai-room doctor` checks the server, tmux, each agent's MCP registration
+  and hooks, the declared tools and the workspace extras, and prints the fix
+  for each gap. It installs nothing.
+
 ### Presets
 
 - Tool presets `grill-me`, `grill-with-docs`, `rtk` and `ponytail`, and a
