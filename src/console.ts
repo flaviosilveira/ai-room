@@ -62,13 +62,17 @@ function stamp(ms: number): string {
  * through typing: clear the line, write, then let readline repaint.
  */
 function emit(rl: readline.Interface, line: string): void {
-  // A draft longer than the terminal wraps over several rows; clearing only
-  // the cursor's row left the others behind, one stale copy per message.
+  // The draft may wrap over several rows. getCursorPos() knows how many; the
+  // rows readline itself remembers (prevRows) go stale while the human types at
+  // the end of the line, and its redraw then climbs over the line just printed.
+  // So the draft is erased here, and readline is told it now starts from row 0.
   const { rows } = rl.getCursorPos();
   if (rows) readline.moveCursor(process.stdout, 0, -rows);
   readline.cursorTo(process.stdout, 0);
   readline.clearScreenDown(process.stdout);
   process.stdout.write(`${line}\n`);
+  // ponytail: internal readline field; if Node renames it, the redraw can leave a stale row again
+  (rl as unknown as { prevRows: number }).prevRows = 0;
   rl.prompt(true);
 }
 

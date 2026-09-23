@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Typing a draft longer than the terminal no longer leaves a stale copy of it
+  behind every incoming message, and no longer makes messages disappear:
+  readline's redraw climbed over the line just printed, so while the human was
+  typing, only the first of several messages stayed on screen.
+
 - `/<skill> @agent text` in the console types the skill into that agent's
   pane the way its harness runs one (`/skill` for Claude Code and agy,
   `$skill` for Codex, verified live), after checking the agent can see it.
