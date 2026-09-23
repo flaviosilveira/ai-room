@@ -520,6 +520,33 @@ export function pruneAttachments(
   return rows.length;
 }
 
+/**
+ * Removes a room and everything it owns: history, charter, participants,
+ * cursors and attachments, including files no other room shares. Irreversible,
+ * so it is a human command only and never an MCP tool.
+ */
+export function roomDelete(db: Database.Database, room: string): { messages: number; attachments: number } | null {
+  if (!roomExists(db, room)) return null;
+  const blobs = db
+    .prepare(`SELECT DISTINCT sha256, ext FROM attachments WHERE room = ?`)
+    .all(room) as { sha256: string; ext: string }[];
+  const counts = db.transaction(() => {
+    const messages = roomMessageCount(db, room);
+    const attachments = (db.prepare(`SELECT COUNT(*) as n FROM attachments WHERE room = ?`).get(room) as { n: number }).n;
+    db.prepare(
+      `DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE room = ?)
+          OR attachment_id IN (SELECT id FROM attachments WHERE room = ?)`
+    ).run(room, room);
+    for (const table of ["attachments", "messages", "cursors", "participants", "room_profiles"]) {
+      db.prepare(`DELETE FROM ${table} WHERE room = ?`).run(room);
+    }
+    db.prepare(`DELETE FROM rooms WHERE name = ?`).run(room);
+    return { messages, attachments };
+  })();
+  for (const blob of blobs) deleteUnreferencedBlob(db, blob.sha256, blob.ext);
+  return counts;
+}
+
 export function participantHarness(db: Database.Database, room: string, agent: string): string | null {
   const participant = getParticipant(db, room, agent);
   if (!participant) return null;

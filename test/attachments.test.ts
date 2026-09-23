@@ -19,8 +19,11 @@ import {
   pruneAttachments,
   roomHistory,
   roomJoin,
+  roomDelete,
+  roomExists,
   roomListen,
   roomSend,
+  roomWho,
 } from "../src/store.js";
 
 const PNG_1X1 = Buffer.from(
@@ -128,6 +131,23 @@ describe("attachments in the store", () => {
     expect(pruneAttachments(db, { olderThanMs: -1 })).toBe(1);
     expect(fs.existsSync(image.path!)).toBe(false);
     expect(roomHistory(db, { room: "r" })[0].attachments?.[0]).toMatchObject({ id: image.id, path: null });
+  });
+
+  it("deletes a room and all it owns, and only that room", () => {
+    const own = createAttachment(db, { room: "r", bytes: Buffer.from("so desta sala"), name: "a.txt" });
+    const shared = createAttachment(db, { room: "r", bytes: PNG_1X1 });
+    const elsewhere = createAttachment(db, { room: "other", bytes: PNG_1X1 });
+    roomSend(db, { room: "r", agent: "human", message: "x", attachmentIds: [own.id, shared.id] });
+    roomSend(db, { room: "other", agent: "human", message: "y", attachmentIds: [elsewhere.id] });
+
+    expect(roomDelete(db, "r")).toEqual({ messages: 1, attachments: 2 });
+    expect(roomExists(db, "r")).toBe(false);
+    expect(roomWho(db, { room: "other" }).length).toBeGreaterThan(0);
+    expect(fs.existsSync(own.path!)).toBe(false);
+    // Same bytes still used by another room: the file stays.
+    expect(fs.existsSync(shared.path!)).toBe(true);
+    expect(roomHistory(db, { room: "other" })[0].attachments).toHaveLength(1);
+    expect(roomDelete(db, "r")).toBeNull();
   });
 
   it("refuses a symlink planted in the store", () => {

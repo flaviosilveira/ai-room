@@ -6,6 +6,7 @@ import {
   roomExists,
   roomHistory,
   pruneAttachments,
+  roomDelete,
   roomJoin,
   roomList,
   roomMessageCount,
@@ -402,6 +403,42 @@ function attachments(argv: string[]): void {
   console.log(`pruned ${pruned} attachment(s). the messages keep their metadata.`);
 }
 
+/**
+ * Deletes a room for good. Asks for the room's name on a terminal, because
+ * nothing about it can be recovered afterwards; `--yes` is for scripts.
+ */
+async function deleteRoom(room: string, argv: string[]): Promise<void> {
+  if (!room) {
+    console.error("usage: ai-room delete <room> [--yes]");
+    process.exit(1);
+  }
+  const db = openDb();
+  if (!roomExists(db, room)) {
+    console.error(`no room "${room}".`);
+    process.exit(1);
+  }
+  const messages = roomMessageCount(db, room);
+  if (!argv.includes("--yes")) {
+    if (!process.stdin.isTTY) {
+      console.error(`refusing to delete "${room}" without a terminal; pass --yes.`);
+      process.exit(2);
+    }
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question(
+      `Delete room "${room}" with ${messages} message(s), its charter and attachments? This cannot be undone.\n` +
+        `Type the room name to confirm: `
+    );
+    rl.close();
+    if (answer.trim() !== room) {
+      console.error("aborted. the room was not touched.");
+      process.exit(2);
+    }
+  }
+  for (const { session } of closeRoom(room)) console.log(`closed ${session}.`);
+  const deleted = roomDelete(db, room)!;
+  console.log(`deleted room "${room}": ${deleted.messages} message(s), ${deleted.attachments} attachment(s).`);
+}
+
 const PANE_MODES = new Set(["show", "hide", "toggle"]);
 
 /**
@@ -519,6 +556,9 @@ switch (cmd) {
   case "close":
     close(arg);
     break;
+  case "delete":
+    await deleteRoom(arg, process.argv.slice(4));
+    break;
   case "pane":
     pane(arg ? workspaceName(arg) : "", process.argv[4], process.argv[5]);
     break;
@@ -540,7 +580,7 @@ switch (cmd) {
   default:
     console.error(
       "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
-        "console <room>|open <room> [flags]|close <room>|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
+        "console <room>|open <room> [flags]|close <room>|delete <room> [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query]|messages <room>|who <room>|attachments prune [--older-than 30d]>"
     );
     process.exit(1);

@@ -132,6 +132,11 @@ are untouched.
 `ai-room close <room>` kills only that room's workspace. The room, its charter
 and its history live in SQLite and survive.
 
+`ai-room delete <room>` removes the room for good — workspace, history, charter,
+participants and attachments (files another room shares are kept). It asks you
+to type the room name; `--yes` skips that for scripts. It is a CLI command only,
+never an MCP tool, so no agent can delete a room.
+
 ### Discovering what ai-room can do
 
 ```bash

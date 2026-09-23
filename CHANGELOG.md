@@ -36,6 +36,8 @@
 - Tool presets `grill-me`, `grill-with-docs`, `rtk` and `ponytail`, and a
   `ponytail` convention. Conventions combine (`caveman,ponytail`). `open`
   reports declared tools that are not installed.
+- `ai-room delete <room>` removes a room and everything it owns, after
+  typing its name (or `--yes`). Human-only: not an MCP tool.
 - Machine defaults for new rooms (`tools`, `convention`, `invite`) in
   `~/.ai-room/config.json`; `--no-defaults` skips them.
 
