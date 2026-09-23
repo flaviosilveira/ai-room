@@ -137,6 +137,8 @@ the room is told so the others pick up its part.
 | `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |
 | `/close yes` | Closes the room |
+| `/skills [filter]` | Project, user and plugin skills, with their descriptions |
+| `/` + `Tab` | Completes console commands and skill names |
 | `/help` · `/quit` | Help · leaves the console |
 
 ---

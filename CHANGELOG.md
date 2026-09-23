@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `/skills [filter]` in the console lists the project's, the user's and the
+  installed plugins' skills from their `SKILL.md`; `Tab` after `/` completes
+  console commands and skill names.
+
 - The workspace mouse is on by default: click a pane to focus it, scroll, and
   drag to copy straight to the clipboard. `--no-mouse`, `"mouse": false` in
   the config and `Ctrl-b M` turn it off.

@@ -117,7 +117,7 @@ export function renderSkills(skills: Skill[], width = process.stdout.columns || 
     for (const skill of group) {
       const room = Math.max(20, width - nameWidth - skill.origin.length - 6);
       const description = skill.description.length > room ? `${skill.description.slice(0, room - 1)}…` : skill.description;
-      lines.push(`  ${skill.name.padEnd(nameWidth)}${description.padEnd(room)}  ${skill.origin}`);
+      lines.push(`  ${skill.name.padEnd(nameWidth - 1)} ${description.padEnd(room)}  ${skill.origin}`);
     }
   }
   return lines.join("\n");
