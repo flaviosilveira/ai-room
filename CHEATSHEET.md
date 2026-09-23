@@ -121,7 +121,8 @@ e abrem o arquivo com `room_attachment` quando precisam.
 
 | Comando | Faz |
 |---|---|
-| `ai-room rooms [busca]` | Lista as salas |
+| `ai-room rooms [busca]` | Lista as salas (JSON, com atividade e participantes) |
+| `ai-room rooms --names` | Só os nomes, um por linha (`\| wc -l` conta) |
 | `ai-room who <sala>` | Participantes e status |
 | `ai-room messages <sala>` | Histórico |
 | `ai-room pane <sala> <pane> [show\|hide\|toggle]` | Mostra/esconde um pane pelo shell |

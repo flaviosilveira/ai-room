@@ -129,9 +129,14 @@ async function status(asJson = false): Promise<void> {
   }
 }
 
-function rooms(query?: string): void {
-  const db = openDb();
-  const rows = roomList(db, { query });
+/** Every room, not the MCP tool's page of 50; `--names` prints one per line for pipes. */
+function rooms(argv: string[]): void {
+  const query = argv.find((arg) => !arg.startsWith("--"));
+  const rows = roomList(openDb(), { query, limit: -1 });
+  if (argv.includes("--names")) {
+    for (const row of rows) console.log(row.name);
+    return;
+  }
   console.log(JSON.stringify(rows, null, 2));
 }
 
@@ -619,7 +624,7 @@ switch (cmd) {
     await status(process.argv.includes("--json"));
     break;
   case "rooms":
-    rooms(arg);
+    rooms(process.argv.slice(3));
     break;
   case "messages":
     messages(arg);
@@ -674,7 +679,7 @@ switch (cmd) {
     console.error(
       "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|close <room>|delete <room> [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
-        "rooms [query]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
+        "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);
 }
