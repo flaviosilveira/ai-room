@@ -12,6 +12,7 @@ import { MAX_ATTACHMENT_BYTES } from "./attachments.js";
 export type ClipboardResult =
   | { kind: "image"; bytes: Buffer; name: string }
   | { kind: "file"; path: string }
+  | { kind: "text"; text: string }
   | { kind: "none"; reason: string };
 
 type Run = (bin: string, args: string[]) => { status: number | null; stdout: Buffer };
@@ -37,31 +38,33 @@ const stampName = (ext: string) => `clipboard-${new Date().toISOString().replace
 function readMac(run: Run): ClipboardResult {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "airoom-clip-")), "clip.png");
   try {
-    // PNGf covers screenshots and copied images; a file copied in Finder is a
-    // file URL instead, and becomes a /file of that path.
+    // The clipboard is asked what it holds before anything is coerced:
+    // AppleScript turns plain text into a "file URL" on request, so text that
+    // was only being pasted came back as a path to a file that does not exist.
     const script = [
-      "try",
+      'set kinds to ""',
+      "repeat with entry in (clipboard info)",
+      "set kinds to kinds & ((item 1 of entry) as text) & \",\"",
+      "end repeat",
+      'if kinds contains "furl" then return "file:" & POSIX path of (the clipboard as «class furl»)',
+      'if kinds contains "PNGf" or kinds contains "TIFF" then',
       "set d to (the clipboard as «class PNGf»)",
       `set f to open for access POSIX file ${JSON.stringify(out)} with write permission`,
       "set eof f to 0",
       "write d to f",
       "close access f",
       'return "image"',
-      "on error",
-      "try",
-      "return POSIX path of (the clipboard as «class furl»)",
-      "on error",
+      "end if",
+      'if kinds contains "utf8" or kinds contains "string" then return "text"',
       'return ""',
-      "end try",
-      "end try",
     ];
-    const result = run("osascript", script.flatMap((line) => ["-e", line]));
-    const answer = result.stdout.toString("utf8").trim();
+    const answer = run("osascript", script.flatMap((line) => ["-e", line])).stdout.toString("utf8").trim();
     if (answer === "image" && fs.existsSync(out)) {
       return { kind: "image", bytes: fs.readFileSync(out), name: stampName("png") };
     }
-    if (answer.startsWith("/")) return { kind: "file", path: answer };
-    return { kind: "none", reason: "no image in the clipboard" };
+    if (answer.startsWith("file:/")) return { kind: "file", path: answer.slice("file:".length) };
+    if (answer === "text") return { kind: "text", text: run("pbpaste", []).stdout.toString("utf8") };
+    return { kind: "none", reason: "the clipboard is empty" };
   } finally {
     fs.rmSync(path.dirname(out), { recursive: true, force: true });
   }
@@ -83,7 +86,13 @@ function readLinux(run: Run, env: NodeJS.ProcessEnv, has: (bin: string) => boole
   const list = wayland ? run("wl-paste", ["--list-types"]) : run("xclip", ["-selection", "clipboard", "-t", "TARGETS", "-o"]);
   const offered = list.stdout.toString("utf8").split("\n").map((line) => line.trim());
   const type = IMAGE_TYPES.find((candidate) => offered.includes(candidate));
-  if (!type) return { kind: "none", reason: "no image in the clipboard" };
+  if (!type) {
+    if (!offered.some((kind) => kind.startsWith("text/") || kind === "UTF8_STRING")) {
+      return { kind: "none", reason: "the clipboard is empty" };
+    }
+    const text = wayland ? run("wl-paste", ["--no-newline"]) : run("xclip", ["-selection", "clipboard", "-o"]);
+    return { kind: "text", text: text.stdout.toString("utf8") };
+  }
   const data = wayland
     ? run("wl-paste", ["--no-newline", "--type", type])
     : run("xclip", ["-selection", "clipboard", "-t", type, "-o"]);

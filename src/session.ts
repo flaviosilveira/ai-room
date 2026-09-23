@@ -131,7 +131,7 @@ const both = (key: string, command: string) => [`bind-key ${key} ${command}`, `b
 export function tmuxConfig(self: string = selfCommand(), clipboard: string | null = clipboardCommand()): string {
   const copy = clipboard
     ? ["copy-mode", "copy-mode-vi"].flatMap((table) =>
-        ["MouseDragEnd1Pane", "y"].map((key) => `bind-key -T ${table} ${key} send-keys -X copy-pipe-and-cancel "${clipboard}"`)
+        ["MouseDragEnd1Pane", "y", "Enter"].map((key) => `bind-key -T ${table} ${key} send-keys -X copy-pipe-and-cancel "${clipboard}"`)
       )
     : ["set -g set-clipboard on"];
   return [

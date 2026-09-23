@@ -107,6 +107,14 @@ The files tab is a separate tab (window 1): the file browser on the left and
 Vim on the right. In the browser, Enter opens the file in that Vim; `:w` saves,
 and `Ctrl-b arrows` moves between the two. With yazi: `a` creates, `r` renames,
 `d` deletes, `/` searches, `s` greps. Set `AI_ROOM_EDITOR` to use another editor.
+Copying text out of a pane:
+
+| Mouse | How |
+|---|---|
+| off (default) | Select with the terminal as usual and `Cmd+C`; the selection can cross pane borders |
+| on (`Ctrl-b M`) | Drag inside the pane; releasing copies it to the clipboard |
+| either | `Ctrl-b [`, move to the start, `Space`, move to the end, `Enter`: copied to the clipboard |
+
 Closing the terminal window is only a detach: `ai-room attach <room>` gets you back.
 Hiding a pane never stops its agent. To stop one for good, use `ai-room remove`:
 it leaves the roster (reopening will not relaunch it), is no longer woken, and
@@ -139,7 +147,7 @@ Everything in the draft (text and attachments) goes out as one message on Enter.
 
 | Command | Does |
 |---|---|
-| `Ctrl+V` or `/paste` | Attaches the screenshot on the clipboard |
+| `Ctrl+V` or `/paste` | Pastes the clipboard: a screenshot or a copied file is attached, text goes into the draft |
 | `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf, text) |
 | drag a file in | Attaches it too |
 | `/drop <n>` | Removes attachment n from the draft |

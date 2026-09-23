@@ -327,6 +327,32 @@ describe("console attachments", () => {
     expect(calls[1]).toEqual(["wl-paste", "--no-newline", "--type", "image/png"]);
   });
 
+  it("pastes clipboard text as text instead of reading it as a file path", () => {
+    // AppleScript coerces plain text to a file URL, which made a text paste
+    // try to attach "/<the text>".
+    const run = (bin: string) =>
+      bin === "osascript" ? { status: 0, stdout: Buffer.from("text\n") } : { status: 0, stdout: Buffer.from("[Q-05] The new default") };
+    expect(readClipboard({ platform: "darwin", run })).toEqual({ kind: "text", text: "[Q-05] The new default" });
+  });
+
+  it("attaches a file copied in Finder", () => {
+    const run = () => ({ status: 0, stdout: Buffer.from("file:/Users/me/shot.png\n") });
+    expect(readClipboard({ platform: "darwin", run })).toEqual({ kind: "file", path: "/Users/me/shot.png" });
+  });
+
+  it("pastes Linux clipboard text when there is no image", () => {
+    const result = readClipboard({
+      platform: "linux",
+      env: { WAYLAND_DISPLAY: "wayland-0" },
+      has: (bin) => bin === "wl-paste",
+      run: (_bin, args) =>
+        args.includes("--list-types")
+          ? { status: 0, stdout: Buffer.from("text/plain;charset=utf-8\n") }
+          : { status: 0, stdout: Buffer.from("ola") },
+    });
+    expect(result).toEqual({ kind: "text", text: "ola" });
+  });
+
   it("says why there is no clipboard over SSH", () => {
     const result = readClipboard({ platform: "linux", env: {}, has: () => false });
     expect(result).toMatchObject({ kind: "none" });

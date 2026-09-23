@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Ctrl+V with text on the clipboard pastes the text. It used to try to attach
+  a file named after the text ("ENOENT … lstat '/[Q-05] …'"): AppleScript
+  turns text into a file URL when asked for one, so the clipboard is now asked
+  what it holds first.
+- `Enter` in tmux copy mode copies to the system clipboard, like `y` and a
+  mouse drag.
+
 - The files tab puts Vim beside the file browser: opening a file in the
   browser loads it in that Vim, and the browser stays where it was. The
   browser's `$EDITOR` points at the editor pane; `AI_ROOM_EDITOR` picks another

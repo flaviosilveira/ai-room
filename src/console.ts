@@ -23,6 +23,7 @@ import {
   DISABLE_BRACKETED_PASTE,
   ENABLE_BRACKETED_PASTE,
   createPasteStream,
+  normalizePaste,
 } from "./paste.js";
 import { formatBytes } from "./attachments.js";
 import { pastedFilePath, readAttachableFile, readClipboard } from "./clipboard.js";
@@ -477,11 +478,20 @@ export async function runConsole(
     }
   };
 
+  const stagePaste = (paste: string) => {
+    composer.stage(paste);
+    emit(rl, `${C.dim}${composer.summary(paste)} — Enter envia, /show inspeciona, /clear descarta${C.reset}`);
+  };
+
+  // Ctrl+V pastes whatever the clipboard holds: an image or a copied file
+  // becomes an attachment, text lands in the draft like any paste.
   const attachClipboard = () => {
     const clip = readClipboard();
     if (clip.kind === "image") void upload(clip.bytes, clip.name);
     else if (clip.kind === "file") attachFile(clip.path);
-    else emit(rl, `${C.dim}${clip.reason}${C.reset}`);
+    else if (clip.kind === "text") {
+      if (clip.text.trim()) stagePaste(normalizePaste(clip.text));
+    } else emit(rl, `${C.dim}${clip.reason}${C.reset}`);
   };
 
   pasteStream?.on("clipboard", attachClipboard);
@@ -493,11 +503,7 @@ export async function runConsole(
       attachFile(dropped);
       return;
     }
-    composer.stage(paste);
-    emit(
-      rl,
-      `${C.dim}${composer.summary(paste)} — Enter envia, /show inspeciona, /clear descarta${C.reset}`
-    );
+    stagePaste(paste);
   });
 
   // --- live feed -----------------------------------------------------------
