@@ -97,6 +97,15 @@ describe("launch commands", () => {
     }
   });
 
+  it("forbids typing into other panes, and allows reading them", () => {
+    for (const agent of ["claude", "codex", "agy"]) {
+      const prompt = joinPrompt("r", agent);
+      expect(prompt).toMatch(/never type into them/);
+      expect(prompt).toMatch(/send-keys/);
+      expect(prompt).toMatch(/may read other tmux panes/);
+    }
+  });
+
   it("returns null for an unknown harness instead of guessing", () => {
     expect(agentCommand("r", "nope")).toBeNull();
   });

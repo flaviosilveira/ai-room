@@ -97,6 +97,11 @@ export function joinPrompt(room: string, agent: string, harness = harnessFor(age
     "Read your briefing and begin the work your role calls for immediately,",
     "without waiting to be told.",
     "Coordinate with your teammates through room_send.",
+    // Reading another pane is harmless; typing into one is not: keys sent to
+    // the human's console arrive in the room as the human's own words.
+    "You may read other tmux panes, but never type into them (no tmux send-keys,",
+    "paste-buffer or similar): the room is the only channel, and input in the",
+    "human's pane would be taken as the human speaking.",
     ...idle,
     "Never sit in a room_wait loop.",
     "If a human talks to you here, answer them and then go back to work or to idle;",

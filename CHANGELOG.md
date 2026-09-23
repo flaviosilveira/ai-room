@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Agents are told never to type into other tmux panes: keys sent to the
+  human's console would reach the room as the human's own words. Reading
+  panes stays allowed.
+
 - `ai-room remove <room> <agent>` and `ai-room add <room> <agent>` (also
   `/remove` and `/add` in the console) change who is in a running room: a
   removed agent leaves the roster and the participants, its pane closes, and
