@@ -27,6 +27,8 @@ import {
 } from "./paste.js";
 import { formatBytes } from "./attachments.js";
 import { pastedFilePath, readAttachableFile, readClipboard } from "./clipboard.js";
+import { discoverSkills, renderSkills } from "./skills.js";
+import type { Skill } from "./skills.js";
 import type { MultiplexerDriver } from "./session.js";
 import type { AttachmentInfo, MessageInfo, ParticipantView } from "./types.js";
 
@@ -147,6 +149,7 @@ ${C.bold}Comandos${C.reset}
   ${C.bold}/show <pane>${C.reset}       mostra de novo um pane escondido
   ${C.bold}/remove <agente>${C.reset}    tira um agente da sala (ex.: bateu no limite); os outros seguem
   ${C.bold}/add <agente> [papel]${C.reset} traz um agente (novo ou de volta) para a sala
+  ${C.bold}/skills [filtro]${C.reset}    skills do projeto, do usuário e dos plugins (Tab completa depois da /)
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
   ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
   ${C.bold}/paste${C.reset}             anexa a imagem do clipboard (o mesmo que Ctrl+V)
@@ -165,6 +168,22 @@ Qualquer outra linha é enviada à sala como mensagem sua.
  * a paste lands here instead of being chopped into one message per line, so
  * what leaves the console is one message with its line breaks intact.
  */
+export const CONSOLE_COMMANDS = [
+  "attach", "agents", "who", "panes", "hide", "show", "remove", "add", "skills",
+  "detach", "close", "paste", "file", "drop", "clear", "help", "quit",
+];
+
+/**
+ * Tab after "/" completes console commands and skill names. Only the command
+ * word is completed; the rest of the line is the human's.
+ */
+export function completeSlash(line: string, skills: readonly Pick<Skill, "name">[]): [string[], string] {
+  if (!line.startsWith("/") || /\s/.test(line)) return [[], line];
+  const words = [...new Set([...CONSOLE_COMMANDS, ...skills.map((skill) => skill.name)])].map((word) => `/${word}`);
+  const hits = words.filter((word) => word.startsWith(line));
+  return [hits.length ? hits : words, line];
+}
+
 export class Composer {
   private readonly pastes: string[] = [];
   private readonly files: AttachmentInfo[] = [];
@@ -306,11 +325,24 @@ export async function runConsole(
     process.stdout.write(ENABLE_BRACKETED_PASTE);
   }
 
+  // Read once: skills are files on disk, and /skills rescans when asked.
+  let skills: Skill[] = [];
+  const rescanSkills = () => {
+    try {
+      skills = discoverSkills();
+    } catch {
+      skills = [];
+    }
+    return skills;
+  };
+  rescanSkills();
+
   const rl = readline.createInterface({
     input: pasteStream ?? process.stdin,
     output: process.stdout,
     prompt: `${C.human}${me}>${C.reset} `,
     terminal: true,
+    completer: (line: string) => completeSlash(line, skills),
   });
 
   const stopBracketedPaste = () => {
@@ -692,6 +724,14 @@ export async function runConsole(
               db.close();
             }
           });
+          break;
+        }
+        case "skills": {
+          const filter = rest.join(" ").toLowerCase();
+          const found = rescanSkills().filter(
+            (skill) => !filter || skill.name.toLowerCase().includes(filter) || skill.description.toLowerCase().includes(filter)
+          );
+          emit(rl, renderSkills(found));
           break;
         }
         case "detach":
