@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 ### Workspace
 
@@ -52,6 +52,22 @@
   typing its name (or `--yes`). Human-only: not an MCP tool.
 - Machine defaults for new rooms (`tools`, `convention`, `invite`) in
   `~/.ai-room/config.json`; `--no-defaults` skips them.
+
+### Fixes
+
+- agy is woken through its pane like Claude Code; before, it was told it
+  could not be resumed and stopped answering the room.
+- Workspace keys answer their Ctrl variant too: `Ctrl-b Ctrl-z` zoomed
+  instead of suspending the client, which looked like a crash.
+- The pane menu is opened by tmux itself and no longer leaves a process
+  waiting when the terminal closes first.
+- `ai-room rooms` lists every room (it stopped at 50) and takes `--names`.
+- `ai-room delete` takes several rooms with one confirmation.
+
+### Docs
+
+- The README is a quick start; `CHEATSHEET.md` is the command reference and
+  `docs/concepts.md` holds how it works.
 
 ## 0.5.0
 
