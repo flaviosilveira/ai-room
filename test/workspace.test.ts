@@ -89,6 +89,14 @@ describe("launch commands", () => {
     expect(agentCommand("r", "agy")).toEqual(["agy", "-i", joinPrompt("r", "agy")]);
   });
 
+  it("tells every launched harness it can go idle and be woken, agy included", () => {
+    for (const agent of ["claude", "codex", "agy"]) {
+      const prompt = joinPrompt("r", agent);
+      expect(prompt).toMatch(/room_idle/);
+      expect(prompt).not.toMatch(/cannot be resumed/);
+    }
+  });
+
   it("returns null for an unknown harness instead of guessing", () => {
     expect(agentCommand("r", "nope")).toBeNull();
   });

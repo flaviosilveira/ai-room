@@ -44,10 +44,11 @@ export const WAKE_BY_HARNESS: Record<string, { kind: string; env: string }> = {
 
 /**
  * Harnesses with no way to hand a message to a running session. They are woken
- * through the pane they live in, which the launcher registers for them, so they
- * have nothing to declare themselves.
+ * through the pane they live in, derived from the room when they go idle, so
+ * they have nothing to declare themselves. agy is one: without it here, agy was
+ * told it could not be resumed and ended its turn for good.
  */
-export const PANE_WOKEN = new Set(["claude"]);
+export const PANE_WOKEN = new Set(["claude", "agy"]);
 
 /**
  * An instance name may carry its own harness ("claude-2" runs claude), so a
