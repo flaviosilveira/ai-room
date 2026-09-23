@@ -62,8 +62,12 @@ function stamp(ms: number): string {
  * through typing: clear the line, write, then let readline repaint.
  */
 function emit(rl: readline.Interface, line: string): void {
+  // A draft longer than the terminal wraps over several rows; clearing only
+  // the cursor's row left the others behind, one stale copy per message.
+  const { rows } = rl.getCursorPos();
+  if (rows) readline.moveCursor(process.stdout, 0, -rows);
   readline.cursorTo(process.stdout, 0);
-  readline.clearLine(process.stdout, 0);
+  readline.clearScreenDown(process.stdout);
   process.stdout.write(`${line}\n`);
   rl.prompt(true);
 }
