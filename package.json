@@ -11,6 +11,7 @@
     "bin",
     "hooks",
     "CHEATSHEET.md",
+    "docs",
     "LICENSE"
   ],
   "scripts": {
