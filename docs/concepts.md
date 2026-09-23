@@ -44,11 +44,11 @@ Each agent pane is a real interactive session of that harness, so selecting a
 pane lets you talk to that agent directly and answer its own approval prompts.
 The monitor pane runs `ai-room console` for the room feed.
 
-A second tab, **files**, holds a file browser for the working directory: the
-first of yazi, broot, lf, ranger or nnn that is installed, or vim's netrw as a
-NERDTree-style sidebar (tree on the left, the file opens beside it; with
-`--mouse` a click opens it too). `AI_ROOM_FILES="<command>"` picks any other
-command; `--no-files` leaves the tab out.
+A second tab, **files**, holds a file browser for the working directory — the
+first of yazi, broot, lf, ranger or nnn that is installed — with Vim beside it:
+opening a file in the browser loads it in that Vim. Without any of them, vim's
+netrw serves as a tree with the file opening beside it. `AI_ROOM_FILES` and
+`AI_ROOM_EDITOR` pick other commands; `--no-files` leaves the tab out.
 
 The workspace runs on a tmux server of its own (`tmux -L ai-room`), so its keys
 never change your other tmux sessions. Your `~/.tmux.conf` is loaded first; on
@@ -187,13 +187,13 @@ human> olha esse erro▊
 - Uploads nunca enviados são apagados depois de 1h. `ai-room attachments prune
   --older-than 30d` libera os arquivos antigos; o histórico mantém os metadados.
 
-O mouse é opt-in: `ai-room open <room> --mouse`. Por padrão o tmux não captura o
-mouse, então a seleção nativa do terminal e o Cmd+C continuam funcionando como
-em qualquer janela. Com `--mouse`, arrastar no pane e `y` em copy-mode copiam
+O mouse vem ligado: clicar escolhe o pane, a rolagem funciona, e arrastar
+copia. Ao soltar o arraste — ou com `y`/`Enter` em copy-mode — a seleção vai
 para o clipboard do sistema via `pbcopy` (macOS) ou `wl-copy`/`xclip` (Linux) —
 sem depender de OSC 52 e sem tocar no seu `~/.tmux.conf`: os bindings vivem no
 servidor tmux em execução. Sem nenhuma dessas ferramentas, ai-room liga
-`set-clipboard on` e deixa o terminal tentar.
+`set-clipboard on` e deixa o terminal tentar. `Ctrl-b M`, `--no-mouse` ou
+`"mouse": false` no config desligam o mouse, para a seleção nativa do terminal.
 
 O status de cada agente é o que ele publicou por último. O monitor só apresenta
 isso como verdade atual quando há evidência: `idle` é o agente que encerrou o

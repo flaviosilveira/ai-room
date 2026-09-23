@@ -146,10 +146,11 @@ describe("the composer makes one message", () => {
   });
 });
 
-describe("mouse is opt-in and copying still works", () => {
-  it("stays off unless asked", () => {
-    expect(parseOpenFlags([]).mouse).toBe(false);
+describe("mouse is on by default and copying still works", () => {
+  it("leaves the choice to the defaults unless a flag decides", () => {
+    expect(parseOpenFlags([]).mouse).toBeUndefined();
     expect(parseOpenFlags(["--mouse"]).mouse).toBe(true);
+    expect(parseOpenFlags(["--no-mouse"]).mouse).toBe(false);
   });
 
   it("pipes a selection into the local clipboard tool", () => {

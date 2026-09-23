@@ -596,6 +596,7 @@ export function ensureWorkspace(
   // Mouse mode is opt-in: turning it on takes selection away from the
   // terminal. Applied on reattach too, so a default reaches old workspaces.
   if (options?.mouse) enableMouse(driver, session, cwd);
+  else if (options?.mouse === false) mux(driver, ["set-option", "-t", session, "mouse", "off"], cwd);
 
   const added = missing.map((pane) => pane.title);
   return {

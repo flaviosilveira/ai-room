@@ -15,8 +15,8 @@ export interface OpenFlags {
   detached: boolean;
   monitor: boolean;
   files: boolean;
-  mouse: boolean;
-  mouseOff: boolean;
+  /** Undecided until the defaults are applied; on unless someone says off. */
+  mouse?: boolean;
   defaults: boolean;
 }
 
@@ -30,8 +30,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     detached: false,
     monitor: true,
     files: true,
-    mouse: false,
-    mouseOff: false,
+
     defaults: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -51,7 +50,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--no-files") flags.files = false;
     else if (arg === "--no-defaults") flags.defaults = false;
     else if (arg === "--mouse") flags.mouse = true;
-    else if (arg === "--no-mouse") flags.mouseOff = true;
+    else if (arg === "--no-mouse") flags.mouse = false;
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;
@@ -92,11 +91,11 @@ export function loadOpenDefaults(file = defaultsPath()): OpenDefaults {
  * with whatever the defaults say today.
  */
 export function withDefaults(flags: OpenFlags, defaults: OpenDefaults, roomIsNew: boolean): OpenFlags {
-  if (!flags.defaults) return flags;
-  // The mouse is how this terminal is used, not part of a room's charter, so
-  // it applies on every open.
-  const mouse = flags.mouseOff ? false : flags.mouse || defaults.mouse === true;
-  if (!roomIsNew) return { ...flags, mouse };
+  // The mouse is how this terminal is used, not part of a room's charter, so it
+  // applies on every open. On by default: dragging copies to the clipboard, so
+  // it no longer costs the terminal's own copy and paste.
+  const mouse = flags.mouse ?? (flags.defaults ? defaults.mouse : undefined) ?? true;
+  if (!flags.defaults || !roomIsNew) return { ...flags, mouse };
   return {
     ...flags,
     mouse,

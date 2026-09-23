@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The workspace mouse is on by default: click a pane to focus it, scroll, and
+  drag to copy straight to the clipboard. `--no-mouse`, `"mouse": false` in
+  the config and `Ctrl-b M` turn it off.
+
 - Ctrl+V with text on the clipboard pastes the text. It used to try to attach
   a file named after the text ("ENOENT … lstat '/[Q-05] …'"): AppleScript
   turns text into a file URL when asked for one, so the clipboard is now asked

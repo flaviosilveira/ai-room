@@ -56,7 +56,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--role codex=reviewer` | One agent's role |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
 | `--no-files` | No files tab |
-| `--mouse` · `--no-mouse` | Mouse in tmux (click to focus a pane, click in the file tree) |
+| `--no-mouse` | Starts with the mouse off (it is on by default) |
 | `--reuse` | Reuses a room that already holds another task's history |
 | `--detached` · `--dry-run` | One session per agent · only print the plan |
 
@@ -82,7 +82,7 @@ Defaults for new rooms, in `~/.ai-room/config.json`:
 ```
 
 Flags given on the command line win; an existing room keeps its own charter.
-`"invite": ["claude", "codex", "agy"]` and `"mouse": true` are accepted too.
+`"invite": ["claude", "codex", "agy"]` and `"mouse": false` are accepted too.
 
 ---
 
@@ -98,7 +98,7 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 | `Ctrl-b m` | Menu: show/hide agents, the human (monitor) and files |
 | `Ctrl-b t` | Goes to the files tab, and back |
 | `Ctrl-b 0` · `Ctrl-b 1` | Agents tab · files tab |
-| `Ctrl-b M` | Mouse on/off: click a pane to focus it, scroll, drag to copy |
+| `Ctrl-b M` | Mouse off/on. On (default): click a pane to focus it, scroll, drag to copy |
 | `Ctrl-b arrows` | Moves between panes |
 | `Ctrl-b z` | Pane full screen (again to restore) |
 | `Ctrl-b X` | Closes the room (asks first) |
@@ -107,13 +107,13 @@ The files tab is a separate tab (window 1): the file browser on the left and
 Vim on the right. In the browser, Enter opens the file in that Vim; `:w` saves,
 and `Ctrl-b arrows` moves between the two. With yazi: `a` creates, `r` renames,
 `d` deletes, `/` searches, `s` greps. Set `AI_ROOM_EDITOR` to use another editor.
-Copying text out of a pane:
+Copying text out of a pane: drag inside it, and releasing copies to the
+clipboard. Without the mouse: `Ctrl-b [`, move to the start, `Space`, move to
+the end, `Enter`. For the terminal's own selection across panes, turn the mouse
+off with `Ctrl-b M`.
 
-| Mouse | How |
-|---|---|
-| off (default) | Select with the terminal as usual and `Cmd+C`; the selection can cross pane borders |
-| on (`Ctrl-b M`) | Drag inside the pane; releasing copies it to the clipboard |
-| either | `Ctrl-b [`, move to the start, `Space`, move to the end, `Enter`: copied to the clipboard |
+Pasting in `human>`: `Ctrl+V` pastes anything (text, a screenshot, a copied
+file); `Cmd+V` only text, because the terminal itself cannot paste an image.
 
 Closing the terminal window is only a detach: `ai-room attach <room>` gets you back.
 Hiding a pane never stops its agent. To stop one for good, use `ai-room remove`:

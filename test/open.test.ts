@@ -129,6 +129,15 @@ describe("machine defaults for new rooms", () => {
     expect(withDefaults(parseOpenFlags(["--no-defaults"]), defaults, true).convention).toBeUndefined();
   });
 
+  it("turns the mouse on unless the flag or the config says off", () => {
+    expect(withDefaults(parseOpenFlags([]), {}, true).mouse).toBe(true);
+    expect(withDefaults(parseOpenFlags([]), {}, false).mouse).toBe(true);
+    expect(withDefaults(parseOpenFlags(["--no-mouse"]), {}, true).mouse).toBe(false);
+    expect(withDefaults(parseOpenFlags([]), { mouse: false }, false).mouse).toBe(false);
+    expect(withDefaults(parseOpenFlags(["--mouse"]), { mouse: false }, true).mouse).toBe(true);
+    expect(withDefaults(parseOpenFlags(["--no-defaults"]), { mouse: false }, true).mouse).toBe(true);
+  });
+
   it("reads the config file and survives a broken one", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "airoom-cfg-"));
     try {
