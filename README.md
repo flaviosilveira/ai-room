@@ -132,6 +132,11 @@ are untouched.
 `ai-room close <room>` kills only that room's workspace. The room, its charter
 and its history live in SQLite and survive.
 
+`ai-room storage` shows how much the database, attachments and logs take and
+which rooms hold the most (`--json` for scripts). SQLite keeps freed pages for
+reuse, so after `delete` or `attachments prune` run `ai-room compact` to shrink
+the file.
+
 `ai-room delete <room>` removes the room for good — workspace, history, charter,
 participants and attachments (files another room shares are kept). It asks you
 to type the room name; `--yes` skips that for scripts. It is a CLI command only,

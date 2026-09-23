@@ -16,6 +16,8 @@ ai-room open <sala> --brief "..." --invite claude,codex,agy
 | `ai-room who <sala>` · `ai-room messages <sala>` | Participantes · histórico |
 | `ai-room pane <sala> <pane> [show\|hide\|toggle]` | Mostra/esconde um pane pelo shell |
 | `ai-room attachments prune --older-than 30d` | Apaga arquivos de anexos antigos |
+| `ai-room storage` | Tamanho do banco, anexos e logs; salas que mais ocupam (`--json`) |
+| `ai-room compact` | Encolhe o banco depois de `delete`/`prune` |
 | `ai-room status` | Saúde do servidor |
 
 Flags do `open`:
@@ -38,6 +40,18 @@ Padrões de sala nova ficam em `~/.ai-room/config.json`:
 
 Flags passadas na hora ganham; sala que já existe mantém o próprio charter.
 Também aceita `"invite": ["claude", "codex", "agy"]`.
+
+## Servidor
+
+| Comando | Faz |
+|---|---|
+| `~/dev/ai-agent-config/scripts/ai-room-service.sh status` | Está rodando? |
+| `... ai-room-service.sh stop` · `start` · `restart` | Derruba · sobe · reinicia (em segundo plano) |
+| `... ai-room-service.sh logs` | Log ao vivo (`Ctrl+C` sai, o servidor continua) |
+| `cd ~/dev/ai-room && pnpm build` | Recompila depois de mudar o código; depois `restart` |
+
+Roda como LaunchAgent (sobe no login, volta sozinho se cair), sem Docker:
+um `node` em `127.0.0.1:49375` e o SQLite em `~/.ai-room/ai-room.sqlite`.
 
 ## Teclas no workspace
 

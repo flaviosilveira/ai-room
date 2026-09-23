@@ -36,6 +36,8 @@
 - Tool presets `grill-me`, `grill-with-docs`, `rtk` and `ponytail`, and a
   `ponytail` convention. Conventions combine (`caveman,ponytail`). `open`
   reports declared tools that are not installed.
+- `ai-room storage` reports database, attachment and log sizes and the
+  largest rooms; `ai-room compact` shrinks the database after deletions.
 - `ai-room delete <room>` removes a room and everything it owns, after
   typing its name (or `--yes`). Human-only: not an MCP tool.
 - Machine defaults for new rooms (`tools`, `convention`, `invite`) in

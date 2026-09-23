@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import readline from "node:readline/promises";
 import { openDb, defaultDbPath } from "./db/index.js";
 import { VERSION } from "./version.js";
@@ -5,15 +7,17 @@ import {
   roomCharter,
   roomExists,
   roomHistory,
+  compactDatabase,
   pruneAttachments,
   roomDelete,
+  storageCounts,
   roomJoin,
   roomList,
   roomMessageCount,
   roomSetCharter,
   roomWho,
 } from "./store.js";
-import { closeRoom, harnessFor, invite, openWorkspace, planWorkspace } from "./invite.js";
+import { closeRoom, harnessFor, invite, logDir, openWorkspace, planWorkspace } from "./invite.js";
 import {
   INSTALL_HINT,
   attachWorkspace,
@@ -31,6 +35,7 @@ import {
 } from "./session.js";
 import { TOOL_CATALOG } from "./catalog.js";
 import { missingTools } from "./presets.js";
+import { attachmentRoot, formatBytes } from "./attachments.js";
 import {
   agentsToLaunch,
   charterPatch,
@@ -439,6 +444,88 @@ async function deleteRoom(room: string, argv: string[]): Promise<void> {
   console.log(`deleted room "${room}": ${deleted.messages} message(s), ${deleted.attachments} attachment(s).`);
 }
 
+function fileSize(file: string): number {
+  try {
+    return fs.statSync(file).size;
+  } catch {
+    return 0;
+  }
+}
+
+function directorySize(dir: string): { bytes: number; files: number } {
+  let bytes = 0;
+  let files = 0;
+  const walk = (current: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) {
+        bytes += fileSize(full);
+        files += 1;
+      }
+    }
+  };
+  walk(dir);
+  return { bytes, files };
+}
+
+function storageReport() {
+  const db = openDb();
+  const file = defaultDbPath();
+  const database = {
+    path: file,
+    bytes: fileSize(file),
+    walBytes: fileSize(`${file}-wal`),
+    shmBytes: fileSize(`${file}-shm`),
+  };
+  const attachments = { path: attachmentRoot(), ...directorySize(attachmentRoot()) };
+  const logs = { path: logDir(), ...directorySize(logDir()) };
+  return { database, attachments, logs, counts: storageCounts(db) };
+}
+
+function storage(asJson: boolean): void {
+  const report = storageReport();
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+  const { database, attachments, logs, counts } = report;
+  const total = database.bytes + database.walBytes + database.shmBytes + attachments.bytes + logs.bytes;
+  const pad = (label: string) => label.padEnd(12);
+  console.log(`${pad("database")}${formatBytes(database.bytes)}  (+ wal ${formatBytes(database.walBytes)}, shm ${formatBytes(database.shmBytes)})  ${database.path}`);
+  console.log(`${pad("attachments")}${formatBytes(attachments.bytes)} in ${attachments.files} file(s)  ${attachments.path}`);
+  console.log(`${pad("logs")}${formatBytes(logs.bytes)} in ${logs.files} file(s)  ${logs.path}`);
+  console.log(`${pad("total")}${formatBytes(total)}`);
+  console.log("");
+  console.log(
+    `${counts.rooms} room(s), ${counts.messages} message(s), ${counts.attachments} attachment(s)` +
+      (counts.purgedAttachments ? `, ${counts.purgedAttachments} pruned` : "")
+  );
+  if (counts.largestRooms.length) {
+    console.log("\nlargest rooms:");
+    for (const room of counts.largestRooms) {
+      const last = room.lastActivityAt ? new Date(room.lastActivityAt).toISOString().slice(0, 10) : "never";
+      const files = room.attachments ? `, ${room.attachments} attachment(s) ${formatBytes(room.attachmentBytes)}` : "";
+      console.log(`  ${room.room}  ${room.messages} message(s)${files}  last ${last}`);
+    }
+  }
+  console.log("\nfree space: ai-room delete <room> · ai-room attachments prune --older-than 30d · ai-room compact");
+}
+
+function compact(): void {
+  const file = defaultDbPath();
+  const before = fileSize(file) + fileSize(`${file}-wal`);
+  compactDatabase(openDb());
+  const after = fileSize(file) + fileSize(`${file}-wal`);
+  console.log(`database ${formatBytes(before)} -> ${formatBytes(after)}`);
+}
+
 const PANE_MODES = new Set(["show", "hide", "toggle"]);
 
 /**
@@ -556,6 +643,12 @@ switch (cmd) {
   case "close":
     close(arg);
     break;
+  case "storage":
+    storage(process.argv.includes("--json"));
+    break;
+  case "compact":
+    compact();
+    break;
   case "delete":
     await deleteRoom(arg, process.argv.slice(4));
     break;
@@ -581,7 +674,7 @@ switch (cmd) {
     console.error(
       "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|close <room>|delete <room> [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
-        "rooms [query]|messages <room>|who <room>|attachments prune [--older-than 30d]>"
+        "rooms [query]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);
 }

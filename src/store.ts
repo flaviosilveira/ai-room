@@ -547,6 +547,50 @@ export function roomDelete(db: Database.Database, room: string): { messages: num
   return counts;
 }
 
+export interface StorageCounts {
+  rooms: number;
+  messages: number;
+  attachments: number;
+  purgedAttachments: number;
+  attachmentBytes: number;
+  largestRooms: { room: string; messages: number; attachments: number; attachmentBytes: number; lastActivityAt: number | null }[];
+}
+
+export function storageCounts(db: Database.Database, top = 10): StorageCounts {
+  const one = (sql: string) => (db.prepare(sql).get() as { n: number | null }).n ?? 0;
+  return {
+    rooms: one(`SELECT COUNT(*) as n FROM rooms`),
+    messages: one(`SELECT COUNT(*) as n FROM messages`),
+    attachments: one(`SELECT COUNT(*) as n FROM attachments WHERE purged_at IS NULL`),
+    purgedAttachments: one(`SELECT COUNT(*) as n FROM attachments WHERE purged_at IS NOT NULL`),
+    // Counted once per stored file: identical uploads share one.
+    attachmentBytes: one(`SELECT SUM(bytes) as n FROM (SELECT DISTINCT sha256, bytes FROM attachments WHERE purged_at IS NULL)`),
+    largestRooms: db
+      .prepare(
+        `SELECT r.name as room,
+                (SELECT COUNT(*) FROM messages m WHERE m.room = r.name) as messages,
+                (SELECT COUNT(*) FROM attachments a WHERE a.room = r.name AND a.purged_at IS NULL) as attachments,
+                COALESCE((SELECT SUM(bytes) FROM attachments a WHERE a.room = r.name AND a.purged_at IS NULL), 0) as attachmentBytes,
+                (SELECT MAX(created_at) FROM messages m WHERE m.room = r.name) as lastActivityAt
+         FROM rooms r
+         ORDER BY attachmentBytes DESC, messages DESC
+         LIMIT ?`
+      )
+      .all(top) as StorageCounts["largestRooms"],
+  };
+}
+
+/**
+ * SQLite keeps the pages freed by delete and prune for reuse instead of
+ * shrinking the file. This folds the write-ahead log back into the database
+ * and rewrites it without the free pages.
+ */
+export function compactDatabase(db: Database.Database): void {
+  db.pragma("wal_checkpoint(TRUNCATE)");
+  db.exec("VACUUM");
+  db.pragma("wal_checkpoint(TRUNCATE)");
+}
+
 export function participantHarness(db: Database.Database, room: string, agent: string): string | null {
   const participant = getParticipant(db, room, agent);
   if (!participant) return null;

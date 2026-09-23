@@ -19,8 +19,10 @@ import {
   pruneAttachments,
   roomHistory,
   roomJoin,
+  compactDatabase,
   roomDelete,
   roomExists,
+  storageCounts,
   roomListen,
   roomSend,
   roomWho,
@@ -148,6 +150,17 @@ describe("attachments in the store", () => {
     expect(fs.existsSync(shared.path!)).toBe(true);
     expect(roomHistory(db, { room: "other" })[0].attachments).toHaveLength(1);
     expect(roomDelete(db, "r")).toBeNull();
+  });
+
+  it("counts what the store holds, a shared file once", () => {
+    const a = createAttachment(db, { room: "r", bytes: PNG_1X1 });
+    const b = createAttachment(db, { room: "other", bytes: PNG_1X1 });
+    roomSend(db, { room: "r", agent: "human", message: "x", attachmentIds: [a.id] });
+    roomSend(db, { room: "other", agent: "human", message: "y", attachmentIds: [b.id] });
+    const counts = storageCounts(db);
+    expect(counts).toMatchObject({ rooms: 2, messages: 2, attachments: 2, attachmentBytes: PNG_1X1.length });
+    expect(counts.largestRooms[0]).toMatchObject({ messages: 1, attachments: 1 });
+    expect(() => compactDatabase(db)).not.toThrow();
   });
 
   it("refuses a symlink planted in the store", () => {
