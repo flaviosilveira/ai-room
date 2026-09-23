@@ -15,9 +15,10 @@ import {
   sessionExists,
   sessionName,
   setPaneVisible,
+  typeIntoPane,
   workspaceName,
 } from "./session.js";
-import { closeRoom } from "./invite.js";
+import { closeRoom, harnessFor } from "./invite.js";
 import { STATUS_STALE_MS } from "./wait.js";
 import {
   DISABLE_BRACKETED_PASTE,
@@ -27,7 +28,7 @@ import {
 } from "./paste.js";
 import { formatBytes } from "./attachments.js";
 import { pastedFilePath, readAttachableFile, readClipboard } from "./clipboard.js";
-import { discoverSkills, renderSkills } from "./skills.js";
+import { discoverSkills, renderSkills, skillLine, skillVisibleTo } from "./skills.js";
 import type { Skill } from "./skills.js";
 import type { MultiplexerDriver } from "./session.js";
 import type { AttachmentInfo, MessageInfo, ParticipantView } from "./types.js";
@@ -150,6 +151,7 @@ ${C.bold}Comandos${C.reset}
   ${C.bold}/remove <agente>${C.reset}    tira um agente da sala (ex.: bateu no limite); os outros seguem
   ${C.bold}/add <agente> [papel]${C.reset} traz um agente (novo ou de volta) para a sala
   ${C.bold}/skills [filtro]${C.reset}    skills do projeto, do usuário e dos plugins (Tab completa depois da /)
+  ${C.bold}/<skill> @agente texto${C.reset}  pede a skill a um agente (sem @: pede à sala)
   ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
   ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
   ${C.bold}/paste${C.reset}             anexa a imagem do clipboard (o mesmo que Ctrl+V)
@@ -187,9 +189,25 @@ export function completeSlash(line: string, skills: readonly Pick<Skill, "name">
 export class Composer {
   private readonly pastes: string[] = [];
   private readonly files: AttachmentInfo[] = [];
+  /** Called after every change, so the prompt can show what Enter will send. */
+  onChange: () => void = () => undefined;
 
   attach(attachment: AttachmentInfo): void {
     this.files.push(attachment);
+    this.onChange();
+  }
+
+  /** "4 img · 1 texto": the draft in a few characters, for the prompt line. */
+  badge(): string {
+    const images = this.files.filter((file) => file.mime.startsWith("image/")).length;
+    const others = this.files.length - images;
+    return [
+      images ? `${images} img` : "",
+      others ? `${others} arquivo${others === 1 ? "" : "s"}` : "",
+      this.pastes.length ? `${this.pastes.length} texto${this.pastes.length === 1 ? "" : "s"}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   get attachments(): readonly AttachmentInfo[] {
@@ -199,7 +217,9 @@ export class Composer {
   /** 1-based, as the draft line shows it. */
   drop(position: number): AttachmentInfo | null {
     if (!Number.isInteger(position) || position < 1 || position > this.files.length) return null;
-    return this.files.splice(position - 1, 1)[0];
+    const [dropped] = this.files.splice(position - 1, 1);
+    this.onChange();
+    return dropped;
   }
 
   /** The draft line shown above the prompt while anything is attached. */
@@ -215,6 +235,7 @@ export class Composer {
     // A paste usually ends with the newline that closed its last line; keeping
     // it would put a blank line at the end of every pasted message.
     this.pastes.push(paste.replace(/\n+$/, ""));
+    this.onChange();
   }
 
   get pending(): number {
@@ -234,6 +255,7 @@ export class Composer {
   clear(): void {
     this.pastes.length = 0;
     this.files.length = 0;
+    this.onChange();
   }
 
   /** Typed line plus everything staged, as a single message. */
@@ -345,6 +367,14 @@ export async function runConsole(
     completer: (line: string) => completeSlash(line, skills),
   });
 
+  // The prompt is the one line that never scrolls away, so it carries the
+  // draft: agents talking above it can no longer hide what Enter will send.
+  composer.onChange = () => {
+    const badge = composer.badge();
+    rl.setPrompt(`${C.human}${me}${badge ? ` ${C.warn}[${badge}]${C.human}` : ""}>${C.reset} `);
+    rl.prompt(true);
+  };
+
   const stopBracketedPaste = () => {
     if (pasteStream) process.stdout.write(DISABLE_BRACKETED_PASTE);
   };
@@ -447,6 +477,47 @@ export async function runConsole(
     emit(rl, `${C.dim}encerrado: ${result.sessions.join(", ")}${C.reset}`);
   };
 
+  /**
+   * `/<skill> @agent text` types the skill into that agent's pane, the way its
+   * harness runs one; without `@agent` the room is asked, and whoever fits
+   * picks it up.
+   */
+  const requestSkill = (skill: Skill, words: string[]) => {
+    const target = words.find((word) => word.startsWith("@"))?.slice(1);
+    const text = words.filter((word) => !word.startsWith("@")).join(" ");
+    if (!target) {
+      void say({
+        message: `O humano pede a skill \`${skill.name}\`${text ? `: ${text}` : ""}. Quem tiver o papel para isso, rode-a.`,
+        attachmentIds: [],
+      });
+      return;
+    }
+    const harness = harnessFor(target);
+    const invocation = skillLine(harness, skill.name, text);
+    if (!invocation) {
+      emit(rl, `${C.warn}não sei como ${target} roda skills; peça sem @ para a sala.${C.reset}`);
+      return;
+    }
+    if (!skillVisibleTo(harness, skill)) {
+      emit(rl, `${C.warn}${target} não enxerga ${skill.name} (está em ${skill.origin}); peça a outro agente ou sem @.${C.reset}`);
+      return;
+    }
+    const pane = driver && driver.name === "tmux" && sessionExists(driver, workspace)
+      ? paneStates(driver, workspace).find((state) => state.agent === target)
+      : undefined;
+    if (!pane) {
+      emit(rl, `${C.warn}nenhum pane de ${target} neste workspace.${C.reset}`);
+      return;
+    }
+    const typed = typeIntoPane(driver!, pane.paneId, invocation.line, { closeMenu: invocation.closeMenu });
+    emit(
+      rl,
+      typed.ok
+        ? `${C.dim}→ ${target}: ${invocation.line}${C.reset}`
+        : `${C.warn}não foi possível digitar no pane de ${target}: ${typed.error}${C.reset}`
+    );
+  };
+
   const listAgents = () => {
     if (!driver) {
       emit(rl, `${C.warn}Sem multiplexador. ${INSTALL_HINT}${C.reset}`);
@@ -495,7 +566,7 @@ export async function runConsole(
         return;
       }
       composer.attach(body.attachment);
-      emit(rl, `${C.dim}anexos: ${composer.draftLine()} — Enter envia, /drop n remove${C.reset}`);
+      emit(rl, `${C.dim}anexos: ${composer.draftLine()} — Enter envia · /show vê · /drop n remove · /clear descarta${C.reset}`);
     } catch (error) {
       emit(rl, `${C.warn}servidor inacessível: ${error instanceof Error ? error.message : error}${C.reset}`);
     }
@@ -770,8 +841,14 @@ export async function runConsole(
         case "exit":
           rl.close();
           return;
-        default:
-          emit(rl, `${C.warn}comando desconhecido: /${cmd} — /help${C.reset}`);
+        default: {
+          const skill = skills.find((candidate) => candidate.name === cmd);
+          if (!skill) {
+            emit(rl, `${C.warn}comando desconhecido: /${cmd} — /help, /skills${C.reset}`);
+            break;
+          }
+          requestSkill(skill, rest);
+        }
       }
       return rl.prompt();
     }

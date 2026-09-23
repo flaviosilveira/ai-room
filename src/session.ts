@@ -722,6 +722,27 @@ export function paneMenuFile(session: string): string {
   return path.join(path.dirname(tmuxConfigPath()), "menus", `${session}.tmux`);
 }
 
+/**
+ * Types a line into an agent's pane on the human's behalf, as if the human had
+ * typed it there. `closeMenu` sends Escape first: Codex and agy open a
+ * suggestion menu on `$name` / `/name`, and Enter would pick the suggestion
+ * instead of sending the line.
+ */
+export function typeIntoPane(
+  driver: MultiplexerDriver,
+  paneId: string,
+  line: string,
+  options: { closeMenu?: boolean } = {}
+): { ok: boolean; error?: string } {
+  const keys = [
+    ["send-keys", "-t", paneId, "-l", line],
+    ...(options.closeMenu ? [["send-keys", "-t", paneId, "Escape"]] : []),
+    ["send-keys", "-t", paneId, "Enter"],
+  ];
+  const result = mux(driver, keys.flatMap((command, i) => (i ? [";", ...command] : command)));
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
+}
+
 /** A path as Vim's command line reads it back, like its own fnameescape(). */
 export function vimEscape(file: string): string {
   return file.replace(/[ \t%#|"'*?[{<!\\$`]/g, "\\$&");

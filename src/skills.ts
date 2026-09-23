@@ -122,3 +122,30 @@ export function renderSkills(skills: Skill[], width = process.stdout.columns || 
   }
   return lines.join("\n");
 }
+
+/**
+ * How each harness is asked to run a skill from its own prompt, verified live:
+ * Claude Code and agy take `/name text`, Codex takes `$name text`. Codex and agy
+ * open a suggestion menu that has to be closed before Enter.
+ */
+export const SKILL_INVOCATION: Record<string, { prefix: string; closeMenu: boolean }> = {
+  claude: { prefix: "/", closeMenu: false },
+  codex: { prefix: "$", closeMenu: true },
+  agy: { prefix: "/", closeMenu: true },
+};
+
+export function skillLine(harness: string, skill: string, text: string): { line: string; closeMenu: boolean } | null {
+  const invocation = SKILL_INVOCATION[harness];
+  if (!invocation) return null;
+  return { line: `${invocation.prefix}${skill}${text ? ` ${text}` : ""}`, closeMenu: invocation.closeMenu };
+}
+
+/**
+ * Whether a harness can see a skill, from where it was found. Claude Code reads
+ * .claude/skills and its plugins; Codex and agy read .agents/skills. A skill
+ * from the other family is not there to be run.
+ */
+export function skillVisibleTo(harness: string, skill: Pick<Skill, "source" | "origin">): boolean {
+  if (harness === "claude") return skill.source === "plugin" || skill.origin.includes(".claude/skills");
+  return skill.origin.includes(".agents/skills") || (harness === "codex" && skill.origin.includes(".codex/skills"));
+}

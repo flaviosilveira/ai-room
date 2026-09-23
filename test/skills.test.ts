@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { discoverSkills, parseSkillFrontmatter, renderSkills } from "../src/skills.js";
-import { completeSlash } from "../src/console.js";
+import { discoverSkills, parseSkillFrontmatter, renderSkills, skillLine, skillVisibleTo } from "../src/skills.js";
+import { Composer, completeSlash } from "../src/console.js";
+import { detectMultiplexer, ensureWorkspace, killWorkspace, paneStates, typeIntoPane, workspaceName } from "../src/session.js";
 
 const skill = (dir: string, name: string, description: string) => {
   fs.mkdirSync(dir, { recursive: true });
@@ -72,5 +73,60 @@ describe("slash completion", () => {
   it("leaves ordinary text and arguments alone", () => {
     expect(completeSlash("olha isso", skills)[0]).toEqual([]);
     expect(completeSlash("/file ~/Desk", skills)[0]).toEqual([]);
+  });
+});
+
+describe("asking an agent to run a skill", () => {
+  it("writes the line each harness runs a skill with", () => {
+    expect(skillLine("claude", "grill-me", "o plano")).toEqual({ line: "/grill-me o plano", closeMenu: false });
+    expect(skillLine("codex", "grill-me", "o plano")).toEqual({ line: "$grill-me o plano", closeMenu: true });
+    expect(skillLine("agy", "grill-me", "")).toEqual({ line: "/grill-me", closeMenu: true });
+    expect(skillLine("other", "grill-me", "")).toBeNull();
+  });
+
+  it("knows which family of folders each harness reads", () => {
+    const claudeSkill = { source: "project" as const, origin: ".claude/skills" };
+    const sharedSkill = { source: "user" as const, origin: "~/.agents/skills" };
+    const pluginSkill = { source: "plugin" as const, origin: "ponytail" };
+    expect(skillVisibleTo("claude", claudeSkill)).toBe(true);
+    expect(skillVisibleTo("codex", claudeSkill)).toBe(false);
+    expect(skillVisibleTo("codex", sharedSkill)).toBe(true);
+    expect(skillVisibleTo("agy", sharedSkill)).toBe(true);
+    expect(skillVisibleTo("claude", pluginSkill)).toBe(true);
+    expect(skillVisibleTo("codex", pluginSkill)).toBe(false);
+  });
+
+  const tmux = detectMultiplexer("tmux");
+  it.skipIf(!tmux)("types the line into the agent's pane, closing the menu first when asked", async () => {
+    const room = `vitest-skill-${process.pid}`;
+    const session = workspaceName(room);
+    const sink = path.join(os.tmpdir(), `airoom-skill-${process.pid}.txt`);
+    ensureWorkspace(tmux!, session, process.cwd(), [{ title: "codex", command: ["sh", "-c", `stty raw -echo; cat > ${sink}`] }]);
+    try {
+      const pane = paneStates(tmux!, session)[0].paneId;
+      expect(typeIntoPane(tmux!, pane, "$grill-me o plano", { closeMenu: true }).ok).toBe(true);
+      const read = () => (fs.existsSync(sink) ? fs.readFileSync(sink, "utf8") : "");
+      for (let i = 0; i < 40 && !read().endsWith("\r"); i += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(read()).toBe("$grill-me o plano\u001b\r");
+    } finally {
+      killWorkspace(tmux!, session);
+      fs.rmSync(sink, { force: true });
+    }
+  });
+});
+
+describe("draft badge in the prompt", () => {
+  it("says what Enter will send, and tells the prompt when that changes", () => {
+    const composer = new Composer();
+    let changes = 0;
+    composer.onChange = () => (changes += 1);
+    expect(composer.badge()).toBe("");
+    composer.attach({ id: "a", name: "a.png", mime: "image/png", bytes: 1, width: 1, height: 1, path: "/a", createdAt: 0 });
+    composer.attach({ id: "b", name: "b.png", mime: "image/png", bytes: 1, width: 1, height: 1, path: "/b", createdAt: 0 });
+    composer.stage("texto colado");
+    expect(composer.badge()).toBe("2 img · 1 texto");
+    composer.takeAll("");
+    expect(composer.badge()).toBe("");
+    expect(changes).toBe(4);
   });
 });
