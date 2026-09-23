@@ -26,7 +26,8 @@ import {
   insideWorkspaceServer,
   liveSessions,
   mux,
-  paneMenuArgv,
+  paneMenuCommand,
+  paneMenuFile,
   paneStates,
   sessionExists,
   setPaneVisible,
@@ -567,11 +568,14 @@ function filesTab(session: string, currentWindow: string): void {
   if (!result.ok) mux(tmux, ["display-message", "-t", session, result.error ?? "files tab unavailable"]);
 }
 
-function paneMenu(session: string, client: string): void {
+/** Writes the menu for tmux to source; the key binding then shows it itself. */
+function paneMenu(session: string): void {
   const tmux = detectMultiplexer("tmux");
-  if (!tmux || !session || !client) process.exit(1);
+  if (!tmux || !session) process.exit(1);
   const states = paneStates(tmux, session);
-  if (states.length) mux(tmux, paneMenuArgv(session, client, states));
+  const file = paneMenuFile(session);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, states.length ? `${paneMenuCommand(session, states)}\n` : `display-message "no panes"\n`);
 }
 
 function tools(json: boolean): void {
@@ -684,7 +688,7 @@ switch (cmd) {
     await open(arg, []);
     break;
   case "_pane-menu":
-    paneMenu(arg, process.argv[4]);
+    paneMenu(arg);
     break;
   case "doctor": {
     const { renderChecks, runChecks } = await import("./doctor.js");

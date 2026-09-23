@@ -13,7 +13,7 @@ import {
   killWorkspace,
   listTaggedPanes,
   mux,
-  paneMenuArgv,
+  paneMenuCommand,
   paneStates,
   setPaneVisible,
   tmuxConfig,
@@ -230,7 +230,7 @@ describe("workspace tmux config", () => {
     expect(config).toContain("bind-key C-d detach-client");
     expect(config).toContain("bind-key d detach-client");
     expect(config).toMatch(/bind-key X confirm-before .* kill-session/);
-    expect(config).toMatch(/bind-key m run-shell .*_pane-menu/);
+    expect(config).toMatch(/bind-key m \{ run-shell .*_pane-menu .*; source-file -F /);
     expect(config).toMatch(/bind-key t run-shell .*_files/);
   });
 
@@ -425,10 +425,17 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
 
   it("builds a pane menu tmux accepts", () => {
     ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), pane("monitor")]);
-    const argv = paneMenuArgv(session, "/dev/null", paneStates(tmux!, session), "ai-room");
-    expect(argv).toContain("[x] claude");
-    expect(argv).toContain("[x] human (monitor)");
-    expect(argv.join(" ")).toContain("_pane");
+    const command = paneMenuCommand(session, paneStates(tmux!, session), "'/x/node' '/x/cli.js'");
+    expect(command).toContain('"[x] claude"');
+    expect(command).toContain('"[x] human (monitor)"');
+    // Parsed by tmux itself: a syntax error surfaces here, not at the keypress.
+    const file = path.join(os.tmpdir(), `airoom-menu-${process.pid}.tmux`);
+    fs.writeFileSync(file, `if-shell -F 0 { ${command} }\n`);
+    try {
+      expect(mux(tmux!, ["source-file", file]).ok).toBe(true);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
   });
 
   it("keeps an argument ending in a semicolon intact", () => {

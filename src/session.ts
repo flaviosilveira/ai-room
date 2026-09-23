@@ -148,7 +148,7 @@ export function tmuxConfig(self: string = selfCommand(), clipboard: string | nul
     // Hidden panes live in windows named "_<agent>"; the tab list leaves them out.
     `set -g window-status-format "#{?#{m:${HIDDEN_PREFIX}*,#{window_name}},,#I:#W#F}"`,
     `set -g window-status-current-format "#{?#{m:${HIDDEN_PREFIX}*,#{window_name}},,#I:#W#F}"`,
-    ...both("m", `run-shell -b "${self} _pane-menu '#{session_name}' '#{client_name}'"`),
+    ...both("m", `{ run-shell "${self} _pane-menu '#{session_name}'" ; source-file -F "${path.join(path.dirname(tmuxConfigPath()), "menus")}/#{session_name}.tmux" }`),
     ...both("t", `run-shell -b "${self} _files '#{session_name}' '#{window_name}'"`),
     ...both("z", "resize-pane -Z"),
     ...both("X", `confirm-before -p "Fechar a sala? Os agentes serao encerrados, o historico fica. (y/n)" kill-session`),
@@ -689,8 +689,15 @@ export function toggleFilesTab(driver: MultiplexerDriver, session: string, curre
   return go.ok ? { ok: true } : { ok: false, error: go.error };
 }
 
-/** The menu `prefix m` opens: one entry per pane, each toggling it. */
-export function paneMenuArgv(session: string, client: string, states: PaneState[], self = selfCommand()): string[] {
+/** One argument as tmux's own parser reads it back. */
+const tmuxArg = (value: string) => `"${value.replace(/[\\"$]/g, "\\$&")}"`;
+
+/**
+ * The menu `prefix m` opens, as a tmux command the server sources itself.
+ * Opening it from a separate `tmux display-menu` process left that process
+ * waiting for the menu to close — forever, when the terminal went away first.
+ */
+export function paneMenuCommand(session: string, states: PaneState[], self = selfCommand()): string {
   const label = (state: PaneState) => {
     const name = state.agent === "monitor" ? "human (monitor)" : state.agent === "files" ? "arquivos" : state.agent;
     return `${state.hidden ? "[ ]" : "[x]"} ${name}`.replace(/#/g, "##");
@@ -700,7 +707,11 @@ export function paneMenuArgv(session: string, client: string, states: PaneState[
     i < 9 ? `${i + 1}` : "",
     `run-shell -b "${tmuxQuoted(`${self} _pane ${shellQuote(session)} ${shellQuote(state.agent)} toggle`)}"`,
   ]);
-  return ["display-menu", "-c", client, "-T", "#[align=centre] panes (mostrar/esconder) ", ...entries];
+  return ["display-menu", ...["-T", "#[align=centre] panes (mostrar/esconder) ", ...entries].map(tmuxArg)].join(" ");
+}
+
+export function paneMenuFile(session: string): string {
+  return path.join(path.dirname(tmuxConfigPath()), "menus", `${session}.tmux`);
 }
 
 /* ----------------------------------------------------------------- attach */
