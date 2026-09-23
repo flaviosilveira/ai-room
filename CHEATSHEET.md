@@ -141,6 +141,7 @@ the room is told so the others pick up its part.
 | `/` + `Tab` | Completes console commands and skill names |
 | `/<skill> @agent text` | Asks that agent to run the skill: types `/skill text` (Claude, agy) or `$skill text` (Codex) in its pane |
 | `/<skill> text` | Without `@`: asks the room, and whoever fits runs it |
+| `/reload` | Restarts this console with the ai-room now on disk (it says when there is a newer one) |
 | `/help` · `/quit` | Help · leaves the console |
 
 ---

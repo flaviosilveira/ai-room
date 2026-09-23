@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A console notices when ai-room was upgraded on disk and says so once;
+  `/reload` restarts it in the same pane with the new code. Consoles kept the
+  code they started with, so fixes never reached a monitor already open.
+
 - Typing a draft longer than the terminal no longer leaves a stale copy of it
   behind every incoming message, and no longer makes messages disappear:
   readline's redraw climbed over the line just printed, so while the human was
