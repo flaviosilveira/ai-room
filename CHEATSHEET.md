@@ -127,7 +127,8 @@ e abrem o arquivo com `room_attachment` quando precisam.
 | `ai-room messages <sala>` | Histórico |
 | `ai-room pane <sala> <pane> [show\|hide\|toggle]` | Mostra/esconde um pane pelo shell |
 | `ai-room close <sala>` | Fecha os panes; histórico e charter ficam |
-| `ai-room delete <sala>` | Apaga a sala de vez (pede o nome); `--yes` para scripts |
+| `ai-room delete <sala> [<sala>...]` | Apaga de vez uma ou várias (uma confirmação só); `--yes` para scripts |
+| `ai-room rooms test --names \| xargs -o ai-room delete` | Apaga todas as salas que casam com a busca |
 
 ---
 
@@ -161,7 +162,7 @@ Instalar, reparar e conferir:
 | `ai-room storage` | Tamanho do banco, anexos e logs; salas que mais ocupam |
 | `ai-room storage --json` | O mesmo em JSON |
 | `ai-room attachments prune --older-than 30d` | Apaga arquivos de anexos antigos (o histórico fica) |
-| `ai-room delete <sala>` | Apaga uma sala inteira |
+| `ai-room delete <sala> [<sala>...]` | Apaga salas inteiras |
 | `ai-room compact` | Encolhe o banco depois de `delete`/`prune` |
 
 Ordem para liberar espaço: `storage` → `delete` / `prune` → `compact`.

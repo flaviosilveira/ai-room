@@ -414,39 +414,45 @@ function attachments(argv: string[]): void {
 }
 
 /**
- * Deletes a room for good. Asks for the room's name on a terminal, because
- * nothing about it can be recovered afterwards; `--yes` is for scripts.
+ * Deletes rooms for good. On a terminal it lists them and asks once: the room's
+ * name for one, "delete N" for several, because nothing can be recovered
+ * afterwards. `--yes` is for scripts.
  */
-async function deleteRoom(room: string, argv: string[]): Promise<void> {
-  if (!room) {
-    console.error("usage: ai-room delete <room> [--yes]");
+async function deleteRooms(argv: string[]): Promise<void> {
+  const names = [...new Set(argv.filter((arg) => !arg.startsWith("--")))];
+  if (!names.length) {
+    console.error("usage: ai-room delete <room> [<room>...] [--yes]");
     process.exit(1);
   }
   const db = openDb();
-  if (!roomExists(db, room)) {
-    console.error(`no room "${room}".`);
+  const missing = names.filter((room) => !roomExists(db, room));
+  if (missing.length) {
+    console.error(`no room: ${missing.join(", ")}. nothing was deleted.`);
     process.exit(1);
   }
-  const messages = roomMessageCount(db, room);
   if (!argv.includes("--yes")) {
     if (!process.stdin.isTTY) {
-      console.error(`refusing to delete "${room}" without a terminal; pass --yes.`);
+      console.error("refusing to delete without a terminal; pass --yes.");
       process.exit(2);
     }
+    for (const room of names) console.log(`  ${room}  ${roomMessageCount(db, room)} message(s)`);
+    const expected = names.length === 1 ? names[0] : `delete ${names.length}`;
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const answer = await rl.question(
-      `Delete room "${room}" with ${messages} message(s), its charter and attachments? This cannot be undone.\n` +
-        `Type the room name to confirm: `
+      `Delete ${names.length === 1 ? "this room" : `these ${names.length} rooms`}, with charter and attachments? This cannot be undone.\n` +
+        `Type "${expected}" to confirm: `
     );
     rl.close();
-    if (answer.trim() !== room) {
-      console.error("aborted. the room was not touched.");
+    if (answer.trim() !== expected) {
+      console.error("aborted. nothing was deleted.");
       process.exit(2);
     }
   }
-  for (const { session } of closeRoom(room)) console.log(`closed ${session}.`);
-  const deleted = roomDelete(db, room)!;
-  console.log(`deleted room "${room}": ${deleted.messages} message(s), ${deleted.attachments} attachment(s).`);
+  for (const room of names) {
+    for (const { session } of closeRoom(room)) console.log(`closed ${session}.`);
+    const deleted = roomDelete(db, room)!;
+    console.log(`deleted room "${room}": ${deleted.messages} message(s), ${deleted.attachments} attachment(s).`);
+  }
 }
 
 function fileSize(file: string): number {
@@ -655,7 +661,7 @@ switch (cmd) {
     compact();
     break;
   case "delete":
-    await deleteRoom(arg, process.argv.slice(4));
+    await deleteRooms(process.argv.slice(3));
     break;
   case "pane":
     pane(arg ? workspaceName(arg) : "", process.argv[4], process.argv[5]);
@@ -678,7 +684,7 @@ switch (cmd) {
   default:
     console.error(
       "usage: ai-room <serve|status [--json]|tools [--json]|hooks [--json]|" +
-        "console <room>|open <room> [flags]|close <room>|delete <room> [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
+        "console <room>|open <room> [flags]|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);
