@@ -1,21 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.6.1
 
-- Agents are told never to type into other tmux panes: keys sent to the
-  human's console would reach the room as the human's own words. Reading
-  panes stays allowed.
+### Rooms
 
 - `ai-room remove <room> <agent>` and `ai-room add <room> <agent>` (also
   `/remove` and `/add` in the console) change who is in a running room: a
   removed agent leaves the roster and the participants, its pane closes, and
   the room is told so the others take over. Adding an agent already in the
   room asks first, then opens the next free instance (`codex-2`).
-- `ai-room service start|restart|install` wait until the server answers.
+
+### Fixes
 
 - The console reconnects when the server restarts and resumes after the last
   message it showed; before, the monitor went silent with "feed interrompido"
   while the room kept talking.
+- `ai-room service start|restart|install` wait until the server answers.
+- Agents are told never to type into other tmux panes: keys sent to the
+  human's console would reach the room as the human's own words. Reading
+  panes stays allowed.
 
 ## 0.6.0
 
