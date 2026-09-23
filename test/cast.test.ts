@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
-import { addAgent, removeAgent } from "../src/cast.js";
+import { addAgent, nextInstanceName, removeAgent } from "../src/cast.js";
 import { roomCharter, roomHistory, roomJoin, roomSetCharter, roomWho, setWakeTarget } from "../src/store.js";
 import { detectMultiplexer, ensureWorkspace, killWorkspace, paneStates, workspaceName } from "../src/session.js";
 
@@ -51,6 +51,27 @@ describe("changing the cast of a running room", () => {
     ]);
     removeAgent(db, room, "codex");
     expect(paneStates(tmux!, session).map((p) => p.agent)).toEqual(["claude"]);
+  });
+
+  it("numbers another instance, never reusing a name that ever joined", () => {
+    expect(nextInstanceName(new Set(["claude"]), "codex")).toBe("codex");
+    expect(nextInstanceName(new Set(["codex", "codex-2"]), "codex")).toBe("codex-3");
+    expect(nextInstanceName(new Set(["codex", "codex-2"]), "codex-2")).toBe("codex-3");
+  });
+
+  it("asks before adding another instance of an agent already in the room", () => {
+    const asked = addAgent(db, room, "codex");
+    expect(asked).toMatchObject({ ok: false, confirm: "codex-2" });
+    expect(roomCharter(db, room)!.roster.map((e) => e.agent)).toEqual(["claude", "codex"]);
+
+    const added = addAgent(db, room, "codex", undefined, { confirmed: true });
+    expect(added).toMatchObject({ ok: true, agent: "codex-2" });
+    expect(roomCharter(db, room)!.roster.map((e) => e.agent)).toContain("codex-2");
+  });
+
+  it("brings a removed agent back without asking", () => {
+    removeAgent(db, room, "codex");
+    expect(addAgent(db, room, "codex")).toMatchObject({ ok: true, agent: "codex" });
   });
 
   it("adds an agent back to the roster, keeping its role", () => {

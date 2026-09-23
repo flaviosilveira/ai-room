@@ -664,9 +664,24 @@ export async function runConsole(
           void Promise.all([import("./cast.js"), import("./db/index.js")]).then(([cast, dbModule]) => {
             const db = dbModule.openDb();
             try {
-              const result =
-                cmd === "remove" ? cast.removeAgent(db, room, rest[0]) : cast.addAgent(db, room, rest[0], rest.slice(1).join(" ") || undefined);
-              emit(rl, result.ok ? `${C.dim}${result.detail}${C.reset}` : `${C.warn}${result.detail}${C.reset}`);
+              if (cmd === "remove") {
+                const result = cast.removeAgent(db, room, rest[0]);
+                emit(rl, result.ok ? `${C.dim}${result.detail}${C.reset}` : `${C.warn}${result.detail}${C.reset}`);
+                return;
+              }
+              // `/add codex sim` confirms another instance; any other words are the role.
+              const words = rest.slice(1);
+              const confirmed = words.some((word) => CONFIRMATIONS.has(word.toLowerCase()));
+              const role = words.filter((word) => !CONFIRMATIONS.has(word.toLowerCase())).join(" ") || undefined;
+              const result = cast.addAgent(db, room, rest[0], role, { confirmed });
+              if (result.ok) emit(rl, `${C.dim}${result.detail}${C.reset}`);
+              else if (result.confirm) {
+                emit(
+                  rl,
+                  `${C.warn}${rest[0]} já está na sala.${C.reset} ${C.dim}outra instância gasta tokens próprios; confirme com${C.reset} ` +
+                    `${C.bold}/add ${rest[0]}${role ? ` ${role}` : ""} sim${C.reset} ${C.dim}para abrir ${result.confirm}, ou ${C.reset}${C.bold}/remove ${rest[0]}${C.reset}${C.dim} antes para trocá-lo${C.reset}`
+                );
+              } else emit(rl, `${C.warn}${result.detail}${C.reset}`);
             } finally {
               db.close();
             }

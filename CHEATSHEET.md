@@ -123,6 +123,7 @@ the room is told so the others pick up its part.
 | `/panes` · `/hide <x>` · `/show <x>` | Lists, hides and shows panes |
 | `/agents` | Live panes and sessions |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
+| `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |
 | `/close yes` | Closes the room |
 | `/help` · `/quit` | Help · leaves the console |
@@ -156,6 +157,7 @@ the file with `room_attachment` when they need it.
 | `ai-room pane <room> <pane> [show\|hide\|toggle]` | Shows/hides a pane from the shell |
 | `ai-room remove <room> <agent>` | Takes one agent out (e.g. it hit its usage limit); the rest keep working |
 | `ai-room add <room> <agent> [--role <role>]` | Brings an agent in, or back, with its own pane |
+| `ai-room add <room> codex --yes` | Codex already there: opens the next instance (`codex-2`, `codex-3`…) without asking |
 | `ai-room close <room>` | Closes the panes; history and charter stay |
 | `ai-room delete <room> [<room>...]` | Deletes one or more rooms for good (one confirmation); `--yes` for scripts |
 | `ai-room rooms test --names \| xargs -o ai-room delete` | Deletes every room matching the query |

@@ -705,12 +705,27 @@ switch (cmd) {
       process.exit(1);
     }
     const { addAgent, removeAgent } = await import("./cast.js");
+    const db = openDb();
+    if (cmd === "remove") {
+      const result = removeAgent(db, arg, agent);
+      (result.ok ? console.log : console.error)(result.detail);
+      if (!result.ok) process.exitCode = 1;
+      break;
+    }
     const roleAt = process.argv.indexOf("--role");
-    const result =
-      cmd === "remove"
-        ? removeAgent(openDb(), arg, agent)
-        : addAgent(openDb(), arg, agent, roleAt > 0 ? process.argv[roleAt + 1] : undefined);
-    (result.ok ? console.log : console.error)(result.detail);
+    const role = roleAt > 0 ? process.argv[roleAt + 1] : undefined;
+    let result = addAgent(db, arg, agent, role, { confirmed: process.argv.includes("--yes") });
+    if (!result.ok && result.confirm && process.stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await rl.question(`${agent} is already in "${arg}" (to replace it, run 'ai-room remove' first). Open another instance, ${result.confirm}? [y/N] `);
+      rl.close();
+      if (/^(y|yes|s|sim)$/i.test(answer.trim())) result = addAgent(db, arg, agent, role, { confirmed: true });
+      else {
+        console.error("aborted. nothing was added.");
+        process.exit(2);
+      }
+    }
+    (result.ok ? console.log : console.error)(result.ok ? result.detail : `${result.detail}${result.confirm ? " (pass --yes)" : ""}`);
     if (!result.ok) process.exitCode = 1;
     break;
   }
@@ -729,7 +744,7 @@ switch (cmd) {
   default:
     console.error(
       "usage: ai-room <serve|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
-        "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
+        "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { LAUNCHERS, harnessFor, openWorkspace } from "./invite.js";
 import { detectMultiplexer, killWorkspace, mux, paneStates, sessionExists, sessionName, workspaceName } from "./session.js";
-import { roomCharter, roomExists, roomLeave, roomSend, roomSetCharter } from "./store.js";
+import { roomCharter, roomExists, roomLeave, roomSend, roomSetCharter, roomWho } from "./store.js";
 
 /**
  * Changing who is in a room while it runs. An agent that hit its usage limit
@@ -43,28 +43,58 @@ export function removeAgent(db: Database.Database, room: string, agent: string):
   return { ok: true, detail: `${agent} removed: out of the roster and participants, ${stopped}` };
 }
 
+/**
+ * The first free instance name for a harness. Names that ever joined count as
+ * taken: a reused name would inherit the old instance's read cursor.
+ */
+export function nextInstanceName(taken: Set<string>, agent: string): string {
+  const base = harnessFor(agent);
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n += 1) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+export type AddResult =
+  | { ok: true; agent: string; detail: string }
+  | { ok: false; detail: string; confirm?: string };
+
+/**
+ * Adding an agent that is already in the room means another instance, which
+ * costs its own tokens; that is asked for explicitly (`confirmed`) and the
+ * instance gets the next free number. An agent that was removed just returns.
+ */
 export function addAgent(
   db: Database.Database,
   room: string,
-  agent: string,
-  role?: string
-): { ok: boolean; detail: string } {
+  requested: string,
+  role?: string,
+  options: { confirmed?: boolean } = {}
+): AddResult {
   if (!roomExists(db, room)) return { ok: false, detail: `no room "${room}"` };
-  const harness = harnessFor(agent);
-  if (!LAUNCHERS[harness]) return { ok: false, detail: `no launcher for "${agent}". Known: ${Object.keys(LAUNCHERS).join(", ")}` };
+  const harness = harnessFor(requested);
+  if (!LAUNCHERS[harness]) return { ok: false, detail: `no launcher for "${requested}". Known: ${Object.keys(LAUNCHERS).join(", ")}` };
+
+  const tmux = detectMultiplexer("tmux");
+  const workspace = workspaceName(room);
+  const live = tmux && sessionExists(tmux, workspace);
+  const panes = new Set(live ? paneStates(tmux, workspace).map((state) => state.agent) : []);
+  const participants = roomWho(db, { room });
+  const present = panes.has(requested) || participants.some((p) => p.agent === requested && p.active);
+
+  let agent = requested;
+  if (present) {
+    const next = nextInstanceName(new Set([...panes, ...participants.map((p) => p.agent)]), requested);
+    if (!options.confirmed) {
+      return { ok: false, detail: `${requested} is already in the room; confirm to open ${next}`, confirm: next };
+    }
+    agent = next;
+  }
 
   const roster = roomCharter(db, room)?.roster ?? [];
   const entry = { agent, harness, role: role ?? roster.find((e) => e.agent === agent)?.role };
   roomSetCharter(db, { room, roster: [...roster.filter((e) => e.agent !== agent), entry] });
 
-  const tmux = detectMultiplexer("tmux");
-  if (!tmux || !sessionExists(tmux, workspaceName(room))) {
-    return { ok: true, detail: `${agent} added to the roster; it starts with: ai-room attach ${room}` };
-  }
-  const { plan, result } = openWorkspace(room, [agent], { monitor: false, files: false });
+  if (!live) return { ok: true, agent, detail: `${agent} added to the roster; it starts with: ai-room attach ${room}` };
+  const { plan } = openWorkspace(room, [agent], { monitor: false, files: false });
   if (plan.missing.length) return { ok: false, detail: `${LAUNCHERS[harness].bin} is not on PATH` };
-  return {
-    ok: true,
-    detail: result.panes.length ? `${agent} launched in a new pane` : `${agent} already has a pane`,
-  };
+  return { ok: true, agent, detail: `${agent} launched in a new pane` };
 }
