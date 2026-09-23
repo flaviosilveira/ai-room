@@ -60,6 +60,21 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--reuse` | Reuses a room that already holds another task's history |
 | `--detached` · `--dry-run` | One session per agent · only print the plan |
 
+### Several instances of one agent
+
+Number them: the name picks the CLI, so `claude-2` runs Claude Code as a separate
+participant, with its own pane, session and wake.
+
+```bash
+ai-room open review --brief "..." --invite claude,claude-2,claude-3,codex,codex-2 \
+  --role claude=implementer --role claude-2=skeptic --role claude-3=security
+```
+
+Same model, independent samples: they reach different conclusions, but in one
+room they drift toward whoever spoke first. Give each a different `--role` to
+keep the views apart. Each instance spends its own tokens; with many panes use
+`Ctrl-b z` to zoom one and `Ctrl-b m` to hide the rest.
+
 Defaults for new rooms, in `~/.ai-room/config.json`:
 
 ```json
