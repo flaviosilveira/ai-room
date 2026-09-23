@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import readline from "node:readline";
 import { spawnSync } from "node:child_process";
 import {
@@ -11,6 +13,7 @@ import {
   focusPane,
   insideWorkspaceServer,
   liveSessions,
+  mux,
   paneStates,
   sessionExists,
   sessionName,
@@ -167,6 +170,7 @@ ${C.bold}Comandos${C.reset}
   ${C.bold}/drop <n>${C.reset}          remove o anexo n do rascunho
   ${C.bold}/show${C.reset}              mostra o que está colado e anexado no rascunho
   ${C.bold}/clear${C.reset}             descarta o rascunho
+  ${C.bold}/reload${C.reset}            reinicia este console com a versão do ai-room que está no disco
   ${C.bold}/help${C.reset}              esta ajuda
   ${C.bold}/quit${C.reset}              sai do console (os agentes continuam rodando)
 
@@ -179,7 +183,7 @@ Qualquer outra linha é enviada à sala como mensagem sua.
  * what leaves the console is one message with its line breaks intact.
  */
 export const CONSOLE_COMMANDS = [
-  "attach", "agents", "who", "panes", "hide", "show", "remove", "add", "skills",
+  "attach", "agents", "who", "panes", "hide", "show", "remove", "add", "skills", "reload",
   "detach", "close", "paste", "file", "drop", "clear", "help", "quit",
 ];
 
@@ -354,6 +358,25 @@ export async function runConsole(
     process.stdin.pipe(pasteStream);
     process.stdout.write(ENABLE_BRACKETED_PASTE);
   }
+
+  // A console runs the code it started with; an upgrade on disk never reaches
+  // it. It notices, says so once, and /reload restarts it in the same pane.
+  const codeFile = fileURLToPath(import.meta.url);
+  const codeTime = () => {
+    try {
+      return fs.statSync(codeFile).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  const startedWith = codeTime();
+  let staleNoticed = false;
+  const staleTimer = setInterval(() => {
+    if (staleNoticed || codeTime() <= startedWith) return;
+    staleNoticed = true;
+    emit(rl, `${C.warn}ai-room foi atualizado; ${C.bold}/reload${C.reset}${C.warn} para usar a versão nova neste console.${C.reset}`);
+  }, 30_000);
+  staleTimer.unref();
 
   // Read once: skills are files on disk, and /skills rescans when asked.
   let skills: Skill[] = [];
@@ -811,6 +834,21 @@ export async function runConsole(
             (skill) => !filter || skill.name.toLowerCase().includes(filter) || skill.description.toLowerCase().includes(filter)
           );
           emit(rl, renderSkills(found));
+          break;
+        }
+        case "reload": {
+          // respawn-pane restarts the pane's own command, so the monitor comes
+          // back as it was launched, with the code now on disk.
+          const pane = process.env.TMUX_PANE;
+          if (!pane || !driver || driver.name !== "tmux") {
+            emit(rl, `${C.warn}/reload só funciona no pane do workspace; aqui, saia com /quit e abra de novo.${C.reset}`);
+            break;
+          }
+          if (!composer.empty) {
+            emit(rl, `${C.warn}o rascunho seria perdido; envie com Enter ou descarte com /clear antes do /reload.${C.reset}`);
+            break;
+          }
+          mux(driver, ["respawn-pane", "-k", "-t", pane]);
           break;
         }
         case "detach":
