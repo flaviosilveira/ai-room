@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
 import { roomCharter, roomJoin, roomSetCharter } from "../src/store.js";
-import { agentsToLaunch, charterPatch, parseOpenFlags } from "../src/open.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { agentsToLaunch, charterPatch, loadOpenDefaults, parseOpenFlags, withDefaults } from "../src/open.js";
 import { DRIVERS_FOR_TEST, attachArgv, canAttach, insideMultiplexer } from "../src/session.js";
 
 describe("reopening a room", () => {
@@ -102,5 +105,41 @@ describe("join hand-off", () => {
     const joined = roomJoin(db, { room: "bare", agent: "codex" });
     expect(joined.briefing).toBeNull();
     expect(joined.nextAction).toMatch(/no charter/i);
+  });
+});
+
+describe("machine defaults for new rooms", () => {
+  const defaults = { tools: ["rtk", "graphify"], convention: "caveman,ponytail", invite: ["claude", "codex"] };
+
+  it("fill what a new room was not given", () => {
+    const flags = withDefaults(parseOpenFlags(["--brief", "x"]), defaults, true);
+    expect(flags.tools).toEqual(["rtk", "graphify"]);
+    expect(flags.convention).toBe("caveman,ponytail");
+    expect(flags.invite).toEqual(["claude", "codex"]);
+  });
+
+  it("never override what was passed", () => {
+    const flags = withDefaults(parseOpenFlags(["--tool", "grill-me", "--convention", "concise"]), defaults, true);
+    expect(flags.tools).toEqual(["grill-me"]);
+    expect(flags.convention).toBe("concise");
+  });
+
+  it("leave an existing room's charter alone, and yield to --no-defaults", () => {
+    expect(withDefaults(parseOpenFlags([]), defaults, false).tools).toEqual([]);
+    expect(withDefaults(parseOpenFlags(["--no-defaults"]), defaults, true).convention).toBeUndefined();
+  });
+
+  it("reads the config file and survives a broken one", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "airoom-cfg-"));
+    try {
+      const file = path.join(dir, "config.json");
+      fs.writeFileSync(file, JSON.stringify({ defaults: { tools: ["rtk", 3], convention: "caveman" } }));
+      expect(loadOpenDefaults(file)).toEqual({ tools: ["rtk"], convention: "caveman", invite: undefined });
+      fs.writeFileSync(file, "{nope");
+      expect(loadOpenDefaults(file)).toEqual({});
+      expect(loadOpenDefaults(path.join(dir, "missing.json"))).toEqual({});
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

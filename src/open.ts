@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { harnessFor } from "./invite.js";
 import type { RosterEntry } from "./types.js";
 
@@ -13,6 +16,7 @@ export interface OpenFlags {
   monitor: boolean;
   files: boolean;
   mouse: boolean;
+  defaults: boolean;
 }
 
 export function parseOpenFlags(argv: string[]): OpenFlags {
@@ -26,6 +30,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     monitor: true,
     files: true,
     mouse: false,
+    defaults: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -42,10 +47,53 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--detached") flags.detached = true;
     else if (arg === "--no-monitor") flags.monitor = false;
     else if (arg === "--no-files") flags.files = false;
+    else if (arg === "--no-defaults") flags.defaults = false;
     else if (arg === "--mouse") flags.mouse = true;
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;
+}
+
+export interface OpenDefaults {
+  tools?: string[];
+  convention?: string;
+  invite?: string[];
+}
+
+export function defaultsPath(): string {
+  return process.env.AI_ROOM_CONFIG || path.join(os.homedir(), ".ai-room", "config.json");
+}
+
+/** `~/.ai-room/config.json` → `{"defaults": {"tools": [...], "convention": "...", "invite": [...]}}`. */
+export function loadOpenDefaults(file = defaultsPath()): OpenDefaults {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as { defaults?: OpenDefaults };
+    const d = parsed.defaults ?? {};
+    const list = (value: unknown) =>
+      Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : undefined;
+    return {
+      tools: list(d.tools),
+      convention: typeof d.convention === "string" && d.convention ? d.convention : undefined,
+      invite: list(d.invite),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The machine's defaults fill what a NEW room was not given. A room that
+ * already exists keeps its own charter: reopening it must never rewrite it
+ * with whatever the defaults say today.
+ */
+export function withDefaults(flags: OpenFlags, defaults: OpenDefaults, roomIsNew: boolean): OpenFlags {
+  if (!roomIsNew || !flags.defaults) return flags;
+  return {
+    ...flags,
+    tools: flags.tools.length ? flags.tools : defaults.tools ?? [],
+    convention: flags.convention ?? defaults.convention,
+    invite: flags.invite.length ? flags.invite : defaults.invite ?? [],
+  };
 }
 
 export interface CharterPatch {

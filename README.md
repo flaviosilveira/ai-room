@@ -286,6 +286,14 @@ Agents that are not on the roster still receive the shared brief, with `you: nul
 
 A charter can declare the tooling a room expects, for example [graphify](https://github.com/Graphify-Labs/graphify) for querying a codebase as a knowledge graph. **ai-room only declares these — it never invokes them.** Each agent runs the tool through its own skills, so ai-room stays a message bus and takes on no dependency of its own. Unknown names are passed through as-is, so you can declare anything.
 
+Defaults for new rooms live in `~/.ai-room/config.json` (`AI_ROOM_CONFIG` to move it):
+
+```json
+{ "defaults": { "tools": ["rtk", "graphify"], "convention": "caveman,ponytail" } }
+```
+
+They fill only what a **new** room was not given; flags always win, an existing room keeps its charter, and `--no-defaults` skips them. `invite` is accepted too.
+
 Known presets: `graphify`, [`grill-me` and `grill-with-docs`](https://github.com/mattpocock/skills), [`rtk`](https://github.com/rtk-ai/rtk) and [`ponytail`](https://github.com/DietrichGebert/ponytail). `ai-room open` says which declared tools this machine lacks and how to install them; the room opens anyway.
 
 ## Typical Workflow

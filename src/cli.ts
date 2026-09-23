@@ -34,8 +34,10 @@ import {
   agentsToLaunch,
   charterPatch,
   classifyJoins,
+  loadOpenDefaults,
   parseOpenFlags,
   reuseVerdict,
+  withDefaults,
 } from "./open.js";
 import { hookSnippet, hookStatus } from "./hooks.js";
 
@@ -171,13 +173,13 @@ async function open(room: string, argv: string[]): Promise<void> {
   if (!room) {
     console.error(
       'usage: ai-room open <room> [--brief "..."] [--convention caveman|ponytail] [--tool graphify,rtk,grill-me]\n' +
-        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--mouse] [--no-files] [--detached] [--dry-run]"
+        "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--mouse] [--no-files] [--no-defaults] [--detached] [--dry-run]"
     );
     process.exit(1);
   }
 
-  const flags = parseOpenFlags(argv);
   const db = openDb();
+  const flags = withDefaults(parseOpenFlags(argv), loadOpenDefaults(), !roomExists(db, room));
 
   // A room is a task, not just a name: reopening one that already holds a
   // conversation with a different brief silently merges two tasks.

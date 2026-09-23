@@ -36,6 +36,8 @@
 - Tool presets `grill-me`, `grill-with-docs`, `rtk` and `ponytail`, and a
   `ponytail` convention. Conventions combine (`caveman,ponytail`). `open`
   reports declared tools that are not installed.
+- Machine defaults for new rooms (`tools`, `convention`, `invite`) in
+  `~/.ai-room/config.json`; `--no-defaults` skips them.
 
 ## 0.5.0
 
