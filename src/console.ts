@@ -502,8 +502,10 @@ export async function runConsole(
   let alerted = "";
   const controller = new AbortController();
 
+  let lastMessageId = 0;
   const stream = async () => {
-    const response = await fetch(`${options.baseUrl}/stream?room=${encodeURIComponent(room)}&agent=${encodeURIComponent(me)}`, {
+    const resume = lastMessageId ? `&after=${lastMessageId}` : "";
+    const response = await fetch(`${options.baseUrl}/stream?room=${encodeURIComponent(room)}&agent=${encodeURIComponent(me)}${resume}`, {
       signal: controller.signal,
       headers: { Accept: "text/event-stream" },
     });
@@ -533,6 +535,7 @@ export async function runConsole(
 
         if (event === "message") {
           const message = payload as MessageInfo;
+          lastMessageId = Math.max(lastMessageId, message.id);
           // Don't echo the line the user just typed back at them.
           if (!(message.origin === "human" && message.agent === me)) {
             emit(rl, renderMessage(message));
@@ -557,10 +560,37 @@ export async function runConsole(
     }
   };
 
-  stream().catch((error) => {
-    if (controller.signal.aborted) return;
-    emit(rl, `${C.warn}feed interrompido: ${error instanceof Error ? error.message : error}${C.reset}`);
-  });
+  // The server restarts (an upgrade, a crash, the Mac waking up) and the feed
+  // ends with it; without reconnecting, the monitor went silent while the room
+  // kept talking. It resumes after the last message it showed, so nothing
+  // repeats and nothing is skipped.
+  const follow = async () => {
+    let delay = 1_000;
+    let announced = false;
+    while (!controller.signal.aborted) {
+      try {
+        await stream();
+        delay = 1_000;
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (!announced) {
+          emit(rl, `${C.warn}feed interrompido (${error instanceof Error ? error.message : error}); reconectando…${C.reset}`);
+          announced = true;
+        }
+      }
+      if (controller.signal.aborted) return;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Math.min(delay * 2, 10_000);
+      if (announced) {
+        const up = await fetch(`${options.baseUrl}/health`).then((r) => r.ok).catch(() => false);
+        if (up) {
+          emit(rl, `${C.dim}feed reconectado.${C.reset}`);
+          announced = false;
+        }
+      }
+    }
+  };
+  void follow();
 
   // --- input ---------------------------------------------------------------
   rl.prompt();

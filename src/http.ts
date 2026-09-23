@@ -183,8 +183,13 @@ export function createHttpApp(
     // with it. Without this the console's viewer accumulated "unread" forever.
     const viewer = typeof req.query.agent === "string" && req.query.agent ? req.query.agent : "human";
     const backlog = Number(req.query.backlog ?? 20);
-    let lastId = 0;
-    for (const message of roomHistory(db, { room, limit: Number.isFinite(backlog) ? backlog : 20 })) {
+    // A reconnecting console says where it stopped, and gets exactly what it missed.
+    const after = Number(req.query.after);
+    const replay = Number.isFinite(after) && after > 0
+      ? roomHistory(db, { room, after, limit: 200 })
+      : roomHistory(db, { room, limit: Number.isFinite(backlog) ? backlog : 20 });
+    let lastId = Number.isFinite(after) && after > 0 ? after : 0;
+    for (const message of replay) {
       send("message", message);
       lastId = Math.max(lastId, message.id);
     }

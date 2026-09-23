@@ -224,6 +224,19 @@ describe("attachments over HTTP and MCP", () => {
     expect(history[0].attachments).toHaveLength(1);
   });
 
+  it("replays only what a reconnecting feed missed", async () => {
+    const ids = ["um", "dois", "tres"].map((message) => roomSend(db, { room: "r", agent: "claude", message }).id);
+    const controller = new AbortController();
+    const response = await fetch(`${base}/stream?room=r&after=${ids[0]}`, { signal: controller.signal });
+    const reader = response.body!.getReader();
+    let text = "";
+    while ((text.match(/event: message/g) ?? []).length < 2) text += new TextDecoder().decode((await reader.read()).value);
+    controller.abort();
+    expect(text).not.toContain('"um"');
+    expect(text).toContain('"dois"');
+    expect(text).toContain('"tres"');
+  });
+
   it("refuses a file it cannot identify", async () => {
     const refused = await upload(Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00]), "a.png");
     expect(refused.status).toBe(400);

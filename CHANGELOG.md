@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The console reconnects when the server restarts and resumes after the last
+  message it showed; before, the monitor went silent with "feed interrompido"
+  while the room kept talking.
+
 ## 0.6.0
 
 ### Workspace
