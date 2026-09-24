@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Agents are told to follow each other through the room only, and no longer
+  to read other tmux panes: allowing it made agy poll its teammates' screens,
+  one permission prompt per look.
+
 - A room with several agents gets a lead, the only one who talks to the
   human: picked claude → agy → codex, or with `--lead`; `--no-lead` and
   `"lead": false` opt out. The `lead` convention comes along: numbered asks

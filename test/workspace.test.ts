@@ -99,12 +99,11 @@ describe("launch commands", () => {
     }
   });
 
-  it("forbids typing into other panes, and allows reading them", () => {
+  it("keeps agents on the room, away from each other's panes", () => {
     for (const agent of ["claude", "codex", "agy"]) {
       const prompt = joinPrompt("r", agent);
-      expect(prompt).toMatch(/never type into them/);
-      expect(prompt).toMatch(/send-keys/);
-      expect(prompt).toMatch(/may read other tmux panes/);
+      expect(prompt).toMatch(/through the room only/);
+      expect(prompt).toMatch(/do not read or type into other tmux panes/);
     }
   });
 
