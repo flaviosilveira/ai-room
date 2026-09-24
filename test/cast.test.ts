@@ -39,6 +39,22 @@ describe("changing the cast of a running room", () => {
     expect(roomHistory(db, { room }).at(-1)!.content).toMatch(/codex left the room/);
   });
 
+  it("hands the lead to the next agent by preference when the lead leaves", () => {
+    roomSetCharter(db, {
+      room,
+      roster: [
+        { agent: "claude", harness: "claude", role: "lead, implementer" },
+        { agent: "codex", harness: "codex", role: "reviewer" },
+        { agent: "agy", harness: "agy" },
+      ],
+    });
+    removeAgent(db, room, "claude");
+    const roster = roomCharter(db, room)!.roster;
+    expect(roster.find((e) => e.agent === "agy")!.role).toBe("lead");
+    expect(roster.find((e) => e.agent === "codex")!.role).toBe("reviewer");
+    expect(roomHistory(db, { room }).at(-1)!.content).toMatch(/agy is now the lead/);
+  });
+
   it("refuses what is not an agent", () => {
     expect(removeAgent(db, room, "monitor").ok).toBe(false);
     expect(removeAgent(db, "no-such-room", "codex").ok).toBe(false);

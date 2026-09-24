@@ -11,6 +11,8 @@ export interface OpenFlags {
   tools: string[];
   invite: string[];
   roles: Map<string, string>;
+  /** Who talks to the human: an agent, false for nobody, undefined to pick one. */
+  lead?: string | false;
   dryRun: boolean;
   detached: boolean;
   monitor: boolean;
@@ -48,6 +50,8 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--detached") flags.detached = true;
     else if (arg === "--no-monitor") flags.monitor = false;
     else if (arg === "--no-files") flags.files = false;
+    else if (arg === "--lead") flags.lead = value();
+    else if (arg === "--no-lead") flags.lead = false;
     else if (arg === "--no-defaults") flags.defaults = false;
     else if (arg === "--mouse") flags.mouse = true;
     else if (arg === "--no-mouse") flags.mouse = false;
@@ -61,6 +65,8 @@ export interface OpenDefaults {
   convention?: string;
   invite?: string[];
   mouse?: boolean;
+  /** Harness preference for the lead, or false to never pick one. */
+  lead?: string[] | false;
 }
 
 export function defaultsPath(): string {
@@ -79,6 +85,7 @@ export function loadOpenDefaults(file = defaultsPath()): OpenDefaults {
       convention: typeof d.convention === "string" && d.convention ? d.convention : undefined,
       invite: list(d.invite),
       mouse: typeof d.mouse === "boolean" ? d.mouse : undefined,
+      lead: d.lead === false ? false : list(d.lead),
     };
   } catch {
     return {};
@@ -90,19 +97,68 @@ export function loadOpenDefaults(file = defaultsPath()): OpenDefaults {
  * already exists keeps its own charter: reopening it must never rewrite it
  * with whatever the defaults say today.
  */
+/**
+ * Codex runs out of usage first, so it leads only when nobody else can. Order
+ * is by harness; the first invited instance of the first harness wins.
+ */
+export const LEAD_PREFERENCE = ["claude", "agy", "codex"];
+
+export const LEAD_ROLE = "lead";
+
+export function isLead(role: string | undefined): boolean {
+  return Boolean(role?.split(/,\s*/).includes(LEAD_ROLE));
+}
+
+export function pickLead(agents: string[], preference: string[] = LEAD_PREFERENCE): string | null {
+  for (const harness of preference) {
+    const agent = agents.find((candidate) => harnessFor(candidate) === harness);
+    if (agent) return agent;
+  }
+  return agents.find((agent) => agent !== "human") ?? null;
+}
+
+/** The lead's role, keeping whatever else the agent was asked to be. */
+export function withLeadRole(role: string | undefined): string {
+  return role && !isLead(role) ? `${LEAD_ROLE}, ${role}` : role ?? LEAD_ROLE;
+}
+
+/**
+ * A new room with several agents gets one lead, the only one who talks to the
+ * human, and the convention that says how. Asked or picked; `--no-lead` or
+ * `"lead": false` opts out, and a single agent needs no lead.
+ */
+export function assignLead(flags: OpenFlags, preference: string[] | false | undefined): OpenFlags {
+  if (flags.lead === false || preference === false || flags.invite.length < 2) return flags;
+  if ([...flags.roles.values()].some(isLead)) return withLeadConvention(flags);
+  const lead = typeof flags.lead === "string" ? flags.lead : pickLead(flags.invite, preference ?? LEAD_PREFERENCE);
+  if (!lead) return flags;
+  const roles = new Map(flags.roles);
+  roles.set(lead, withLeadRole(roles.get(lead)));
+  return withLeadConvention({ ...flags, roles });
+}
+
+function withLeadConvention(flags: OpenFlags): OpenFlags {
+  const presets = (flags.convention ?? "").split(",").map((name) => name.trim()).filter(Boolean);
+  return presets.includes("lead") ? flags : { ...flags, convention: [...presets, "lead"].join(",") };
+}
+
 export function withDefaults(flags: OpenFlags, defaults: OpenDefaults, roomIsNew: boolean): OpenFlags {
   // The mouse is how this terminal is used, not part of a room's charter, so it
   // applies on every open. On by default: dragging copies to the clipboard, so
   // it no longer costs the terminal's own copy and paste.
   const mouse = flags.mouse ?? (flags.defaults ? defaults.mouse : undefined) ?? true;
-  if (!flags.defaults || !roomIsNew) return { ...flags, mouse };
-  return {
-    ...flags,
-    mouse,
-    tools: flags.tools.length ? flags.tools : defaults.tools ?? [],
-    convention: flags.convention ?? defaults.convention,
-    invite: flags.invite.length ? flags.invite : defaults.invite ?? [],
-  };
+  if (!roomIsNew) return { ...flags, mouse };
+  if (!flags.defaults) return assignLead({ ...flags, mouse }, undefined);
+  return assignLead(
+    {
+      ...flags,
+      mouse,
+      tools: flags.tools.length ? flags.tools : defaults.tools ?? [],
+      convention: flags.convention ?? defaults.convention,
+      invite: flags.invite.length ? flags.invite : defaults.invite ?? [],
+    },
+    defaults.lead
+  );
 }
 
 export interface CharterPatch {

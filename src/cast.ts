@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { LAUNCHERS, harnessFor, openWorkspace } from "./invite.js";
 import { detectMultiplexer, killWorkspace, mux, paneStates, sessionExists, sessionName, workspaceName } from "./session.js";
 import { roomCharter, roomExists, roomLeave, roomSend, roomSetCharter, roomWho } from "./store.js";
+import { LEAD_ROLE, isLead, pickLead, withLeadRole } from "./open.js";
 
 /**
  * Changing who is in a room while it runs. An agent that hit its usage limit
@@ -16,8 +17,17 @@ export function removeAgent(db: Database.Database, room: string, agent: string):
   if (NOT_AGENTS.has(agent)) return { ok: false, detail: `"${agent}" is not an agent; hide it with Ctrl-b m instead` };
 
   const charter = roomCharter(db, room);
+  const wasLead = isLead(charter?.roster.find((entry) => entry.agent === agent)?.role);
+  let successor: string | null = null;
   if (charter?.roster.some((entry) => entry.agent === agent)) {
-    roomSetCharter(db, { room, roster: charter.roster.filter((entry) => entry.agent !== agent) });
+    let roster = charter.roster.filter((entry) => entry.agent !== agent);
+    // The human keeps a single voice to talk to: the next agent by preference
+    // takes the lead instead of the room falling back to everyone at once.
+    if (wasLead) {
+      successor = pickLead(roster.map((entry) => entry.agent));
+      if (successor) roster = roster.map((entry) => (entry.agent === successor ? { ...entry, role: withLeadRole(entry.role) } : entry));
+    }
+    roomSetCharter(db, { room, roster });
   }
   roomLeave(db, { room, agent });
 
@@ -38,7 +48,8 @@ export function removeAgent(db: Database.Database, room: string, agent: string):
     room,
     agent: "human",
     origin: "human",
-    message: `${agent} left the room (removed by the human). Whoever can, pick up its part of the work.`,
+    message: `${agent} left the room (removed by the human). Whoever can, pick up its part of the work.` +
+      (successor ? ` ${successor} is now the ${LEAD_ROLE}: the one who talks to the human.` : ""),
   });
   return { ok: true, detail: `${agent} removed: out of the roster and participants, ${stopped}` };
 }

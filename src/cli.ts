@@ -223,6 +223,18 @@ async function open(room: string, argv: string[]): Promise<void> {
 
   roomJoin(db, { room, agent: "human", role: "host" });
 
+  // The lead hands deliverables over as files in the workspace, where every
+  // harness may write; they are for the human, never for a commit.
+  if ((flags.convention ?? "").split(",").includes("lead")) {
+    const handoff = path.join(process.cwd(), ".ai-room");
+    try {
+      fs.mkdirSync(path.join(handoff, "para-voce"), { recursive: true });
+      if (!fs.existsSync(path.join(handoff, ".gitignore"))) fs.writeFileSync(path.join(handoff, ".gitignore"), "*\n");
+    } catch {
+      /* the lead can still send its deliverables as messages */
+    }
+  }
+
   const charter = roomSetCharter(db, charterPatch(room, flags));
 
   console.log(`room: ${room}`);

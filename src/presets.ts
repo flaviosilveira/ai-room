@@ -39,6 +39,18 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "basic accessibility to get there. Say which rung you stopped at when it is not obvious.",
   ].join(" "),
 
+  // Added on its own when a room gets a lead: one voice toward the human.
+  lead: [
+    "One agent is the room's lead: its role in the roster includes \"lead\". Only the lead",
+    "addresses the human; everyone else sends what they need from the human to the lead",
+    "through room_send and keeps working. The lead asks the human one thing per message,",
+    "starting it with [PARA VOCÊ #n] (n counting up in this room), with the options spelled",
+    "out when there are any, and never inside a longer update. Anything for the human to",
+    "read or forward — a draft, a summary, a plan — goes in a file under .ai-room/para-voce/",
+    "and the message only says [PARA VOCÊ] entrega: <path>. When the human answers #n, the",
+    "lead tells the room. If the lead leaves, the room says who takes over.",
+  ].join(" "),
+
   rigorous: [
     "State what you verified and how, and separate it from what you inferred.",
     "Never report work as done without running it. Quote real output, including failures.",

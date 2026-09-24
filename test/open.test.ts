@@ -5,7 +5,7 @@ import { roomCharter, roomJoin, roomSetCharter } from "../src/store.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { agentsToLaunch, charterPatch, loadOpenDefaults, parseOpenFlags, withDefaults } from "../src/open.js";
+import { agentsToLaunch, charterPatch, loadOpenDefaults, parseOpenFlags, pickLead, withDefaults } from "../src/open.js";
 import { DRIVERS_FOR_TEST, attachArgv, canAttach, insideMultiplexer } from "../src/session.js";
 
 describe("reopening a room", () => {
@@ -114,14 +114,15 @@ describe("machine defaults for new rooms", () => {
   it("fill what a new room was not given", () => {
     const flags = withDefaults(parseOpenFlags(["--brief", "x"]), defaults, true);
     expect(flags.tools).toEqual(["rtk", "graphify"]);
-    expect(flags.convention).toBe("caveman,ponytail");
+    // Two agents invited: one becomes the lead, and its convention comes along.
+    expect(flags.convention).toBe("caveman,ponytail,lead");
     expect(flags.invite).toEqual(["claude", "codex"]);
   });
 
   it("never override what was passed", () => {
     const flags = withDefaults(parseOpenFlags(["--tool", "grill-me", "--convention", "concise"]), defaults, true);
     expect(flags.tools).toEqual(["grill-me"]);
-    expect(flags.convention).toBe("concise");
+    expect(flags.convention).toBe("concise,lead");
   });
 
   it("leave an existing room's charter alone, and yield to --no-defaults", () => {
@@ -150,5 +151,40 @@ describe("machine defaults for new rooms", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the lead: one agent talks to the human", () => {
+  const open = (argv: string[], defaults = {}) => withDefaults(parseOpenFlags(argv), defaults, true);
+
+  it("prefers claude, then agy, and codex only when alone", () => {
+    expect(pickLead(["codex", "agy", "claude-2"])).toBe("claude-2");
+    expect(pickLead(["codex", "agy"])).toBe("agy");
+    expect(pickLead(["codex", "codex-2"])).toBe("codex");
+    expect(pickLead(["codex", "claude"], ["codex", "claude"])).toBe("codex");
+  });
+
+  it("picks one on its own and adds the convention that says how", () => {
+    const flags = open(["--invite", "codex,claude,agy", "--convention", "caveman"]);
+    expect(flags.roles.get("claude")).toBe("lead");
+    expect(flags.convention).toBe("caveman,lead");
+  });
+
+  it("keeps the role an agent was given", () => {
+    expect(open(["--invite", "claude,codex", "--role", "claude=implementer"]).roles.get("claude")).toBe("lead, implementer");
+  });
+
+  it("follows --lead, an explicit lead role, --no-lead, and a config that opts out", () => {
+    expect(open(["--invite", "claude,agy", "--lead", "agy"]).roles.get("agy")).toBe("lead");
+    const given = open(["--invite", "claude,agy", "--role", "agy=lead"]);
+    expect([given.roles.get("claude"), given.roles.get("agy")]).toEqual([undefined, "lead"]);
+    expect(open(["--invite", "claude,agy", "--no-lead"]).roles.size).toBe(0);
+    expect(open(["--invite", "claude,agy"], { lead: false }).roles.size).toBe(0);
+    expect(open(["--invite", "claude,agy"], { lead: ["agy", "claude"] }).roles.get("agy")).toBe("lead");
+  });
+
+  it("needs no lead for a single agent, nor on reopen", () => {
+    expect(open(["--invite", "claude"]).roles.size).toBe(0);
+    expect(withDefaults(parseOpenFlags(["--invite", "claude,codex"]), {}, false).roles.size).toBe(0);
   });
 });
