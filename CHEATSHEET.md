@@ -54,11 +54,26 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--tool rtk,graphify` | Tools declared in the briefing |
 | `--convention caveman,ponytail` | Writing rules for every agent |
 | `--role codex=reviewer` | One agent's role |
+| `--lead agy` · `--no-lead` | Picks the agent who talks to you · none (see below) |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
 | `--no-files` | No files tab |
 | `--no-mouse` | Starts with the mouse off (it is on by default) |
 | `--reuse` | Reuses a room that already holds another task's history |
 | `--detached` · `--dry-run` | One session per agent · only print the plan |
+
+### One agent talks to you: the lead
+
+With two or more agents, a new room gets a **lead**: the only agent that
+addresses you. The others pass what they need from you through it.
+
+- Picked by preference: claude, then agy, then codex (codex runs out of usage
+  first). `--lead <agent>` chooses; `--no-lead` or `"lead": false` in the
+  config turns it off; `"lead": ["agy", "claude", "codex"]` changes the order.
+- Every ask is its own message, numbered: `[PARA VOCÊ #3] ...` — answer `#3 a`.
+- Anything to read or forward arrives as a file in `.ai-room/for-human/`
+  (git-ignored), opened in the files tab: `[PARA VOCÊ] entrega: <path>`.
+- If the lead leaves (`ai-room remove`), the next agent by preference takes over
+  and the room is told.
 
 ### Several instances of one agent
 

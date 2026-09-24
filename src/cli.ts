@@ -228,7 +228,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   if ((flags.convention ?? "").split(",").includes("lead")) {
     const handoff = path.join(process.cwd(), ".ai-room");
     try {
-      fs.mkdirSync(path.join(handoff, "para-voce"), { recursive: true });
+      fs.mkdirSync(path.join(handoff, "for-human"), { recursive: true });
       if (!fs.existsSync(path.join(handoff, ".gitignore"))) fs.writeFileSync(path.join(handoff, ".gitignore"), "*\n");
     } catch {
       /* the lead can still send its deliverables as messages */

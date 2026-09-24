@@ -46,7 +46,7 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "through room_send and keeps working. The lead asks the human one thing per message,",
     "starting it with [PARA VOCÊ #n] (n counting up in this room), with the options spelled",
     "out when there are any, and never inside a longer update. Anything for the human to",
-    "read or forward — a draft, a summary, a plan — goes in a file under .ai-room/para-voce/",
+    "read or forward — a draft, a summary, a plan — goes in a file under .ai-room/for-human/",
     "and the message only says [PARA VOCÊ] entrega: <path>. When the human answers #n, the",
     "lead tells the room. If the lead leaves, the room says who takes over.",
   ].join(" "),

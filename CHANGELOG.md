@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A room with several agents gets a lead, the only one who talks to the
+  human: picked claude → agy → codex, or with `--lead`; `--no-lead` and
+  `"lead": false` opt out. The `lead` convention comes along: numbered asks
+  (`[PARA VOCÊ #n]`) and deliverables as files in the git-ignored
+  `.ai-room/for-human/`. Removing the lead hands the role to the next agent.
+
 - A console notices when ai-room was upgraded on disk and says so once;
   `/reload` restarts it in the same pane with the new code. Consoles kept the
   code they started with, so fixes never reached a monitor already open.
