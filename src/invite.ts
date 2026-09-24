@@ -202,7 +202,7 @@ export function editorCommand(
  * editor pane instead of opening another editor over the browser.
  */
 export function editInPaneScript(self = selfCommand()): string {
-  const file = path.join(os.homedir(), ".ai-room", "bin", "edit-in-pane");
+  const file = path.join(process.env.AI_ROOM_BIN_DIR || path.join(os.homedir(), ".ai-room", "bin"), "edit-in-pane");
   const body = `#!/bin/sh\nexec ${self} _edit "$AI_ROOM_WORKSPACE" "$@"\n`;
   try {
     if (!fs.existsSync(file) || fs.readFileSync(file, "utf8") !== body) {

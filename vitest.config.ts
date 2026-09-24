@@ -11,6 +11,9 @@ export default defineConfig({
     env: {
       AI_ROOM_TMUX_SOCKET: `ai-room-vitest-${process.pid}`,
       AI_ROOM_TMUX_CONF: path.join(os.tmpdir(), `ai-room-vitest-${process.pid}.conf`),
+      // Nothing a test writes may land in the human's own ~/.ai-room.
+      AI_ROOM_BIN_DIR: path.join(os.tmpdir(), `ai-room-vitest-${process.pid}-bin`),
+      AI_ROOM_ATTACHMENT_DIR: path.join(os.tmpdir(), `ai-room-vitest-${process.pid}-attachments`),
     },
   },
 });
