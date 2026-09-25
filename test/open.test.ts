@@ -5,7 +5,7 @@ import { roomCharter, roomJoin, roomSetCharter } from "../src/store.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { agentsToLaunch, charterPatch, loadOpenDefaults, parseOpenFlags, pickLead, withDefaults } from "../src/open.js";
+import { agentsToLaunch, charterPatch, expandInvite, loadOpenDefaults, parseOpenFlags, pickLead, withDefaults } from "../src/open.js";
 import { DRIVERS_FOR_TEST, attachArgv, canAttach, insideMultiplexer } from "../src/session.js";
 
 describe("reopening a room", () => {
@@ -186,5 +186,23 @@ describe("the lead: one agent talks to the human", () => {
   it("needs no lead for a single agent, nor on reopen", () => {
     expect(open(["--invite", "claude"]).roles.size).toBe(0);
     expect(withDefaults(parseOpenFlags(["--invite", "claude,codex"]), {}, false).roles.size).toBe(0);
+  });
+});
+
+describe("several instances in --invite", () => {
+  it("expands name*n and name:n into numbered instances", () => {
+    expect(parseOpenFlags(["--invite", "claude*3,codex*2,agy"]).invite).toEqual(["claude", "claude-2", "claude-3", "codex", "codex-2", "agy"]);
+    expect(parseOpenFlags(["--invite", "claude:2"]).invite).toEqual(["claude", "claude-2"]);
+  });
+
+  it("numbers past names already listed, and never repeats one", () => {
+    expect(expandInvite(["claude", "claude*2"])).toEqual(["claude", "claude-2"]);
+    expect(expandInvite(["claude-2", "claude*2"])).toEqual(["claude-2", "claude"]);
+    expect(expandInvite(["codex", "codex"])).toEqual(["codex"]);
+  });
+
+  it("refuses a count that looks like a typo", () => {
+    expect(() => parseOpenFlags(["--invite", "claude*30"])).toThrow(/between 1 and 5/);
+    expect(() => parseOpenFlags(["--invite", "claude*0"])).toThrow(/between 1 and 5/);
   });
 });

@@ -22,6 +22,40 @@ export interface OpenFlags {
   defaults: boolean;
 }
 
+/** More instances than this of one agent is almost always a typo that would burn tokens. */
+export const MAX_INSTANCES = 5;
+
+/**
+ * "claude*3" or "claude:3" is three instances in total: claude, claude-2,
+ * claude-3. Instances already listed count toward it and names are never
+ * repeated, so "claude,claude*2" is claude and claude-2.
+ */
+export function expandInvite(entries: string[]): string[] {
+  const agents: string[] = [];
+  for (const entry of entries) {
+    const match = /^(.+?)[*:](\d+)$/.exec(entry.trim());
+    if (!match) {
+      if (!agents.includes(entry.trim())) agents.push(entry.trim());
+      continue;
+    }
+    const [, name, countText] = match;
+    const count = Number(countText);
+    if (count < 1 || count > MAX_INSTANCES) {
+      throw new Error(`"${entry}": between 1 and ${MAX_INSTANCES} instances of one agent`);
+    }
+    const base = harnessFor(name);
+    // n instances in total: those already listed count toward it.
+    const already = agents.filter((agent) => harnessFor(agent) === base).length;
+    for (let added = already, n = 1; added < count; n += 1) {
+      const candidate = n === 1 ? base : `${base}-${n}`;
+      if (agents.includes(candidate)) continue;
+      agents.push(candidate);
+      added += 1;
+    }
+  }
+  return agents;
+}
+
 export function parseOpenFlags(argv: string[]): OpenFlags {
   const flags: OpenFlags = {
     reuse: false,
@@ -41,7 +75,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     if (arg === "--brief") flags.brief = value();
     else if (arg === "--convention") flags.convention = value();
     else if (arg === "--tool") flags.tools.push(...value().split(",").filter(Boolean));
-    else if (arg === "--invite") flags.invite.push(...value().split(",").filter(Boolean));
+    else if (arg === "--invite") flags.invite = expandInvite([...flags.invite, ...value().split(",").filter(Boolean)]);
     else if (arg === "--role") {
       const [agent, ...rest] = value().split("=");
       if (agent && rest.length) flags.roles.set(agent, rest.join("="));
