@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
-import { addAgent, nextInstanceName, removeAgent } from "../src/cast.js";
-import { roomCharter, roomHistory, roomJoin, roomSetCharter, roomWho, setWakeTarget } from "../src/store.js";
+import { addAgent, nextInstanceName, removeAgent, replaceCast } from "../src/cast.js";
+import { roomCharter, roomHistory, roomJoin, roomSend, roomSetCharter, roomWho, setWakeTarget } from "../src/store.js";
 import { detectMultiplexer, ensureWorkspace, killWorkspace, paneStates, workspaceName } from "../src/session.js";
 
 const tmux = detectMultiplexer("tmux");
@@ -53,6 +53,36 @@ describe("changing the cast of a running room", () => {
     expect(roster.find((e) => e.agent === "agy")!.role).toBe("lead");
     expect(roster.find((e) => e.agent === "codex")!.role).toBe("reviewer");
     expect(roomHistory(db, { room }).at(-1)!.content).toMatch(/agy is now the lead/);
+  });
+
+  it("replaces the cast: the old agents leave for real and the room is told", () => {
+    roomJoin(db, { room, agent: "claude" });
+    const left = replaceCast(db, room, ["agy", "claude"]);
+    expect(left).toEqual(["codex"]);
+    const who = roomWho(db, { room });
+    expect(who.find((p) => p.agent === "codex")).toMatchObject({ active: false, wake: null });
+    expect(who.find((p) => p.agent === "claude")!.active).toBe(true);
+    const notice = roomHistory(db, { room }).at(-1)!.content;
+    expect(notice).toMatch(/Left: codex/);
+    expect(notice).toMatch(/Joining: agy/);
+    expect(replaceCast(db, room, ["agy", "claude"])).toEqual([]);
+  });
+
+  it.skipIf(!tmux)("closes only the panes of those who left", () => {
+    ensureWorkspace(tmux!, session, process.cwd(), [
+      { title: "claude", command: ["sleep", "60"] },
+      { title: "codex", command: ["sleep", "60"] },
+      { title: "monitor", command: ["sleep", "60"] },
+    ]);
+    replaceCast(db, room, ["claude"]);
+    expect(paneStates(tmux!, session).map((p) => p.agent).sort()).toEqual(["claude", "monitor"]);
+  });
+
+  it("tells a newcomer to catch up on what the room already did", () => {
+    roomSend(db, { room, agent: "codex", message: "decidimos usar o marker novo" });
+    const first = roomJoin(db, { room, agent: "agy" });
+    expect(first.nextAction).toMatch(/read room_history first/);
+    expect(roomJoin(db, { room, agent: "agy" }).nextAction).not.toMatch(/read room_history/);
   });
 
   it("refuses what is not an agent", () => {

@@ -12,6 +12,51 @@ import { LEAD_ROLE, isLead, pickLead, withLeadRole } from "./open.js";
  */
 const NOT_AGENTS = new Set(["human", "monitor", "files", "editor"]);
 
+/**
+ * Takes one agent out of the room for good: no longer a participant, so
+ * nothing wakes it, and its pane or session closed. The roster is the caller's.
+ */
+export function retireAgent(db: Database.Database, room: string, agent: string): string {
+  roomLeave(db, { room, agent });
+  const tmux = detectMultiplexer("tmux");
+  if (!tmux) return "no running pane";
+  const workspace = workspaceName(room);
+  const pane = sessionExists(tmux, workspace) ? paneStates(tmux, workspace).find((state) => state.agent === agent) : undefined;
+  if (pane && mux(tmux, ["kill-pane", "-t", pane.paneId]).ok) {
+    mux(tmux, ["select-layout", "-t", `=${workspace}:${pane.home}`, "tiled"]);
+    return "pane closed";
+  }
+  return killWorkspace(tmux, sessionName(room, agent)) ? "session closed" : "no running pane";
+}
+
+/**
+ * `open <room> --invite …` on a room that already has agents replaces its
+ * cast: whoever is not in the new list leaves for real, and the room is told
+ * who left and who came in. Returns who left.
+ */
+export function replaceCast(db: Database.Database, room: string, invite: string[]): string[] {
+  const previous = new Set([
+    ...(roomCharter(db, room)?.roster ?? []).map((entry) => entry.agent),
+    ...roomWho(db, { room }).filter((p) => p.active).map((p) => p.agent),
+  ]);
+  const leaving = [...previous].filter((agent) => !NOT_AGENTS.has(agent) && !invite.includes(agent));
+  const arriving = invite.filter((agent) => !previous.has(agent));
+  if (!leaving.length && !arriving.length) return [];
+  for (const agent of leaving) retireAgent(db, room, agent);
+  const roster = roomCharter(db, room)?.roster;
+  if (roster) roomSetCharter(db, { room, roster: roster.filter((entry) => !leaving.includes(entry.agent)) });
+  roomSend(db, {
+    room,
+    agent: "human",
+    origin: "human",
+    message:
+      "The human changed the cast of this room." +
+      (leaving.length ? ` Left: ${leaving.join(", ")}.` : "") +
+      (arriving.length ? ` Joining: ${arriving.join(", ")} — read room_history for what was already done.` : ""),
+  });
+  return leaving;
+}
+
 export function removeAgent(db: Database.Database, room: string, agent: string): { ok: boolean; detail: string } {
   if (!roomExists(db, room)) return { ok: false, detail: `no room "${room}"` };
   if (NOT_AGENTS.has(agent)) return { ok: false, detail: `"${agent}" is not an agent; hide it with Ctrl-b m instead` };
@@ -29,20 +74,7 @@ export function removeAgent(db: Database.Database, room: string, agent: string):
     }
     roomSetCharter(db, { room, roster });
   }
-  roomLeave(db, { room, agent });
-
-  let stopped = "no running pane";
-  const tmux = detectMultiplexer("tmux");
-  if (tmux) {
-    const workspace = workspaceName(room);
-    const pane = sessionExists(tmux, workspace) ? paneStates(tmux, workspace).find((state) => state.agent === agent) : undefined;
-    if (pane && mux(tmux, ["kill-pane", "-t", pane.paneId]).ok) {
-      mux(tmux, ["select-layout", "-t", `=${workspace}:${pane.home}`, "tiled"]);
-      stopped = "pane closed";
-    } else if (killWorkspace(tmux, sessionName(room, agent))) {
-      stopped = "session closed";
-    }
-  }
+  const stopped = retireAgent(db, room, agent);
 
   roomSend(db, {
     room,

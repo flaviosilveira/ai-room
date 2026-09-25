@@ -42,6 +42,7 @@ import { attachmentRoot, formatBytes } from "./attachments.js";
 import {
   agentsToLaunch,
   charterPatch,
+  assignLead,
   classifyJoins,
   loadOpenDefaults,
   parseOpenFlags,
@@ -193,7 +194,20 @@ async function open(room: string, argv: string[]): Promise<void> {
   }
 
   const db = openDb();
-  const flags = withDefaults(parseOpenFlags(argv), loadOpenDefaults(), !roomExists(db, room));
+  const defaults = loadOpenDefaults();
+  const existed = roomExists(db, room);
+  let flags = withDefaults(parseOpenFlags(argv), defaults, !existed);
+  // An explicit cast for a room that already has one is a replacement: the
+  // agents kept keep their roles, and the new cast gets a lead.
+  const replacing = existed && flags.invite.length > 0;
+  if (replacing) {
+    const current = roomCharter(db, room);
+    const roles = new Map(flags.roles);
+    for (const entry of current?.roster ?? []) {
+      if (flags.invite.includes(entry.agent) && entry.role && !roles.has(entry.agent)) roles.set(entry.agent, entry.role);
+    }
+    flags = assignLead({ ...flags, roles, convention: flags.convention ?? current?.conventionPreset ?? undefined }, defaults.lead);
+  }
 
   // A room is a task, not just a name: reopening one that already holds a
   // conversation with a different brief silently merges two tasks.
@@ -222,6 +236,12 @@ async function open(room: string, argv: string[]): Promise<void> {
   }
 
   roomJoin(db, { room, agent: "human", role: "host" });
+  // A dry run only says what would happen; retiring agents would close panes.
+  if (replacing && !flags.dryRun) {
+    const { replaceCast } = await import("./cast.js");
+    const left = replaceCast(db, room, flags.invite);
+    if (left.length) console.log(`left the room: ${left.join(", ")}`);
+  }
 
   // The lead hands deliverables over as files in the workspace, where every
   // harness may write; they are for the human, never for a commit.

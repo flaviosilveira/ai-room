@@ -161,6 +161,11 @@ export function roomJoin(
     (entry) => entry.agent === params.agent
   );
 
+  // A newcomer reads only what arrives after it joins; a room that already
+  // did work has to say so, or a replacement cast starts over from the brief.
+  const newcomer = !getParticipant(db, params.room, params.agent);
+  const history = newcomer ? roomMessageCount(db, params.room) : 0;
+
   const participant = ensureParticipant(
     db,
     params.room,
@@ -170,6 +175,9 @@ export function roomJoin(
     params.harness ?? rosterEntry?.harness ?? null
   );
   const briefing = roomBriefing(db, params.room, params.agent);
+  const catchUp = history
+    ? ` This room already has ${history} message(s) from before you joined: read room_history first for what was done and decided.`
+    : "";
   return {
     room: result.room,
     participant,
@@ -178,9 +186,10 @@ export function roomJoin(
     // Joining is not the job. Without this an agent reads a perfectly good
     // briefing and parks in room_wait, and the room stays silent until a human
     // tells it to start — which is exactly what the charter exists to avoid.
-    nextAction: briefing
-      ? "Start now: do the work your role in the briefing calls for, and publish what you are doing with room_send. Call room_wait only once you are blocked or waiting on a teammate."
-      : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.",
+    nextAction:
+      (briefing
+        ? "Start now: do the work your role in the briefing calls for, and publish what you are doing with room_send. Call room_wait only once you are blocked or waiting on a teammate."
+        : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.") + catchUp,
   };
 }
 
