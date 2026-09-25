@@ -81,9 +81,14 @@ Number them: the name picks the CLI, so `claude-2` runs Claude Code as a separat
 participant, with its own pane, session and wake.
 
 ```bash
-ai-room open review --brief "..." --invite claude,claude-2,claude-3,codex,codex-2 \
+ai-room open review --brief "..." --invite claude:3,codex:2 \
   --role claude=implementer --role claude-2=skeptic --role claude-3=security
 ```
+
+`claude:3` or `"claude*3"` is three instances in total: `claude`, `claude-2`,
+`claude-3` (at most 5 of one agent). In zsh an unquoted `*` is a file glob and
+fails with `no matches found`: quote it, use `:`, or add
+`alias ai-room='noglob ai-room'` to `~/.zshrc`.
 
 Same model, independent samples: they reach different conclusions, but in one
 room they drift toward whoever spoke first. Give each a different `--role` to

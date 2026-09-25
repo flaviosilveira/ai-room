@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `--invite claude:3,codex:2` (or `"claude*3,codex*2"`) opens that many
+  instances in total, numbered `claude`, `claude-2`, `claude-3`; at most 5 of
+  one agent.
+
 - Agent status lives on the monitor pane's top border instead of a new chat
   line at every change; the human's own status is left out. Alerts that need
   the human (approval, blocked) still arrive as chat lines, and `/who` prints
