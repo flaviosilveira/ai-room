@@ -15,6 +15,8 @@ import {
   liveSessions,
   mux,
   paneStates,
+  reloadTmuxConfig,
+  STATUS_TAG,
   sessionExists,
   sessionName,
   setPaneVisible,
@@ -132,6 +134,29 @@ export function renderParticipant(
   const stale = since > staleMs;
   const detail = p.statusDetail ? ` (${p.statusDetail})` : "";
   return paint(`${p.status}${stale ? `·${age(since)}` : ""}${detail}`, STATUS_COLOR[p.status] ?? C.dim);
+}
+
+/** The agents only: the human's own status is noise on its own screen. */
+export function statusParts(participants: ParticipantView[]): string[] {
+  return participants
+    .filter((p) => p.agent !== "human" && (p.active || p.status === "approval_required"))
+    .map((p) => renderParticipant(p));
+}
+
+const ANSI_TO_TMUX: Record<string, string> = {
+  [C.reset]: "#[default]",
+  [C.dim]: "#[dim]",
+  [C.bold]: "#[bold]",
+  [C.human]: "#[fg=cyan]",
+  [C.agent]: "#[fg=green]",
+  [C.system]: "#[fg=magenta]",
+  [C.warn]: "#[fg=yellow]",
+  [C.alert]: "#[fg=red]",
+};
+
+/** Terminal colours as tmux styles, and "#" escaped so tmux does not read it as a format. */
+export function toTmuxStyle(text: string): string {
+  return text.replace(/#/g, "##").replace(/\x1b\[[0-9;]*m/g, (code) => ANSI_TO_TMUX[code] ?? "");
 }
 
 function renderStatus(participants: ParticipantView[]): string {
@@ -358,6 +383,11 @@ export async function runConsole(
     process.stdin.pipe(pasteStream);
     process.stdout.write(ENABLE_BRACKETED_PASTE);
   }
+
+  // Inside the workspace the status lives on this pane's border instead of the
+  // chat; the running tmux reloads the config that knows how to show it.
+  const statusPane = process.env.TMUX_PANE && driver?.name === "tmux" && insideWorkspaceServer() ? process.env.TMUX_PANE : null;
+  if (statusPane) reloadTmuxConfig(driver!);
 
   // A console runs the code it started with; an upgrade on disk never reaches
   // it. It notices, says so once, and /reload restarts it in the same pane.
@@ -684,7 +714,10 @@ export async function runConsole(
           }
         } else if (event === "status") {
           const participants = payload as ParticipantView[];
-          emit(rl, renderStatus(participants));
+          if (statusPane) {
+            const parts = statusParts(participants);
+            mux(driver!, ["set-option", "-p", "-t", statusPane, STATUS_TAG, parts.length ? toTmuxStyle(parts.join("  ")) : "#[dim]sala vazia"]);
+          } else emit(rl, renderStatus(participants));
           const stuck = needsAttention(participants);
           const fingerprint = stuck.map((p) => `${p.agent}:${p.status}`).join(",");
           if (fingerprint && fingerprint !== alerted) {

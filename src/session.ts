@@ -139,7 +139,8 @@ export function tmuxConfig(self: string = selfCommand(), clipboard: string | nul
     "source-file -q ~/.tmux.conf",
     "source-file -q ~/.config/tmux/tmux.conf",
     "set -g pane-border-status top",
-    `set -g pane-border-format " #{?${PANE_TAG},#{${PANE_TAG}},#{pane_title}} "`,
+    // The monitor's border carries the agents' status, so it never scrolls the chat.
+    `set -g pane-border-format " #{?${PANE_TAG},#{${PANE_TAG}},#{pane_title}}#{?${STATUS_TAG}, | #{${STATUS_TAG}},} "`,
     "set -g status on",
     "set -g status-left-length 60",
     `set -g status-left "#[bold] ai-room #{?${ROOM_TAG},#{${ROOM_TAG}},#S} #[default]"`,
@@ -336,6 +337,8 @@ export const PANE_TAG = "@airoom_agent";
 export const ROOM_TAG = "@airoom_room";
 /** The window a pane belongs in when it is shown. */
 export const HOME_TAG = "@airoom_home";
+/** The status line the monitor shows on its own pane border. */
+export const STATUS_TAG = "@airoom_status";
 export const HIDDEN_PREFIX = "_";
 
 export function workspacePanes(driver: MultiplexerDriver, session: string): string[] {

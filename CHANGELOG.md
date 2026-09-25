@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Agent status lives on the monitor pane's top border instead of a new chat
+  line at every change; the human's own status is left out. Alerts that need
+  the human (approval, blocked) still arrive as chat lines, and `/who` prints
+  the full status. Outside tmux the console keeps the old lines.
+
 - Agents are told to follow each other through the room only, and no longer
   to read other tmux panes: allowing it made agy poll its teammates' screens,
   one permission prompt per look.

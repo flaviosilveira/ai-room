@@ -144,7 +144,7 @@ the room is told so the others pick up its part.
 | text + Enter | Sends a message to the room |
 | paste several lines | Becomes a single message |
 | `/show` · `/clear` | Shows · discards the draft |
-| `/who` | Agent status |
+| `/who` | Agent status (it is also always on the monitor's top border) |
 | `/attach <agent>` | Goes to the agent's pane |
 | `/panes` · `/hide <x>` · `/show <x>` | Lists, hides and shows panes |
 | `/agents` | Live panes and sessions |

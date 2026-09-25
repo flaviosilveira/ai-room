@@ -248,6 +248,12 @@ describe("charter is written before any agent starts", () => {
   });
 });
 
+describe("status on the monitor's border", () => {
+  it("shows it next to the pane name, only when there is one", () => {
+    expect(tmuxConfig("ai-room")).toContain("#{?@airoom_status, | #{@airoom_status},}");
+  });
+});
+
 describe("vim paths", () => {
   it("escapes what vim's command line would expand", () => {
     expect(vimEscape("/a b/c%d#e|f.ts")).toBe("/a\\ b/c\\%d\\#e\\|f.ts");

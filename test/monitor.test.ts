@@ -237,3 +237,17 @@ describe.skipIf(!tmux)("workspace commands against real tmux", () => {
     expect(sessionExists(tmux!, session)).toBe(false);
   });
 });
+
+describe("status for the pane border", () => {
+  it("drops the human and turns terminal colours into tmux styles", async () => {
+    const { statusParts, toTmuxStyle } = await import("../src/console.js");
+    const base = { room: "r", harness: null, role: null, joinedAt: 0, lastSeenAt: 0, statusDetail: null, wake: null, wakeError: null, unread: 0, waitActive: false };
+    const parts = statusParts([
+      { ...base, agent: "human", active: true, status: "working", statusUpdatedAt: Date.now() },
+      { ...base, agent: "claude", active: true, status: "working", statusUpdatedAt: Date.now() },
+    ] as never);
+    expect(parts).toHaveLength(1);
+    expect(toTmuxStyle(parts[0])).toBe("#[fg=green]claude:working#[default]");
+    expect(toTmuxStyle("a#b")).toBe("a##b");
+  });
+});
