@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `Ctrl-b x` closes the room like `Ctrl-b X`; tmux's own `x` killed only the
+  focused pane, which stopped one agent and left the workspace open.
+
 - `--invite claude:3,codex:2` (or `"claude*3,codex*2"`) opens that many
   instances in total, numbered `claude`, `claude-2`, `claude-3`; at most 5 of
   one agent.

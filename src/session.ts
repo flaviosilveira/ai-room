@@ -152,7 +152,10 @@ export function tmuxConfig(self: string = selfCommand(), clipboard: string | nul
     ...both("m", `{ run-shell "${self} _pane-menu '#{session_name}'" ; source-file -F "${path.join(path.dirname(tmuxConfigPath()), "menus")}/#{session_name}.tmux" }`),
     ...both("t", `run-shell -b "${self} _files '#{session_name}' '#{window_name}'"`),
     ...both("z", "resize-pane -Z"),
+    // Lowercase x too: tmux's own x kills just the focused pane, which in a
+    // workspace silently stops one agent instead of closing the room.
     ...both("X", `confirm-before -p "Fechar a sala? Os agentes serao encerrados, o historico fica. (y/n)" kill-session`),
+    `bind-key x confirm-before -p "Fechar a sala? Os agentes serao encerrados, o historico fica. (y/n)" kill-session`,
     ...both("d", "detach-client"),
     ...both("q", "detach-client"),
     `bind-key M { set -g mouse ; display-message "mouse: #{?mouse,on,off}" }`,

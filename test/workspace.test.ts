@@ -277,6 +277,8 @@ describe("workspace tmux config", () => {
       expect(config).toMatch(new RegExp(`^bind-key C-${key} `, "m"));
     }
     expect(config).toContain("bind-key C-z resize-pane -Z");
+    // tmux's own lowercase x would kill a single agent's pane.
+    expect(config).toMatch(/^bind-key x confirm-before .* kill-session$/m);
     expect(config).toMatch(/^bind-key M \{ set -g mouse/m);
   });
 

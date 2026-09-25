@@ -121,7 +121,7 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 | `Ctrl-b M` | Mouse off/on. On (default): click a pane to focus it, scroll, drag to copy |
 | `Ctrl-b arrows` | Moves between panes |
 | `Ctrl-b z` | Pane full screen (again to restore) |
-| `Ctrl-b X` | Closes the room (asks first) |
+| `Ctrl-b x` or `Ctrl-b X` | Closes the room (asks first) |
 
 The files tab is a separate tab (window 1): the file browser on the left and
 Vim on the right. In the browser, Enter opens the file in that Vim; `:w` saves,
