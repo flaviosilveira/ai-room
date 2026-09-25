@@ -104,6 +104,9 @@ describe("asking an agent to run a skill", () => {
     ensureWorkspace(tmux!, session, process.cwd(), [{ title: "codex", command: ["sh", "-c", `stty raw -echo; cat > ${sink}`] }]);
     try {
       const pane = paneStates(tmux!, session)[0].paneId;
+      // Typing before `stty raw` runs would reach a cooked terminal; the sink
+      // appears only once the shell is past it.
+      for (let i = 0; i < 30 && !fs.existsSync(sink); i += 1) await new Promise((resolve) => setTimeout(resolve, 100));
       expect(typeIntoPane(tmux!, pane, "$grill-me o plano", { closeMenu: true }).ok).toBe(true);
       const read = () => (fs.existsSync(sink) ? fs.readFileSync(sink, "utf8") : "");
       for (let i = 0; i < 40 && !read().endsWith("\r"); i += 1) await new Promise((resolve) => setTimeout(resolve, 100));
