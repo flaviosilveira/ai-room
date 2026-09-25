@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Reopening a room with `--invite` replaces its cast: agents not listed leave
+  for real (no longer participants or woken, panes closed), agents kept keep
+  their roles, the new cast gets a lead, and the room is told who left and who
+  joined. A newcomer's `room_join` tells it to read `room_history` when the room
+  already has work in it. `--dry-run` changes nothing.
+
 - `Ctrl-b x` closes the room like `Ctrl-b X`; tmux's own `x` killed only the
   focused pane, which stopped one agent and left the workspace open.
 

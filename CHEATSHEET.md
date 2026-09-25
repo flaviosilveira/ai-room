@@ -48,6 +48,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 |---|---|
 | `ai-room open <room> --brief "..." --invite ...` | Creates the room, launches the agents and attaches to the workspace |
 | `ai-room open <room>` · `ai-room attach <room>` | Reopens the room with the same charter and cast |
+| `ai-room open <room> --invite agy,claude:2` | Reopens it with a **new cast**: whoever is not listed leaves, the room is told, the newcomers are told to read the history |
 
 | Flag | Does |
 |---|---|
