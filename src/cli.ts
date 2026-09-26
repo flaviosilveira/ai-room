@@ -787,6 +787,12 @@ switch (cmd) {
     tools(process.argv.includes("--json"));
     break;
   default:
+    // `ai-room <room> --brief ... --invite ...` is `open` with the word left out.
+    // Only with flags after it: a mistyped command alone still gets the usage.
+    if (cmd && !cmd.startsWith("-") && arg?.startsWith("--")) {
+      await open(cmd, process.argv.slice(3));
+      break;
+    }
     console.error(
       "usage: ai-room <serve|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +

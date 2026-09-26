@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `ai-room <room> --brief … --invite …` works as `open`; leaving the word out
+  printed the usage.
 - `room_send` takes an optional `to` (`["claude-2"]`, `["human"]`). With a
   lead, the console leaves out the lead's asides to teammates too, so with
   `claude` and `claude-2` the human no longer reads the lead delegating work;
