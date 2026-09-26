@@ -78,11 +78,11 @@ describe("changing the cast of a running room", () => {
     expect(paneStates(tmux!, session).map((p) => p.agent).sort()).toEqual(["claude", "monitor"]);
   });
 
-  it("tells a newcomer to catch up on what the room already did", () => {
-    roomSend(db, { room, agent: "codex", message: "decidimos usar o marker novo" });
-    const first = roomJoin(db, { room, agent: "agy" });
-    expect(first.nextAction).toMatch(/read room_history first/);
+  it("tells a joining agent, new or returning, to catch up on what the room already did", () => {
     expect(roomJoin(db, { room, agent: "agy" }).nextAction).not.toMatch(/read room_history/);
+    roomSend(db, { room, agent: "codex", message: "we settled on the new marker" });
+    expect(roomJoin(db, { room, agent: "agy" }).nextAction).toMatch(/read room_history first/);
+    expect(roomJoin(db, { room, agent: "claude" }).nextAction).toMatch(/instead of starting the brief over/);
   });
 
   it("refuses what is not an agent", () => {

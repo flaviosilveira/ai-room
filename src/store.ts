@@ -161,10 +161,9 @@ export function roomJoin(
     (entry) => entry.agent === params.agent
   );
 
-  // A newcomer reads only what arrives after it joins; a room that already
-  // did work has to say so, or a replacement cast starts over from the brief.
-  const newcomer = !getParticipant(db, params.room, params.agent);
-  const history = newcomer ? roomMessageCount(db, params.room) : 0;
+  // Rejoining is usually a fresh process with no memory of the room, so a room
+  // that already did work has to say so, or the agent starts over from the brief.
+  const history = roomMessageCount(db, params.room);
 
   const participant = ensureParticipant(
     db,
@@ -176,7 +175,7 @@ export function roomJoin(
   );
   const briefing = roomBriefing(db, params.room, params.agent);
   const catchUp = history
-    ? ` This room already has ${history} message(s) from before you joined: read room_history first for what was done and decided.`
+    ? ` This room already has ${history} message(s) already: unless you remember them, read room_history first for what was done and decided, and continue from there instead of starting the brief over.`
     : "";
   return {
     room: result.room,

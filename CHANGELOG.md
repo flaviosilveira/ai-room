@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- An agent rejoining a room that already has messages is told to read
+  `room_history` and continue from there. Only newcomers were told, so an agent
+  relaunched into its own room (a new process with no memory of it) started the
+  brief over.
+
 ## 0.6.2
 
 ### Rooms
