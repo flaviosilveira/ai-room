@@ -74,6 +74,13 @@ describe("room charter", () => {
     expect(roomCharter(db, "r")!.roster.find((e) => e.agent === "codex")?.role).toBe("reviewer");
   });
 
+  it("moves a participant's role when the roster moves it", () => {
+    roomJoin(db, { room: "r", agent: "claude" });
+    roomSetCharter(db, { room: "r", roster: [{ agent: "claude", role: "lead" }, { agent: "codex" }] });
+    const roles = Object.fromEntries(roomWho(db, { room: "r" }).map((p) => [p.agent, p.role]));
+    expect(roles.claude).toBe("lead");
+  });
+
   it("delivers the briefing through room_join", () => {
     const result = roomJoin(db, { room: "r", agent: "codex" });
     expect(result.briefing?.you).toMatchObject({ role: "reviewer" });

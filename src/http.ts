@@ -189,6 +189,9 @@ export function createHttpApp(
       ? roomHistory(db, { room, after, limit: 200 })
       : roomHistory(db, { room, limit: Number.isFinite(backlog) ? backlog : 20 });
     let lastId = Number.isFinite(after) && after > 0 ? after : 0;
+    // Roles first: the console decides from them which of the replayed
+    // messages the human sees.
+    send("status", withWaitLiveness(room, roomWho(db, { room }), waitRegistry));
     for (const message of replay) {
       send("message", message);
       lastId = Math.max(lastId, message.id);
@@ -205,21 +208,22 @@ export function createHttpApp(
     let lastStatus = "";
     const poll = () => {
       try {
+        // Status is small and changes rarely; diffing it avoids a chatty stream.
+        // It goes first: its roles decide which of the new messages the console shows.
+        const participants = withWaitLiveness(room, roomWho(db, { room }), waitRegistry);
+        const fingerprint = JSON.stringify(
+          participants.map((p) => [p.agent, p.role, p.status, p.statusDetail, p.active, p.waitActive, p.unread])
+        );
+        if (fingerprint !== lastStatus) {
+          lastStatus = fingerprint;
+          send("status", participants);
+        }
         const fresh = roomHistory(db, { room, after: lastId, limit: 200 });
         for (const message of fresh) {
           send("message", message);
           lastId = Math.max(lastId, message.id);
         }
         if (fresh.length) seen(lastId);
-        // Status is small and changes rarely; diffing it avoids a chatty stream.
-        const participants = withWaitLiveness(room, roomWho(db, { room }), waitRegistry);
-        const fingerprint = JSON.stringify(
-          participants.map((p) => [p.agent, p.status, p.statusDetail, p.active, p.waitActive, p.unread])
-        );
-        if (fingerprint !== lastStatus) {
-          lastStatus = fingerprint;
-          send("status", participants);
-        }
       } catch (error) {
         send("error", { error: error instanceof Error ? error.message : String(error) });
       }

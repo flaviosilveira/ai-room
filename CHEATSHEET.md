@@ -67,6 +67,9 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 With two or more agents, a new room gets a **lead**: the only agent that
 addresses you. The others pass what they need from you through it.
 
+- The `human>` console shows only the lead. The lead keeps you up to date on
+  the team's thinking and credits who found what ("agy found…", "codex hit…");
+  teammates' messages stay in the room, and `/all` shows them here too.
 - Picked by preference: claude, then agy, then codex (codex runs out of usage
   first). `--lead <agent>` chooses; `--no-lead` or `"lead": false` in the
   config turns it off; `"lead": ["agy", "claude", "codex"]` changes the order.
@@ -150,6 +153,7 @@ the room is told so the others pick up its part.
 | text + Enter | Sends a message to the room |
 | paste several lines | Becomes a single message |
 | `/show` · `/clear` | Shows · discards the draft |
+| `/all` | With a lead: toggles between only the lead and every agent |
 | `/who` | Agent status (it is also always on the monitor's top border) |
 | `/attach <agent>` | Goes to the agent's pane |
 | `/panes` · `/hide <x>` · `/show <x>` | Lists, hides and shows panes |

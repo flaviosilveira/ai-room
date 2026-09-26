@@ -1011,6 +1011,13 @@ export function roomSetCharter(
     existing?.createdAt ?? now,
     now
   );
+  // A participant keeps the role it joined with, so a roster that moves the
+  // lead would otherwise leave the old role on record and the console hearing
+  // the wrong voice.
+  if (params.roster !== undefined) {
+    const setRole = db.prepare("UPDATE participants SET role = ? WHERE room = ? AND agent = ?");
+    for (const entry of roster) setRole.run(entry.role ?? null, params.room, entry.agent);
+  }
 
   return roomCharter(db, params.room)!;
 }

@@ -180,6 +180,7 @@ export const HELP = `
 ${C.bold}Commands${C.reset}
   ${C.bold}/attach <agent>${C.reset}    focus the agent's pane (back with ${DETACH_KEYS})
   ${C.bold}/agents${C.reset}            list the room's live panes and sessions
+  ${C.bold}/all${C.reset}               with a lead, toggle between only the lead and every agent
   ${C.bold}/who${C.reset}               participants: idle/working/wait(live) and unread
   ${C.bold}/panes${C.reset}             workspace panes and which are visible (files is tab 1: Ctrl-b t)
   ${C.bold}/hide <pane>${C.reset}       hide a pane (agent, monitor or files) without stopping it
@@ -208,7 +209,7 @@ Any other line goes to the room as your message.
  * what leaves the console is one message with its line breaks intact.
  */
 export const CONSOLE_COMMANDS = [
-  "attach", "agents", "who", "panes", "hide", "show", "remove", "add", "skills", "reload",
+  "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "skills", "reload",
   "detach", "close", "paste", "file", "drop", "clear", "help", "quit",
 ];
 
@@ -667,6 +668,10 @@ export async function runConsole(
 
   // --- live feed -----------------------------------------------------------
   let alerted = "";
+  // With a lead the human hears one voice; teammates' messages stay in the
+  // room, and /all brings them back here.
+  let leads = new Set<string>();
+  let showAll = false;
   const controller = new AbortController();
 
   let lastMessageId = 0;
@@ -704,11 +709,13 @@ export async function runConsole(
           const message = payload as MessageInfo;
           lastMessageId = Math.max(lastMessageId, message.id);
           // Don't echo the line the user just typed back at them.
-          if (!(message.origin === "human" && message.agent === me)) {
+          const fromTeammate = message.origin === "agent" && leads.size > 0 && !leads.has(message.agent);
+          if (!(message.origin === "human" && message.agent === me) && (showAll || !fromTeammate)) {
             emit(rl, renderMessage(message));
           }
         } else if (event === "status") {
           const participants = payload as ParticipantView[];
+          leads = new Set(participants.filter((p) => p.active && p.role?.split(/,\s*/).includes("lead")).map((p) => p.agent));
           if (statusPane) {
             const parts = statusParts(participants);
             mux(driver!, ["set-option", "-p", "-t", statusPane, STATUS_TAG, parts.length ? toTmuxStyle(parts.join("  ")) : "#[dim]room is empty"]);
@@ -784,6 +791,10 @@ export async function runConsole(
           break;
         case "agents":
           listAgents();
+          break;
+        case "all":
+          showAll = !showAll;
+          emit(rl, `${C.dim}${showAll ? "showing every agent's messages" : leads.size ? `showing only the lead (${[...leads].join(", ")})` : "no lead in this room: every message shows"}${C.reset}`);
           break;
         case "who":
           void fetch(`${options.baseUrl}/who?room=${encodeURIComponent(room)}`)

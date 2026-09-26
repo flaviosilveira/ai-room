@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- With a lead, the `human>` console shows only the lead; teammates' messages
+  stay in the room and `/all` shows them too. The lead convention now has the
+  lead relay the team's findings with credit ("agy found…"). Roles follow the
+  roster when it changes: a participant kept the role it joined with, so a
+  room whose lead was set later had no lead on record.
 - An agent rejoining a room that already has messages is told to read
   `room_history` and continue from there. Only newcomers were told, so an agent
   relaunched into its own room (a new process with no memory of it) started the

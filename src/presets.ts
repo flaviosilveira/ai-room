@@ -48,7 +48,10 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "out when there are any, and never inside a longer update. Anything for the human to",
     "read or forward — a draft, a summary, a plan — goes in a file under .ai-room/for-human/",
     "and the message only says [FOR YOU] deliverable: <path>. When the human answers #n, the",
-    "lead tells the room. If the lead leaves, the room says who takes over.",
+    "lead tells the room. The human's console shows only the lead, so the lead also keeps",
+    "the human up to date on the team's thinking, crediting who found what (\"agy found\",",
+    "\"codex hit this problem\") in a few lines, not relaying every message.",
+    "If the lead leaves, the room says who takes over.",
   ].join(" "),
 
   rigorous: [

@@ -141,6 +141,7 @@ after `/` completes them:
 | --- | --- |
 | `/attach <agent>` | Focuses that agent's pane (or its session, with `--detached`). Detach with `F12` or `Ctrl-b d` (tmux), `Ctrl-a d` (screen) |
 | `/agents` | Lists the room's live panes and sessions |
+| `/all` | With a lead, toggles between only the lead and every agent |
 | `/who` | Participants, `wait(live)` and unread |
 | `/show` · `/clear` | Shows · discards the draft |
 | `Ctrl+V` or `/paste` | Pastes the clipboard: an image or a copied file is attached, text goes into the draft |
