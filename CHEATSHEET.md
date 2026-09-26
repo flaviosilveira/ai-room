@@ -94,6 +94,11 @@ ai-room open review --brief "..." --invite claude:3,codex:2 \
 fails with `no matches found`: quote it, use `:`, or add
 `alias ai-room='noglob ai-room'` to `~/.zshrc`.
 
+`ai-room open` trusts the folder it runs in for Claude Code and Codex (in
+`~/.claude.json` and `~/.codex/config.toml`), so no pane stops at "trust this
+folder?". Claude's question defaults to "No, exit", which with several claude
+panes used to close one of them.
+
 Same model, independent samples: they reach different conclusions, but in one
 room they drift toward whoever spoke first. Give each a different `--role` to
 keep the views apart. Each instance spends its own tokens; with many panes use

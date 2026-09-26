@@ -151,6 +151,44 @@ export function monitorCommand(room: string): string[] {
 }
 
 /**
+ * Running `ai-room open` in a folder is the human choosing to put agents there,
+ * so the harnesses are told to trust it instead of each pane asking. Claude's
+ * question defaults to "No, exit": with several claude panes, one Enter too many
+ * closed an instance for good and left the room waking a pane that was gone.
+ */
+export function trustFolder(dir: string, harnesses: Set<string>, home = os.homedir()): string[] {
+  const real = fs.realpathSync(dir);
+  const trusted: string[] = [];
+  const claudeConfig = path.join(home, ".claude.json");
+  if (harnesses.has("claude")) try {
+    const config = JSON.parse(fs.readFileSync(claudeConfig, "utf8"));
+    const projects = (config.projects ??= {});
+    const covered = (p: string): boolean => Boolean(projects[p]?.hasTrustDialogAccepted) || (path.dirname(p) !== p && covered(path.dirname(p)));
+    if (!covered(real)) {
+      projects[real] = { ...projects[real], hasTrustDialogAccepted: true };
+      const temp = `${claudeConfig}.ai-room-${process.pid}`;
+      fs.writeFileSync(temp, JSON.stringify(config, null, 2));
+      fs.renameSync(temp, claudeConfig);
+      trusted.push("claude");
+    }
+  } catch {
+    /* no Claude Code config yet: its own prompt still asks */
+  }
+  const codexConfig = path.join(home, ".codex", "config.toml");
+  if (harnesses.has("codex")) try {
+    const table = `[projects.${JSON.stringify(real)}]`;
+    const current = fs.readFileSync(codexConfig, "utf8");
+    if (!current.includes(table)) {
+      fs.appendFileSync(codexConfig, `${current.endsWith("\n") ? "" : "\n"}\n${table}\ntrust_level = "trusted"\n`);
+      trusted.push("codex");
+    }
+  } catch {
+    /* no Codex config yet */
+  }
+  return trusted;
+}
+
+/**
  * The file browser for the workspace's "files" tab: the first one installed,
  * with vim's own netrw tree as the fallback every machine already has.
  * `AI_ROOM_FILES` names any other command, run through the shell.
@@ -399,6 +437,7 @@ export function openWorkspace(
   const driver = detectMultiplexer("tmux");
   if (!driver) throw new Error(`tmux is required for the pane workspace. ${INSTALL_HINT}`);
   const plan = planWorkspace(room, agents, options);
+  trustFolder(options.cwd ?? process.cwd(), new Set(plan.agents.map((agent) => harnessFor(agent))));
   const result = ensureWorkspace(
     driver,
     workspaceName(room),

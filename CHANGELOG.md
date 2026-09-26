@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ai-room open` trusts the folder it runs in for the Claude Code and Codex
+  instances it launches, instead of each pane asking. Claude's question
+  defaults to "No, exit": with `claude:2`, one Enter too many closed an
+  instance and left the room waking a pane that was gone (`wake_failed`).
 - With a lead, the `human>` console shows only the lead; teammates' messages
   stay in the room and `/all` shows them too. The lead convention now has the
   lead relay the team's findings with credit ("agy found…"). Roles follow the
