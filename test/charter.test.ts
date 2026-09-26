@@ -119,9 +119,9 @@ describe("invite launcher", () => {
     expect(Object.keys(LAUNCHERS).sort()).toEqual(["agy", "claude", "codex"]);
     // No -p / exec: a headless run resolves approvals on its own, and attaching
     // to it later would give the human nothing to answer.
-    expect(LAUNCHERS.codex.args("P")).toEqual(["P"]);
+    expect(LAUNCHERS.codex.args("P")).toEqual(["--approve-for-me", "P"]);
     expect(LAUNCHERS.claude.args("P")).toEqual(["P"]);
-    expect(LAUNCHERS.agy.args("P")).toEqual(["-i", "P"]);
+    expect(LAUNCHERS.agy.args("P")).toEqual(["--mode", "accept-edits", "-i", "P"]);
   });
 
   it("reports the command and session without spawning anything on a dry run", () => {

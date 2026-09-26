@@ -87,8 +87,8 @@ describe("workspace naming and isolation", () => {
 describe("launch commands", () => {
   it("runs every harness interactively so approval prompts survive", () => {
     expect(agentCommand("r", "claude")).toEqual(["claude", joinPrompt("r", "claude")]);
-    expect(agentCommand("r", "codex")).toEqual(["codex", joinPrompt("r", "codex")]);
-    expect(agentCommand("r", "agy")).toEqual(["agy", "-i", joinPrompt("r", "agy")]);
+    expect(agentCommand("r", "codex")).toEqual(["codex", "--approve-for-me", joinPrompt("r", "codex")]);
+    expect(agentCommand("r", "agy")).toEqual(["agy", "--mode", "accept-edits", "-i", joinPrompt("r", "agy")]);
   });
 
   it("tells every launched harness it can go idle and be woken, agy included", () => {

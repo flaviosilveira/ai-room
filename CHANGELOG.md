@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Codex joins in auto-review (`--approve-for-me`): safe requests are approved
+  and the rest still asks, like Claude's auto mode. agy has no reviewer, so it
+  joins accepting edits (`--mode accept-edits`) and still asks for commands.
 - `ai-room <room> --brief … --invite …` works as `open`; leaving the word out
   printed the usage.
 - `room_send` takes an optional `to` (`["claude-2"]`, `["human"]`). With a

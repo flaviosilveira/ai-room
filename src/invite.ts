@@ -29,8 +29,11 @@ export interface AgentLauncher {
 
 export const LAUNCHERS: Record<string, AgentLauncher> = {
   claude: { bin: "claude", args: (prompt) => [prompt] },
-  codex: { bin: "codex", args: (prompt) => [prompt] },
-  agy: { bin: "agy", args: (prompt) => ["-i", prompt] },
+  // Claude's auto mode comes from its own settings. Codex's equivalent is a
+  // reviewer that approves safe requests and still asks for the rest; agy has
+  // no reviewer, only a skip-everything flag, so it only stops asking for edits.
+  codex: { bin: "codex", args: (prompt) => ["--approve-for-me", prompt] },
+  agy: { bin: "agy", args: (prompt) => ["--mode", "accept-edits", "-i", prompt] },
 };
 
 /**
