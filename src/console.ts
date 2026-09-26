@@ -192,8 +192,8 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/close yes${C.reset}         close the room's panes and sessions (history and charter stay)
   ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
   ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
-  ${C.bold}/drop <n>${C.reset}          remove attachment n from the draft
-  ${C.bold}/show${C.reset}              show what is pasted and attached in the draft
+  ${C.bold}/drop <n>${C.reset}          remove item n ([Image #n], [Pasted #n]) from the draft
+  ${C.bold}/show${C.reset}              list what is pasted and attached in the draft
   ${C.bold}/clear${C.reset}             discard the draft
   ${C.bold}/reload${C.reset}            restart this console with the ai-room now on disk
   ${C.bold}/help${C.reset}              this help
@@ -223,91 +223,93 @@ export function completeSlash(line: string, skills: readonly Pick<Skill, "name">
   return [hits.length ? hits : words, line];
 }
 
+type DraftItem = { kind: "paste"; text: string } | { kind: "file"; attachment: AttachmentInfo };
+
+/** "[Pasted #2: 480 lines]", "[Image #1]", "[File #3: log.txt]": one per paste or attachment. */
+const TOKEN = /\[(?:Pasted|Image|File|PDF) #(\d+)(?:: [^\]]*)?\]/g;
+
+/**
+ * What the human is about to send. A paste or an attachment enters the line
+ * as a token where the cursor is, as in Claude Code and Codex, so the human
+ * writes around it; Enter puts each paste's text back in its place and sends
+ * the attachments along. An item whose token was deleted from the line is not
+ * sent.
+ */
 export class Composer {
-  private readonly pastes: string[] = [];
-  private readonly files: AttachmentInfo[] = [];
-  /** Called after every change, so the prompt can show what Enter will send. */
-  onChange: () => void = () => undefined;
+  private readonly items = new Map<number, DraftItem>();
+  private next = 1;
 
-  attach(attachment: AttachmentInfo): void {
-    this.files.push(attachment);
-    this.onChange();
+  /** The token that stands for a paste in the line. */
+  stage(paste: string): string {
+    // A paste usually ends with the newline that closed its last line.
+    const text = paste.replace(/\n+$/, "");
+    const id = this.next++;
+    this.items.set(id, { kind: "paste", text });
+    return this.tokenOf(id)!;
   }
 
-  /** "4 img · 1 texto": the draft in a few characters, for the prompt line. */
-  badge(): string {
-    const images = this.files.filter((file) => file.mime.startsWith("image/")).length;
-    const others = this.files.length - images;
-    return [
-      images ? `${images} img` : "",
-      others ? `${others} file${others === 1 ? "" : "s"}` : "",
-      this.pastes.length ? `${this.pastes.length} text${this.pastes.length === 1 ? "" : "s"}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
+  attach(attachment: AttachmentInfo): string {
+    const id = this.next++;
+    this.items.set(id, { kind: "file", attachment });
+    return this.tokenOf(id)!;
   }
 
-  get attachments(): readonly AttachmentInfo[] {
-    return this.files;
-  }
-
-  /** 1-based, as the draft line shows it. */
-  drop(position: number): AttachmentInfo | null {
-    if (!Number.isInteger(position) || position < 1 || position > this.files.length) return null;
-    const [dropped] = this.files.splice(position - 1, 1);
-    this.onChange();
-    return dropped;
-  }
-
-  /** The draft line shown above the prompt while anything is attached. */
-  draftLine(): string {
-    return this.files.map((file, i) => `[${i + 1}] ${attachmentChip(file).slice(1, -1)}`).join(" · ");
+  tokenOf(id: number): string | null {
+    const item = this.items.get(id);
+    if (!item) return null;
+    if (item.kind === "paste") {
+      const lines = item.text.split("\n").length;
+      return lines > 1 ? `[Pasted #${id}: ${lines} lines]` : `[Pasted #${id}: ${item.text.length} chars]`;
+    }
+    const { mime, name } = item.attachment;
+    if (mime.startsWith("image/")) return `[Image #${id}]`;
+    return mime === "application/pdf" ? `[PDF #${id}: ${name}]` : `[File #${id}: ${name}]`;
   }
 
   get empty(): boolean {
-    return this.pastes.length === 0 && this.files.length === 0;
+    return this.items.size === 0;
   }
 
-  stage(paste: string): void {
-    // A paste usually ends with the newline that closed its last line; keeping
-    // it would put a blank line at the end of every pasted message.
-    this.pastes.push(paste.replace(/\n+$/, ""));
-    this.onChange();
+  /** How many characters Backspace should remove: a whole token when one ends at the cursor. */
+  backspaceWidth(beforeCursor: string): number {
+    for (const id of this.items.keys()) {
+      const token = this.tokenOf(id)!;
+      if (beforeCursor.endsWith(token)) return token.length;
+    }
+    return 1;
   }
 
-  get pending(): number {
-    return this.pastes.length;
+  drop(id: number): string | null {
+    const token = this.tokenOf(id);
+    this.items.delete(id);
+    return token;
   }
 
-  /** A one-line receipt for a paste the console will not echo in full. */
-  summary(paste: string): string {
-    const lines = paste.split("\n").length;
-    return `[pasted: ${lines} line${lines === 1 ? "" : "s"}, ${paste.length} chars]`;
-  }
-
-  staged(): string {
-    return this.pastes.join("\n\n");
+  list(): string[] {
+    return [...this.items.entries()].map(([id, item]) =>
+      item.kind === "paste" ? `${this.tokenOf(id)}  ${item.text.split("\n")[0].slice(0, 60)}` : `${this.tokenOf(id)}  ${formatBytes(item.attachment.bytes)}`
+    );
   }
 
   clear(): void {
-    this.pastes.length = 0;
-    this.files.length = 0;
-    this.onChange();
+    this.items.clear();
   }
 
-  /** Typed line plus everything staged, as a single message. */
-  compose(typed: string): string {
-    return [typed.trim(), ...this.pastes].filter(Boolean).join("\n\n");
-  }
-
-  take(typed: string): string {
-    return this.takeAll(typed).message;
-  }
-
-  /** Everything in the draft, as the one message Enter sends. */
-  takeAll(typed: string): { message: string; attachmentIds: string[] } {
-    const message = this.compose(typed);
-    const attachmentIds = this.files.map((file) => file.id);
+  /** The line as the message Enter sends: pastes in place, attachments along. */
+  takeAll(line: string): { message: string; attachmentIds: string[] } {
+    const attachmentIds: string[] = [];
+    const message = line
+      .replace(TOKEN, (token, idText: string) => {
+        const id = Number(idText);
+        const item = this.items.get(id);
+        if (!item || this.tokenOf(id) !== token) return token;
+        if (item.kind === "paste") return item.text.includes("\n") ? `\n${item.text}\n` : item.text;
+        attachmentIds.push(item.attachment.id);
+        return `[${item.attachment.mime.startsWith("image/") ? "image" : "file"}: ${item.attachment.name}]`;
+      })
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .trim();
     this.clear();
     return { message, attachmentIds };
   }
@@ -377,7 +379,9 @@ export async function runConsole(
   // one message per line.
   const interactive = Boolean(process.stdin.isTTY);
   const composer = new Composer();
-  const pasteStream = interactive ? createPasteStream() : null;
+  // readline is created after the stream, so the width is looked up late.
+  let backspaceWidth = () => 1;
+  const pasteStream = interactive ? createPasteStream({ backspaceWidth: () => backspaceWidth() }) : null;
   if (pasteStream) {
     process.stdin.setRawMode?.(true);
     process.stdin.pipe(pasteStream);
@@ -427,14 +431,8 @@ export async function runConsole(
     terminal: true,
     completer: (line: string) => completeSlash(line, skills),
   });
+  backspaceWidth = () => composer.backspaceWidth(rl.line.slice(0, rl.cursor));
 
-  // The prompt is the one line that never scrolls away, so it carries the
-  // draft: agents talking above it can no longer hide what Enter will send.
-  composer.onChange = () => {
-    const badge = composer.badge();
-    rl.setPrompt(`${C.human}${me}${badge ? ` ${C.warn}[${badge}]${C.human}` : ""}>${C.reset} `);
-    rl.prompt(true);
-  };
 
   const stopBracketedPaste = () => {
     if (pasteStream) process.stdout.write(DISABLE_BRACKETED_PASTE);
@@ -626,8 +624,7 @@ export async function runConsole(
         emit(rl, `${C.warn}attachment refused: ${body.error ?? response.status}${C.reset}`);
         return;
       }
-      composer.attach(body.attachment);
-      emit(rl, `${C.dim}attachments: ${composer.draftLine()} — Enter sends · /show lists · /drop n removes · /clear discards${C.reset}`);
+      rl.write(composer.attach(body.attachment));
     } catch (error) {
       emit(rl, `${C.warn}server unreachable: ${error instanceof Error ? error.message : error}${C.reset}`);
     }
@@ -642,10 +639,8 @@ export async function runConsole(
     }
   };
 
-  const stagePaste = (paste: string) => {
-    composer.stage(paste);
-    emit(rl, `${C.dim}${composer.summary(paste)} — Enter sends · /show lists · /clear discards${C.reset}`);
-  };
+  // A token enters the line where the cursor is; Backspace takes it out whole.
+  const stagePaste = (paste: string) => rl.write(composer.stage(paste));
 
   // Ctrl+V pastes whatever the clipboard holds: an image or a copied file
   // becomes an attachment, text lands in the draft like any paste.
@@ -774,7 +769,11 @@ export async function runConsole(
     const text = line.trim();
     // Enter with something staged sends it, even with nothing typed. Enter on
     // an empty prompt with nothing staged still does nothing, as before.
-    if (!text && composer.empty) return rl.prompt();
+    if (!text) {
+      // Every token deleted: nothing of the draft is on the line any more.
+      composer.clear();
+      return rl.prompt();
+    }
 
     if (text.startsWith("/")) {
       const [cmd, ...rest] = text.slice(1).split(/\s+/);
@@ -804,10 +803,7 @@ export async function runConsole(
               rl,
               composer.empty
                 ? `${C.dim}nothing pasted or attached in the draft.${C.reset}`
-                : [
-                    composer.pending ? `${C.dim}draft (${composer.pending} paste(s)):${C.reset}\n${composer.staged()}` : "",
-                    composer.attachments.length ? `${C.dim}attachments:${C.reset} ${composer.draftLine()}` : "",
-                  ].filter(Boolean).join("\n")
+                : `${C.dim}in the draft:${C.reset}\n${composer.list().map((item) => `  ${item}`).join("\n")}`
             );
             break;
           }
@@ -899,12 +895,7 @@ export async function runConsole(
           break;
         case "drop": {
           const dropped = composer.drop(Number(rest[0]));
-          emit(
-            rl,
-            dropped
-              ? `${C.dim}removed: ${dropped.name}${composer.attachments.length ? ` · attachments: ${composer.draftLine()}` : ""}${C.reset}`
-              : `${C.warn}usage: /drop <n> — attachments: ${composer.draftLine() || "none"}${C.reset}`
-          );
+          emit(rl, dropped ? `${C.dim}removed ${dropped}${C.reset}` : `${C.warn}usage: /drop <n>, the number in the token${C.reset}`);
           break;
         }
         case "clear":
@@ -933,7 +924,8 @@ export async function runConsole(
     }
 
     // One message, whatever it is made of: typed text, pasted blocks, or both.
-    void say(composer.takeAll(text));
+    const draft = composer.takeAll(text);
+    if (draft.message || draft.attachmentIds.length) void say(draft);
     rl.prompt();
   });
 

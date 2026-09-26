@@ -94,55 +94,49 @@ describe("a paste keeps its boundary", () => {
   });
 });
 
-describe("the composer makes one message", () => {
+describe("the composer puts pastes in the line as tokens", () => {
   it("sends typed text exactly as before", () => {
-    const composer = new Composer();
-    expect(composer.pending).toBe(0);
-    expect(composer.take("mensagem normal")).toBe("mensagem normal");
+    expect(new Composer().takeAll("  oi time  ")).toEqual({ message: "oi time", attachmentIds: [] });
   });
 
-  it("turns a paste into a single message with its line breaks", () => {
+  it("puts a paste back where its token sits, line breaks intact", () => {
     const composer = new Composer();
-    composer.stage("linha 1\nlinha 2\nlinha 3");
-    const message = composer.take("");
-    expect(message).toBe("linha 1\nlinha 2\nlinha 3");
-    expect(message.split("\n")).toHaveLength(3);
-    expect(composer.pending).toBe(0);
+    const token = composer.stage("linha 1\nlinha 2\nlinha 3\n");
+    expect(token).toBe("[Pasted #1: 3 lines]");
+    const { message } = composer.takeAll(`olha isso: ${token} e me diga`);
+    expect(message).toBe("olha isso:\nlinha 1\nlinha 2\nlinha 3\ne me diga");
   });
 
-  it("joins a caption and a paste in the same message", () => {
+  it("keeps a one-line paste inline, and several pastes in their order", () => {
     const composer = new Composer();
-    composer.stage("erro na linha 4\nstack trace aqui");
-    expect(composer.take("olha isso:")).toBe("olha isso:\n\nerro na linha 4\nstack trace aqui");
+    const a = composer.stage("abc");
+    const b = composer.stage("x\ny");
+    expect(a).toBe("[Pasted #1: 3 chars]");
+    expect(composer.takeAll(`${b} antes de ${a}`).message).toBe("x\ny\nantes de abc");
   });
 
-  it("keeps several pastes in one message", () => {
+  it("leaves out an item whose token was deleted, and never echoes a paste", () => {
     const composer = new Composer();
-    composer.stage("bloco A");
-    composer.stage("bloco B");
-    expect(composer.pending).toBe(2);
-    expect(composer.take("")).toBe("bloco A\n\nbloco B");
+    composer.stage("segredo que sumiu");
+    expect(composer.takeAll("só texto")).toEqual({ message: "só texto", attachmentIds: [] });
+    expect(composer.empty).toBe(true);
   });
 
-  it("describes a paste without echoing it", () => {
+  it("removes a whole token on one Backspace", () => {
     const composer = new Composer();
-    const summary = composer.summary("a\nb\nc");
-    expect(summary).toBe("[pasted: 3 lines, 5 chars]");
-    expect(summary).not.toContain("\n");
+    const token = composer.stage("abc");
+    expect(composer.backspaceWidth(`olha ${token}`)).toBe(token.length);
+    expect(composer.backspaceWidth("olha ")).toBe(1);
   });
 
-  it("drops the newline that closed the paste", () => {
+  it("drops and discards on request", () => {
     const composer = new Composer();
-    composer.stage("linha um\nlinha dois\n");
-    expect(composer.take("")).toBe("linha um\nlinha dois");
-  });
-
-  it("discards the draft on request", () => {
-    const composer = new Composer();
-    composer.stage("nao era pra colar");
+    composer.stage("a");
+    expect(composer.drop(1)).toBe("[Pasted #1: 1 chars]");
+    expect(composer.drop(9)).toBeNull();
+    composer.stage("b");
     composer.clear();
-    expect(composer.pending).toBe(0);
-    expect(composer.take("outra coisa")).toBe("outra coisa");
+    expect(composer.empty).toBe(true);
   });
 });
 

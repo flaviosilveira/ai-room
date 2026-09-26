@@ -269,14 +269,12 @@ describe("attachments over HTTP and MCP", () => {
 });
 
 describe("console attachments", () => {
-  it("drafts text and attachments as one message", () => {
+  it("sends attachments whose tokens are in the line, in their place", () => {
     const composer = new Composer();
-    composer.attach({ id: "att_1", name: "a.png", mime: "image/png", bytes: 2048, width: 1, height: 1, path: "/x", createdAt: 0 });
-    composer.attach({ id: "att_2", name: "b.pdf", mime: "application/pdf", bytes: 10, width: null, height: null, path: "/y", createdAt: 0 });
-    expect(composer.draftLine()).toBe("[1] img a.png 2KB · [2] pdf b.pdf 10B");
-    expect(composer.drop(1)?.id).toBe("att_1");
-    expect(composer.drop(5)).toBeNull();
-    expect(composer.takeAll("olha")).toEqual({ message: "olha", attachmentIds: ["att_2"] });
+    const img = composer.attach({ id: "att_1", name: "a.png", mime: "image/png", bytes: 2048, width: 1, height: 1, path: "/x", createdAt: 0 });
+    const pdf = composer.attach({ id: "att_2", name: "b.pdf", mime: "application/pdf", bytes: 10, width: null, height: null, path: "/y", createdAt: 0 });
+    expect([img, pdf]).toEqual(["[Image #1]", "[PDF #2: b.pdf]"]);
+    expect(composer.takeAll(`olha ${img} só`)).toEqual({ message: "olha [image: a.png] só", attachmentIds: ["att_1"] });
     expect(composer.empty).toBe(true);
   });
 

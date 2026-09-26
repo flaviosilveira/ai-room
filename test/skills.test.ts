@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { discoverSkills, parseSkillFrontmatter, renderSkills, skillLine, skillVisibleTo } from "../src/skills.js";
-import { Composer, completeSlash } from "../src/console.js";
+import { completeSlash } from "../src/console.js";
 import { detectMultiplexer, ensureWorkspace, killWorkspace, paneStates, typeIntoPane, workspaceName } from "../src/session.js";
 
 const skill = (dir: string, name: string, description: string) => {
@@ -115,21 +115,5 @@ describe("asking an agent to run a skill", () => {
       killWorkspace(tmux!, session);
       fs.rmSync(sink, { force: true });
     }
-  });
-});
-
-describe("draft badge in the prompt", () => {
-  it("says what Enter will send, and tells the prompt when that changes", () => {
-    const composer = new Composer();
-    let changes = 0;
-    composer.onChange = () => (changes += 1);
-    expect(composer.badge()).toBe("");
-    composer.attach({ id: "a", name: "a.png", mime: "image/png", bytes: 1, width: 1, height: 1, path: "/a", createdAt: 0 });
-    composer.attach({ id: "b", name: "b.png", mime: "image/png", bytes: 1, width: 1, height: 1, path: "/b", createdAt: 0 });
-    composer.stage("texto colado");
-    expect(composer.badge()).toBe("2 img · 1 text");
-    composer.takeAll("");
-    expect(composer.badge()).toBe("");
-    expect(changes).toBe(4);
   });
 });

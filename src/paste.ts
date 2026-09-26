@@ -112,11 +112,16 @@ export const CTRL_V = "\u0016";
  * deliver an image, and with only an image on the clipboard some terminals
  * send an empty paste, so both mean "go read the clipboard".
  */
-export function createPasteStream(): Transform {
+export function createPasteStream(options: { backspaceWidth?: () => number } = {}): Transform {
   const filter = new PasteFilter();
   return new Transform({
     transform(chunk, _encoding, done) {
-      const { forward, pastes } = filter.feed(chunk.toString("utf8"));
+      let { forward, pastes } = filter.feed(chunk.toString("utf8"));
+      // A token in the line (a paste, an image) goes away whole on one
+      // Backspace, the way Claude Code and Codex treat theirs.
+      if ((forward === "\x7f" || forward === "\b") && options.backspaceWidth) {
+        forward = forward.repeat(Math.max(1, options.backspaceWidth()));
+      }
       for (const paste of pastes) this.emit(paste.length ? "paste" : "clipboard", paste);
       const presses = forward.split(CTRL_V).length - 1;
       for (let i = 0; i < presses; i += 1) this.emit("clipboard");
