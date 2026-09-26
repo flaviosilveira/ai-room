@@ -18,7 +18,7 @@ for the room, and a files tab.
 ├─────────────────────────┼─────────────────────────┤
 │ agy                     │ monitor — human>        │
 └─────────────────────────┴─────────────────────────┘
- ai-room refactor-auth   0:agents 1:files   C-b m panes | F12 sair
+ ai-room refactor-auth   0:agents 1:files   C-b m panes | F12 detach
 ```
 
 Everything stays on your machine: one `node` process on `127.0.0.1` and a

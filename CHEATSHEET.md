@@ -70,9 +70,9 @@ addresses you. The others pass what they need from you through it.
 - Picked by preference: claude, then agy, then codex (codex runs out of usage
   first). `--lead <agent>` chooses; `--no-lead` or `"lead": false` in the
   config turns it off; `"lead": ["agy", "claude", "codex"]` changes the order.
-- Every ask is its own message, numbered: `[PARA VOCÊ #3] ...` — answer `#3 a`.
+- Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
 - Anything to read or forward arrives as a file in `.ai-room/for-human/`
-  (git-ignored), opened in the files tab: `[PARA VOCÊ] entrega: <path>`.
+  (git-ignored), opened in the files tab: `[FOR YOU] deliverable: <path>`.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
 
@@ -170,7 +170,7 @@ the room is told so the others pick up its part.
 ## 5. Attachments
 
 Everything in the draft (text and attachments) goes out as one message on Enter.
-While something is waiting, the prompt says so — `human [2 img · 1 texto]>` — so
+While something is waiting, the prompt says so — `human [2 img · 1 text]>` — so
 messages scrolling past never hide it. `/show` lists it, `/clear` drops it.
 
 | Command | Does |

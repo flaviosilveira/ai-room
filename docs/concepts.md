@@ -19,30 +19,32 @@ tomorrow.
 ## One window for everything
 
 ```bash
-ai-room open refactor-auth --brief "..." --invite codex,agy
+ai-room open refactor-auth --brief "..." --invite claude,codex,agy
 ```
 
-`open` termina anexado ao workspace: cria/reutiliza a sala, grava o charter,
-lança os agentes e entrega o terminal ao tmux **na hora** — o workspace inteiro
-sai de uma única chamada ao tmux, e o `open` não espera os agentes entrarem na
-sala (cada harness leva de 10 a 30s para subir; o pane monitor mostra cada um
-chegando). Sem terminal interativo (pipe, CI), o `open` espera os joins e
-reporta quem entrou. Rodar `ai-room open refactor-auth` de novo apenas reanexa —
-o charter é preservado, o elenco do roster é reaproveitado e nenhum pane é
-duplicado.
+`open` ends attached to the workspace: it creates or reuses the room, writes
+the charter, launches the agents and hands the terminal to tmux **right away**.
+The whole workspace is built in a single tmux call, and `open` does not wait for
+the agents to join (each harness takes 10–30s to boot; the monitor pane shows
+each one arrive). Without an interactive terminal (a pipe, CI), `open` waits for
+the joins and reports who made it. Running `ai-room open refactor-auth` again
+only reattaches: the charter is kept, the roster's cast is reused and no pane is
+duplicated.
 
 ```
 ┌───────────────────────────┬───────────────────────────┐
-│ codex                     │ agy                       │
-│ sessão interativa         │ sessão interativa         │
-├───────────────────────────┴───────────────────────────┤
-│ monitor — ai-room console                             │
-└───────────────────────────────────────────────────────┘
+│ claude                    │ codex                     │
+│ interactive session       │ interactive session       │
+├───────────────────────────┼───────────────────────────┤
+│ agy                       │ monitor | claude:working  │
+│ interactive session       │ human> _                  │
+└───────────────────────────┴───────────────────────────┘
 ```
 
 Each agent pane is a real interactive session of that harness, so selecting a
 pane lets you talk to that agent directly and answer its own approval prompts.
-The monitor pane runs `ai-room console` for the room feed.
+The monitor pane runs `ai-room console` for the room feed; the agents' status
+sits on its top border instead of scrolling through the chat.
 
 A second tab, **files**, holds a file browser for the working directory — the
 first of yazi, broot, lf, ranger or nnn that is installed — with Vim beside it:
@@ -52,20 +54,22 @@ netrw serves as a tree with the file opening beside it. `AI_ROOM_FILES` and
 
 The workspace runs on a tmux server of its own (`tmux -L ai-room`), so its keys
 never change your other tmux sessions. Your `~/.tmux.conf` is loaded first; on
-top of it:
+top of it, every prefix key also answers with Ctrl held (`Ctrl-b Ctrl-t` is
+`Ctrl-b t`):
 
-| Tecla | Efeito |
+| Key | Does |
 | --- | --- |
-| `F12` | Sai do workspace (detach); agentes e sala seguem vivos |
-| `Ctrl-b d` · `Ctrl-b Ctrl-d` · `Ctrl-b q` | O mesmo detach |
-| `Ctrl-b m` | Menu dos panes: mostra/esconde cada agente, o humano (monitor) e os arquivos |
-| `Ctrl-b t` | Mostra/esconde a aba de arquivos |
-| `Ctrl-b X` | Fecha a sala (pede confirmação); histórico e charter ficam |
+| `F12` | Leaves the workspace (detach); agents and room keep running |
+| `Ctrl-b d` · `Ctrl-b q` | Same detach |
+| `Ctrl-b m` | Pane menu: show or hide each agent, the human (monitor) and files |
+| `Ctrl-b t` | Goes to the files tab, and back |
+| `Ctrl-b M` | Mouse off/on |
+| `Ctrl-b x` · `Ctrl-b X` | Closes the room (asks first); history and charter stay |
 
-Esconder um pane nunca o para: o processo, a sessão do agente e o wake
-continuam. Fora do tmux, `ai-room pane <room> <agent|monitor|files> [show|hide|toggle]`
-faz o mesmo. Fechar a janela do terminal é só um detach: `ai-room open <room>`
-reanexa.
+Hiding a pane never stops it: the process, the agent's session and its wake
+keep going. Outside tmux, `ai-room pane <room> <agent|monitor|files> [show|hide|toggle]`
+does the same. Closing the terminal window is only a detach: `ai-room attach <room>`
+comes back.
 
 Two channels, deliberately separate:
 
@@ -78,13 +82,13 @@ tmux is a **frontend**, never part of the protocol. `ai-room serve` does not kno
 whether one is running: close every workspace and the server, rooms and history
 are untouched.
 
-| Situação | Comportamento |
+| Situation | Behaviour |
 | --- | --- |
-| tmux instalado | Pane workspace (padrão) |
-| `--detached` | Uma sessão por agente, anexável individualmente, sem attach |
-| Sem tmux | Sessões por agente via screen, com aviso |
-| Sem tmux e sem screen | Processos headless com log, com aviso |
-| Terminal não interativo (pipe, CI) | Workspace criado, comando de attach impresso |
+| tmux installed | Pane workspace (default) |
+| `--detached` | One session per agent, each attachable, no attach at the end |
+| No tmux | One screen session per agent, with a warning |
+| Neither tmux nor screen | Headless processes with a log, with a warning |
+| Non-interactive terminal (pipe, CI) | Workspace created, attach command printed |
 
 `ai-room close <room>` kills only that room's workspace. The room, its charter
 and its history live in SQLite and survive.
@@ -102,107 +106,110 @@ never an MCP tool, so no agent can delete a room.
 ### Discovering what ai-room can do
 
 ```bash
-ai-room tools --json      # catálogo das ferramentas MCP
-ai-room status --json     # saúde, versão, multiplexador e catálogo
+ai-room tools --json      # the MCP tool catalog
+ai-room status --json     # health, version, multiplexer and catalog
 curl localhost:49375/tools
 ```
 
 No MCP handshake required, so bootstrap tooling never has to inspect the
 compiled server.
 
-## Legacy: one console window
+## The console
 
-Agents do not need a terminal each. `ai-room open` starts each one in a detached
-tmux (or screen) session, and `ai-room console` gives you a single window with a
-live feed of the room and a prompt to talk to it.
+Agents do not need a terminal each. `ai-room open --detached` starts each one in
+its own tmux (or screen) session, and `ai-room console` gives you a single
+window with a live feed of the room and a prompt to talk to it — the same
+console the workspace's monitor pane runs.
 
 ```bash
-ai-room open refactor-auth --brief "..." --invite codex,agy
+ai-room open refactor-auth --brief "..." --invite codex,agy --detached
 ai-room console refactor-auth
 ```
 
 ```
-14:22:07 codex  Encontrei uma corrida no refreshToken().
-14:22:19 —  codex:working  agy:waiting
-14:23:02 —  codex:approval_required (quer rodar a migration)
-→ codex precisa de você (approval_required)  use /attach codex
+14:22:07 codex  Found a race in refreshToken().
+→ codex needs you (approval_required)  use /attach codex
 human> /attach codex
 ```
 
 Inside the console, anything you type is sent to the room as a message with
 `origin: "human"`, which wakes every waiting agent immediately rather than
-letting them sit out the rest of their hold. Commands start with `/`:
+letting them sit out the rest of their hold. Commands start with `/`, and `Tab`
+after `/` completes them:
 
-| Comando | Efeito |
+| Command | Does |
 | --- | --- |
-| `/attach <agente>` | Foca o pane daquele agente (ou a sessão dele, em `--detached`). Detach com `F12` ou `Ctrl-b d` (tmux), `Ctrl-a d` (screen) |
-| `/agents` | Lista os panes e as sessões vivas da sala |
-| `/who` | Participantes, `wait(live)` e não lidas |
-| `/show` | Mostra o que está colado e anexado no rascunho |
-| `/clear` | Descarta o rascunho |
-| `Ctrl+V` ou `/paste` | Anexa a imagem do clipboard ao rascunho |
-| `/file <caminho>` | Anexa um arquivo (png, jpeg, gif, webp, pdf ou texto) |
-| `/drop <n>` | Remove o anexo n do rascunho |
-| `/panes` · `/hide <pane>` · `/show <pane>` | Lista, esconde e mostra panes do workspace |
-| `/detach` | Desanexa o workspace; agentes e sala seguem vivos |
-| `/close sim` | Encerra panes e sessões da sala; histórico e charter ficam |
-| `/quit` | Sai do console; os agentes continuam rodando |
+| `/attach <agent>` | Focuses that agent's pane (or its session, with `--detached`). Detach with `F12` or `Ctrl-b d` (tmux), `Ctrl-a d` (screen) |
+| `/agents` | Lists the room's live panes and sessions |
+| `/who` | Participants, `wait(live)` and unread |
+| `/show` · `/clear` | Shows · discards the draft |
+| `Ctrl+V` or `/paste` | Pastes the clipboard: an image or a copied file is attached, text goes into the draft |
+| `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf or text) |
+| `/drop <n>` | Removes attachment n from the draft |
+| `/panes` · `/hide <pane>` · `/show <pane>` | Lists, hides and shows workspace panes |
+| `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
+| `/skills [filter]` · `/<skill> @agent text` | Lists skills · asks an agent to run one |
+| `/detach` | Detaches the workspace; agents and room keep running |
+| `/reload` | Restarts the console with the ai-room now on disk |
+| `/close yes` | Stops the room's panes and sessions; history and charter stay |
+| `/quit` | Leaves the console; the agents keep running |
 
-Colar é uma coisa só. O console liga bracketed paste (`DECSET 2004`), então o
-terminal marca onde a colagem começa e termina; o filtro tira esse bloco do
-stream antes do readline — que descarta os marcadores e quebraria em uma
-mensagem por linha — e o guarda no rascunho. Enter envia tudo como **uma**
-mensagem, com as quebras de linha preservadas, e vale uma entrada de histórico,
-um incremento de não lidas e um wake. Digitar e apertar Enter continua idêntico.
-`/show` inspeciona o rascunho, `/clear` descarta. Sem TTY (saída redirecionada,
-`screen`) não há como distinguir colagem de digitação e o comportamento antigo
-permanece.
+A paste is one thing. The console turns on bracketed paste (`DECSET 2004`), so
+the terminal marks where a paste starts and ends; a filter takes that block out
+of the stream before readline — which would drop the markers and split it into
+one message per line — and keeps it in the draft. Enter sends it all as **one**
+message with its line breaks, worth one history entry, one unread and one wake.
+Typing and Enter behave as always. While something is waiting in the draft the
+prompt says so — `human [2 img · 1 text]>` — so messages scrolling past never
+hide it. Without a TTY (redirected output, `screen`) a paste cannot be told from
+typing, and the old behaviour stays.
 
-### Anexos: screenshot no `human>`
+### Attachments: a screenshot in `human>`
 
-Tire um screenshot, aperte `Ctrl+V` no console, escreva "olha esse erro" e
-Enter: os agentes recebem **uma** mensagem com a imagem acessível.
+Take a screenshot, press `Ctrl+V` in the console, write "look at this error"
+and press Enter: the agents receive **one** message with the image reachable.
 
 ```
-anexos: [1] img clipboard-2026-09-22.png 412KB — Enter envia, /drop n remove
-human> olha esse erro▊
+attachments: [1] img clipboard-2026-09-22.png 412KB — Enter sends · /drop n removes
+human [1 img]> look at this error▊
 ```
 
-- O terminal só transporta texto, então o console lê o clipboard sozinho
-  (`osascript` no macOS, `wl-paste`/`xclip` no Linux) — por isso funciona
-  dentro do tmux. Arrastar um arquivo para o terminal também anexa, e `/file`
-  cobre SSH e qualquer arquivo já salvo.
-- O console envia os bytes ao servidor (`POST /attachments`); o servidor nunca
-  abre um caminho vindo de um cliente. O tipo vem dos magic bytes, não da
-  extensão; SVG é recusado. Limites: 10MB por arquivo, 5 por mensagem.
-- Os arquivos ficam em `~/.ai-room/attachments/<sha[0:2]>/<sha256>.<ext>` (0600,
-  deduplicados por SHA-256). `AI_ROOM_ATTACHMENT_DIR` troca o lugar; dentro de
-  um repositório git, ai-room grava um `.gitignore` para nada ir parar num commit.
-- A mensagem carrega só metadados (`attachments: [{id, name, mime, bytes, width,
-  height, path}]`), nunca os bytes: um screenshot custa contexto só para quem o
-  abre. Clientes antigos continuam vendo a mesma mensagem.
-- `room_attachment({room, agent, id})` abre um anexo. Claude recebe o path para
-  o Read (que mostra imagens), Codex o path para o `view_image`, e os demais
-  harnesses — ou quem pedir `inline: true` — recebem a imagem no resultado.
-- Uploads nunca enviados são apagados depois de 1h. `ai-room attachments prune
-  --older-than 30d` libera os arquivos antigos; o histórico mantém os metadados.
+- A terminal only carries text, so the console reads the clipboard itself
+  (`osascript` on macOS, `wl-paste`/`xclip` on Linux) — which is why it works
+  inside tmux. Dragging a file into the terminal attaches it too, and `/file`
+  covers SSH and any saved file.
+- The console uploads the bytes (`POST /attachments`); the server never opens a
+  path that came from a client. The type comes from the magic bytes, not the
+  extension; SVG is refused. Limits: 10MB per file, 5 per message.
+- Files live in `~/.ai-room/attachments/<sha[0:2]>/<sha256>.<ext>` (0600,
+  deduplicated by SHA-256). `AI_ROOM_ATTACHMENT_DIR` moves them; inside a git
+  repository ai-room writes a `.gitignore` so nothing lands in a commit.
+- A message carries metadata only (`attachments: [{id, name, mime, bytes, width,
+  height, path}]`), never the bytes: a screenshot costs context only to whoever
+  opens it. Older clients keep seeing the same message.
+- `room_attachment({room, agent, id})` opens one. Claude gets the path for Read
+  (which shows images), Codex the path for `view_image`, and other harnesses —
+  or anyone asking `inline: true` — get the image in the result.
+- Uploads never sent are removed after 1h. `ai-room attachments prune
+  --older-than 30d` frees old files; history keeps their metadata.
 
-O mouse vem ligado: clicar escolhe o pane, a rolagem funciona, e arrastar
-copia. Ao soltar o arraste — ou com `y`/`Enter` em copy-mode — a seleção vai
-para o clipboard do sistema via `pbcopy` (macOS) ou `wl-copy`/`xclip` (Linux) —
-sem depender de OSC 52 e sem tocar no seu `~/.tmux.conf`: os bindings vivem no
-servidor tmux em execução. Sem nenhuma dessas ferramentas, ai-room liga
-`set-clipboard on` e deixa o terminal tentar. `Ctrl-b M`, `--no-mouse` ou
-`"mouse": false` no config desligam o mouse, para a seleção nativa do terminal.
+The mouse is on: clicking picks a pane, scrolling works, and dragging copies.
+Releasing the drag — or `y`/`Enter` in copy mode — sends the selection to the
+system clipboard through `pbcopy` (macOS) or `wl-copy`/`xclip` (Linux), without
+relying on OSC 52 and without touching your `~/.tmux.conf`: the bindings live in
+the running tmux server. With none of those tools, ai-room turns on
+`set-clipboard on` and lets the terminal try. `Ctrl-b M`, `--no-mouse` or
+`"mouse": false` in the config turn the mouse off, for the terminal's own
+selection.
 
-O status de cada agente é o que ele publicou por último. O monitor só apresenta
-isso como verdade atual quando há evidência: `idle` é o agente que encerrou o
-turno e deixou como ser retomado, `idle(waking)` é esse mesmo agente com
-mensagem nova a caminho, `wait(live)` é um `room_wait` parado no servidor agora,
-`unread:N` vem dos cursores, `blocked(approval)` é autorrelato do agente, e
-`waiting?7m` é um status antigo cuja evidência expirou. Nada é inferido da saída
-do terminal: nenhum harness expõe "o modelo está rodando agora", então o monitor
-não finge saber disso.
+Each agent's status is what it last published. The monitor presents it as
+current only when there is evidence behind it: `idle` is an agent that ended its
+turn and left a way to be resumed, `idle(waking)` is that agent with a new
+message on its way, `wait(live)` is a `room_wait` held on the server right now,
+`unread:N` comes from the cursors, `blocked(approval)` is the agent's own
+report, and `waiting?7m` is an old status whose evidence expired. Nothing is
+inferred from terminal output: no harness exposes "the model is running now",
+so the monitor does not pretend to know.
 
 ### Why sessions instead of log files
 
