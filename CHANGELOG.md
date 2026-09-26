@@ -1,66 +1,67 @@
 # Changelog
 
-## Unreleased
+## 0.6.2
+
+### Rooms
 
 - Reopening a room with `--invite` replaces its cast: agents not listed leave
   for real (no longer participants or woken, panes closed), agents kept keep
   their roles, the new cast gets a lead, and the room is told who left and who
   joined. A newcomer's `room_join` tells it to read `room_history` when the room
   already has work in it. `--dry-run` changes nothing.
-
-- `Ctrl-b x` closes the room like `Ctrl-b X`; tmux's own `x` killed only the
-  focused pane, which stopped one agent and left the workspace open.
-
 - `--invite claude:3,codex:2` (or `"claude*3,codex*2"`) opens that many
   instances in total, numbered `claude`, `claude-2`, `claude-3`; at most 5 of
   one agent.
+- Agents are told to follow each other through the room only, and no longer
+  to read other tmux panes: allowing it made agy poll its teammates' screens,
+  one permission prompt per look.
+- A room with several agents gets a lead, the only one who talks to the
+  human: picked claude → agy → codex, or with `--lead`; `--no-lead` and
+  `"lead": false` opt out. The `lead` convention comes along: numbered asks
+  (`[FOR YOU #n]`) and deliverables as files in the git-ignored
+  `.ai-room/for-human/`. Removing the lead hands the role to the next agent.
 
+### Console
+
+- The console, the tmux status line, the close prompt and the pane menu speak
+  English; `sim` still confirms alongside `yes`.
 - Agent status lives on the monitor pane's top border instead of a new chat
   line at every change; the human's own status is left out. Alerts that need
   the human (approval, blocked) still arrive as chat lines, and `/who` prints
   the full status. Outside tmux the console keeps the old lines.
-
-- Agents are told to follow each other through the room only, and no longer
-  to read other tmux panes: allowing it made agy poll its teammates' screens,
-  one permission prompt per look.
-
-- A room with several agents gets a lead, the only one who talks to the
-  human: picked claude → agy → codex, or with `--lead`; `--no-lead` and
-  `"lead": false` opt out. The `lead` convention comes along: numbered asks
-  (`[PARA VOCÊ #n]`) and deliverables as files in the git-ignored
-  `.ai-room/for-human/`. Removing the lead hands the role to the next agent.
-
 - A console notices when ai-room was upgraded on disk and says so once;
   `/reload` restarts it in the same pane with the new code. Consoles kept the
   code they started with, so fixes never reached a monitor already open.
-
 - Typing a draft longer than the terminal no longer leaves a stale copy of it
   behind every incoming message, and no longer makes messages disappear:
   readline's redraw climbed over the line just printed, so while the human was
   typing, only the first of several messages stayed on screen.
-
 - `/<skill> @agent text` in the console types the skill into that agent's
   pane the way its harness runs one (`/skill` for Claude Code and agy,
   `$skill` for Codex, verified live), after checking the agent can see it.
   Without `@agent` the room is asked.
-- The prompt shows the pending draft (`human [2 img · 1 texto]>`), so agents
-  talking above it no longer hide what Enter will send.
-
+- Pastes and attachments land in the line as tokens (`[Pasted #1: 40 lines]`,
+  `[Image #2]`, `[PDF #3: spec.pdf]`), the way Claude Code and Codex show them:
+  the cursor moves around them, Backspace after one removes it whole, and Enter
+  sends the line with each paste expanded in its place. Agents talking above
+  the prompt no longer hide what Enter will send.
 - `/skills [filter]` in the console lists the project's, the user's and the
   installed plugins' skills from their `SKILL.md`; `Tab` after `/` completes
   console commands and skill names.
-
-- The workspace mouse is on by default: click a pane to focus it, scroll, and
-  drag to copy straight to the clipboard. `--no-mouse`, `"mouse": false` in
-  the config and `Ctrl-b M` turn it off.
-
 - Ctrl+V with text on the clipboard pastes the text. It used to try to attach
   a file named after the text ("ENOENT … lstat '/[Q-05] …'"): AppleScript
   turns text into a file URL when asked for one, so the clipboard is now asked
   what it holds first.
+
+### Workspace
+
+- `Ctrl-b x` closes the room like `Ctrl-b X`; tmux's own `x` killed only the
+  focused pane, which stopped one agent and left the workspace open.
+- The workspace mouse is on by default: click a pane to focus it, scroll, and
+  drag to copy straight to the clipboard. `--no-mouse`, `"mouse": false` in
+  the config and `Ctrl-b M` turn it off.
 - `Enter` in tmux copy mode copies to the system clipboard, like `y` and a
   mouse drag.
-
 - The files tab puts Vim beside the file browser: opening a file in the
   browser loads it in that Vim, and the browser stays where it was. The
   browser's `$EDITOR` points at the editor pane; `AI_ROOM_EDITOR` picks another
