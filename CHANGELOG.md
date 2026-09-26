@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The terminal window is titled `ai-room: <room>` instead of the whole
+  `ai-room open … --brief …` command line.
 - Codex joins in auto-review (`--approve-for-me`): safe requests are approved
   and the rest still asks, like Claude's auto mode. agy has no reviewer, so it
   joins accepting edits (`--mode accept-edits`) and still asks for commands.

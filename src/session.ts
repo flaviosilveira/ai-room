@@ -603,6 +603,11 @@ export function ensureWorkspace(
   // terminal. Applied on reattach too, so a default reaches old workspaces.
   if (options?.mouse) enableMouse(driver, session, cwd);
   else if (options?.mouse === false) mux(driver, ["set-option", "-t", session, "mouse", "off"], cwd);
+  // The terminal's own window title otherwise shows the whole `ai-room open … --brief …` line.
+  if (options?.room) {
+    mux(driver, ["set-option", "-t", session, "set-titles", "on", ";",
+      "set-option", "-t", session, "set-titles-string", literal(`ai-room: ${options.room}`)], cwd);
+  }
 
   const added = missing.map((pane) => pane.title);
   return {
