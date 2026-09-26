@@ -53,12 +53,12 @@ describe("skill discovery", () => {
       ["tdd", "plugin"],
     ]);
     expect(found.find((s) => s.name === "grill-me")!.description).toBe("The project's own grill");
-    expect(renderSkills(found, 80)).toMatch(/^projeto \(2\)/);
+    expect(renderSkills(found, 80)).toMatch(/^project \(2\)/);
   });
 
   it("works with no skills anywhere", () => {
     expect(discoverSkills(cwd, home)).toEqual([]);
-    expect(renderSkills([])).toMatch(/nenhuma skill/);
+    expect(renderSkills([])).toMatch(/no skills found/);
   });
 });
 
@@ -127,7 +127,7 @@ describe("draft badge in the prompt", () => {
     composer.attach({ id: "a", name: "a.png", mime: "image/png", bytes: 1, width: 1, height: 1, path: "/a", createdAt: 0 });
     composer.attach({ id: "b", name: "b.png", mime: "image/png", bytes: 1, width: 1, height: 1, path: "/b", createdAt: 0 });
     composer.stage("texto colado");
-    expect(composer.badge()).toBe("2 img · 1 texto");
+    expect(composer.badge()).toBe("2 img · 1 text");
     composer.takeAll("");
     expect(composer.badge()).toBe("");
     expect(changes).toBe(4);

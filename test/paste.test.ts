@@ -127,7 +127,7 @@ describe("the composer makes one message", () => {
   it("describes a paste without echoing it", () => {
     const composer = new Composer();
     const summary = composer.summary("a\nb\nc");
-    expect(summary).toBe("[colado: 3 linhas, 5 chars]");
+    expect(summary).toBe("[pasted: 3 lines, 5 chars]");
     expect(summary).not.toContain("\n");
   });
 

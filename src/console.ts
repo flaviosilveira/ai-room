@@ -88,7 +88,7 @@ export function attachmentChip(a: Pick<AttachmentInfo, "name" | "mime" | "bytes"
 
 function renderMessage(m: MessageInfo): string {
   const color = m.origin === "human" ? C.human : m.origin === "system" ? C.system : C.agent;
-  const who = m.origin === "human" ? `${m.agent} (você)` : m.agent;
+  const who = m.origin === "human" ? `${m.agent} (you)` : m.agent;
   const chips = m.attachments?.length ? ` ${C.warn}${m.attachments.map(attachmentChip).join(" ")}${C.reset}` : "";
   return `${C.dim}${stamp(m.createdAt)}${C.reset} ${color}${C.bold}${who}${C.reset}  ${m.content}${chips}`;
 }
@@ -163,7 +163,7 @@ function renderStatus(participants: ParticipantView[]): string {
   const parts = participants
     .filter((p) => p.active || p.status === "approval_required")
     .map((p) => renderParticipant(p));
-  return `${C.dim}${stamp(Date.now())} —${C.reset} ${parts.join("  ") || `${C.dim}sala vazia${C.reset}`}`;
+  return `${C.dim}${stamp(Date.now())} —${C.reset} ${parts.join("  ") || `${C.dim}room is empty${C.reset}`}`;
 }
 
 /** Agents whose status means a human has to go look at them. */
@@ -174,32 +174,32 @@ function needsAttention(participants: ParticipantView[]): ParticipantView[] {
 }
 
 /** The workspace's own tmux server binds all of these; screen keeps its default. */
-export const DETACH_KEYS = "F12 · Ctrl-b d · Ctrl-b Ctrl-d (tmux) · Ctrl-a d (screen)";
+export const DETACH_KEYS = "F12 · Ctrl-b d (tmux) · Ctrl-a d (screen)";
 
 export const HELP = `
-${C.bold}Comandos${C.reset}
-  ${C.bold}/attach <agente>${C.reset}   foca o pane do agente (volta com ${DETACH_KEYS})
-  ${C.bold}/agents${C.reset}            lista panes e sessões vivas da sala
-  ${C.bold}/who${C.reset}               participantes: idle/working/wait(live) e não lidas
-  ${C.bold}/panes${C.reset}             panes do workspace e quais estão visíveis (files é a aba 1: Ctrl-b t)
-  ${C.bold}/hide <pane>${C.reset}       esconde um pane (agente, monitor ou files) sem pará-lo
-  ${C.bold}/show <pane>${C.reset}       mostra de novo um pane escondido
-  ${C.bold}/remove <agente>${C.reset}    tira um agente da sala (ex.: bateu no limite); os outros seguem
-  ${C.bold}/add <agente> [papel]${C.reset} traz um agente (novo ou de volta) para a sala
-  ${C.bold}/skills [filtro]${C.reset}    skills do projeto, do usuário e dos plugins (Tab completa depois da /)
-  ${C.bold}/<skill> @agente texto${C.reset}  pede a skill a um agente (sem @: pede à sala)
-  ${C.bold}/detach${C.reset}            desanexa o workspace (agentes e sala seguem vivos)
-  ${C.bold}/close sim${C.reset}         encerra panes e sessões da sala (histórico e charter ficam)
-  ${C.bold}/paste${C.reset}             anexa a imagem do clipboard (o mesmo que Ctrl+V)
-  ${C.bold}/file <caminho>${C.reset}    anexa um arquivo (imagem, pdf ou texto)
-  ${C.bold}/drop <n>${C.reset}          remove o anexo n do rascunho
-  ${C.bold}/show${C.reset}              mostra o que está colado e anexado no rascunho
-  ${C.bold}/clear${C.reset}             descarta o rascunho
-  ${C.bold}/reload${C.reset}            reinicia este console com a versão do ai-room que está no disco
-  ${C.bold}/help${C.reset}              esta ajuda
-  ${C.bold}/quit${C.reset}              sai do console (os agentes continuam rodando)
+${C.bold}Commands${C.reset}
+  ${C.bold}/attach <agent>${C.reset}    focus the agent's pane (back with ${DETACH_KEYS})
+  ${C.bold}/agents${C.reset}            list the room's live panes and sessions
+  ${C.bold}/who${C.reset}               participants: idle/working/wait(live) and unread
+  ${C.bold}/panes${C.reset}             workspace panes and which are visible (files is tab 1: Ctrl-b t)
+  ${C.bold}/hide <pane>${C.reset}       hide a pane (agent, monitor or files) without stopping it
+  ${C.bold}/show <pane>${C.reset}       show a hidden pane again
+  ${C.bold}/remove <agent>${C.reset}    take an agent out (e.g. it hit its limit); the rest keep working
+  ${C.bold}/add <agent> [role]${C.reset} bring an agent in, new or back
+  ${C.bold}/skills [filter]${C.reset}    project, user and plugin skills (Tab completes after /)
+  ${C.bold}/<skill> @agent text${C.reset}  ask an agent to run a skill (no @: ask the room)
+  ${C.bold}/detach${C.reset}            detach from the workspace (agents and room keep running)
+  ${C.bold}/close yes${C.reset}         close the room's panes and sessions (history and charter stay)
+  ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
+  ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
+  ${C.bold}/drop <n>${C.reset}          remove attachment n from the draft
+  ${C.bold}/show${C.reset}              show what is pasted and attached in the draft
+  ${C.bold}/clear${C.reset}             discard the draft
+  ${C.bold}/reload${C.reset}            restart this console with the ai-room now on disk
+  ${C.bold}/help${C.reset}              this help
+  ${C.bold}/quit${C.reset}              leave the console (agents keep running)
 
-Qualquer outra linha é enviada à sala como mensagem sua.
+Any other line goes to the room as your message.
 `;
 
 /**
@@ -240,8 +240,8 @@ export class Composer {
     const others = this.files.length - images;
     return [
       images ? `${images} img` : "",
-      others ? `${others} arquivo${others === 1 ? "" : "s"}` : "",
-      this.pastes.length ? `${this.pastes.length} texto${this.pastes.length === 1 ? "" : "s"}` : "",
+      others ? `${others} file${others === 1 ? "" : "s"}` : "",
+      this.pastes.length ? `${this.pastes.length} text${this.pastes.length === 1 ? "" : "s"}` : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -282,7 +282,7 @@ export class Composer {
   /** A one-line receipt for a paste the console will not echo in full. */
   summary(paste: string): string {
     const lines = paste.split("\n").length;
-    return `[colado: ${lines} linha${lines === 1 ? "" : "s"}, ${paste.length} chars]`;
+    return `[pasted: ${lines} line${lines === 1 ? "" : "s"}, ${paste.length} chars]`;
   }
 
   staged(): string {
@@ -404,7 +404,7 @@ export async function runConsole(
   const staleTimer = setInterval(() => {
     if (staleNoticed || codeTime() <= startedWith) return;
     staleNoticed = true;
-    emit(rl, `${C.warn}ai-room foi atualizado; ${C.bold}/reload${C.reset}${C.warn} para usar a versão nova neste console.${C.reset}`);
+    emit(rl, `${C.warn}ai-room was upgraded; ${C.bold}/reload${C.reset}${C.warn} to run the new version in this console.${C.reset}`);
   }, 30_000);
   staleTimer.unref();
 
@@ -441,18 +441,18 @@ export async function runConsole(
   };
   process.on("exit", stopBracketedPaste);
 
-  console.log(`${C.bold}ai-room console${C.reset} — sala ${C.bold}${room}${C.reset}`);
+  console.log(`${C.bold}ai-room console${C.reset} — room ${C.bold}${room}${C.reset}`);
   console.log(
-    `${C.dim}multiplexador: ${driver?.name ?? `nenhum (${INSTALL_HINT})`} · /help para comandos${C.reset}`
+    `${C.dim}multiplexer: ${driver?.name ?? `none (${INSTALL_HINT})`} · /help for commands${C.reset}`
   );
-  console.log(`${C.dim}detach: ${DETACH_KEYS} ou /detach · encerrar a sala: Ctrl-b X ou /close sim${C.reset}\n`);
+  console.log(`${C.dim}detach: ${DETACH_KEYS} or /detach · close the room: Ctrl-b x or /close yes${C.reset}\n`);
 
   const workspace = workspaceName(room);
 
   // Hand the terminal over. readline is paused so the child owns the TTY, and
   // the console resumes exactly where it left off on detach.
   const handOver = (label: string, run: () => void) => {
-    emit(rl, `${C.dim}anexando a ${label}…${C.reset}`);
+    emit(rl, `${C.dim}attaching to ${label}…${C.reset}`);
     rl.pause();
     // The child owns the terminal while it runs, including its own paste mode.
     stopBracketedPaste();
@@ -464,14 +464,14 @@ export async function runConsole(
       process.stdin.pipe(pasteStream);
       process.stdout.write(ENABLE_BRACKETED_PASTE);
     }
-    emit(rl, `${C.dim}de volta ao console.${C.reset}`);
+    emit(rl, `${C.dim}back in the console.${C.reset}`);
     rl.resume();
     rl.prompt(true);
   };
 
   const attach = (agent: string) => {
     if (!driver) {
-      emit(rl, `${C.warn}Sem multiplexador. ${INSTALL_HINT}${C.reset}`);
+      emit(rl, `${C.warn}No multiplexer. ${INSTALL_HINT}${C.reset}`);
       return;
     }
 
@@ -480,15 +480,15 @@ export async function runConsole(
     if (target.kind === "pane") {
       const focused = focusPane(driver, target.paneId);
       if (!focused.ok) {
-        emit(rl, `${C.warn}não foi possível focar ${agent}: ${focused.error}${C.reset}`);
+        emit(rl, `${C.warn}could not focus ${agent}: ${focused.error}${C.reset}`);
         return;
       }
       if (insideWorkspaceServer()) {
-        emit(rl, `${C.dim}foco no pane de ${agent}. volte com ${DETACH_KEYS.split(" ·")[0]}.${C.reset}`);
+        emit(rl, `${C.dim}focused ${agent}'s pane. back with ${DETACH_KEYS.split(" ·")[0]}.${C.reset}`);
         return;
       }
       if (!canAttach()) {
-        emit(rl, `${C.dim}pane de ${agent} selecionado. anexe com: tmux attach -t ${workspace}${C.reset}`);
+        emit(rl, `${C.dim}${agent}'s pane selected. attach with: tmux attach -t ${workspace}${C.reset}`);
         return;
       }
       handOver(agent, () => attachWorkspace(driver, workspace));
@@ -496,7 +496,7 @@ export async function runConsole(
     }
 
     if (target.kind === "missing") {
-      emit(rl, `${C.warn}Nem pane nem sessão para "${agent}". Use /agents para ver o que está vivo.${C.reset}`);
+      emit(rl, `${C.warn}No pane or session for "${agent}". /agents lists what is live.${C.reset}`);
       return;
     }
     const { session } = target;
@@ -509,15 +509,15 @@ export async function runConsole(
 
   const detach = () => {
     if (!driver || driver.name !== "tmux") {
-      emit(rl, `${C.warn}Detach automático só no tmux. Use ${DETACH_KEYS}.${C.reset}`);
+      emit(rl, `${C.warn}Detaching from here works in tmux only. Use ${DETACH_KEYS}.${C.reset}`);
       return;
     }
     const result = detachWorkspace(driver, workspace);
     emit(
       rl,
       result.ok
-        ? `${C.dim}workspace desanexado. agentes e sala seguem vivos.${C.reset}`
-        : `${C.warn}nada para desanexar: ${result.error}${C.reset}`
+        ? `${C.dim}workspace detached. agents and room keep running.${C.reset}`
+        : `${C.warn}nothing to detach: ${result.error}${C.reset}`
     );
   };
 
@@ -526,16 +526,16 @@ export async function runConsole(
     if (result.status === "needs-confirmation") {
       emit(
         rl,
-        `${C.warn}/close encerra os panes e sessões desta sala (inclusive este console).${C.reset}\n` +
-          `${C.dim}histórico e charter continuam no banco. confirme com${C.reset} ${C.bold}/close sim${C.reset}`
+        `${C.warn}/close stops this room's panes and sessions (this console included).${C.reset}\n` +
+          `${C.dim}history and charter stay in the database. confirm with${C.reset} ${C.bold}/close yes${C.reset}`
       );
       return;
     }
     if (result.status === "nothing") {
-      emit(rl, `${C.dim}nenhuma sessão viva para "${room}".${C.reset}`);
+      emit(rl, `${C.dim}no live session for "${room}".${C.reset}`);
       return;
     }
-    emit(rl, `${C.dim}encerrado: ${result.sessions.join(", ")}${C.reset}`);
+    emit(rl, `${C.dim}closed: ${result.sessions.join(", ")}${C.reset}`);
   };
 
   /**
@@ -548,7 +548,7 @@ export async function runConsole(
     const text = words.filter((word) => !word.startsWith("@")).join(" ");
     if (!target) {
       void say({
-        message: `O humano pede a skill \`${skill.name}\`${text ? `: ${text}` : ""}. Quem tiver o papel para isso, rode-a.`,
+        message: `The human asks for the skill \`${skill.name}\`${text ? `: ${text}` : ""}. Whoever has the role for it, run it.`,
         attachmentIds: [],
       });
       return;
@@ -556,18 +556,18 @@ export async function runConsole(
     const harness = harnessFor(target);
     const invocation = skillLine(harness, skill.name, text);
     if (!invocation) {
-      emit(rl, `${C.warn}não sei como ${target} roda skills; peça sem @ para a sala.${C.reset}`);
+      emit(rl, `${C.warn}don't know how ${target} runs skills; ask the room without @.${C.reset}`);
       return;
     }
     if (!skillVisibleTo(harness, skill)) {
-      emit(rl, `${C.warn}${target} não enxerga ${skill.name} (está em ${skill.origin}); peça a outro agente ou sem @.${C.reset}`);
+      emit(rl, `${C.warn}${target} cannot see ${skill.name} (it is in ${skill.origin}); ask another agent, or the room without @.${C.reset}`);
       return;
     }
     const pane = driver && driver.name === "tmux" && sessionExists(driver, workspace)
       ? paneStates(driver, workspace).find((state) => state.agent === target)
       : undefined;
     if (!pane) {
-      emit(rl, `${C.warn}nenhum pane de ${target} neste workspace.${C.reset}`);
+      emit(rl, `${C.warn}no pane for ${target} in this workspace.${C.reset}`);
       return;
     }
     const typed = typeIntoPane(driver!, pane.paneId, invocation.line, { closeMenu: invocation.closeMenu });
@@ -575,13 +575,13 @@ export async function runConsole(
       rl,
       typed.ok
         ? `${C.dim}→ ${target}: ${invocation.line}${C.reset}`
-        : `${C.warn}não foi possível digitar no pane de ${target}: ${typed.error}${C.reset}`
+        : `${C.warn}could not type into ${target}'s pane: ${typed.error}${C.reset}`
     );
   };
 
   const listAgents = () => {
     if (!driver) {
-      emit(rl, `${C.warn}Sem multiplexador. ${INSTALL_HINT}${C.reset}`);
+      emit(rl, `${C.warn}No multiplexer. ${INSTALL_HINT}${C.reset}`);
       return;
     }
     const panes =
@@ -592,9 +592,9 @@ export async function runConsole(
     const live = liveSessions(driver).filter((s) => s.startsWith(prefix.slice(0, -1)));
     const lines = [
       panes.length ? `${C.dim}panes:${C.reset} ${panes.map((p) => `${p.agent} (${p.paneId})`).join("  ")}` : "",
-      live.length ? `${C.dim}sessões:${C.reset} ${live.join("  ")}` : "",
+      live.length ? `${C.dim}sessions:${C.reset} ${live.join("  ")}` : "",
     ].filter(Boolean);
-    emit(rl, lines.join("\n") || `${C.dim}nada vivo nesta sala.${C.reset}`);
+    emit(rl, lines.join("\n") || `${C.dim}nothing live in this room.${C.reset}`);
   };
 
   const say = async (draft: { message: string; attachmentIds: string[] }) => {
@@ -606,10 +606,10 @@ export async function runConsole(
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        emit(rl, `${C.warn}não enviado: ${body.error ?? response.status}${C.reset}`);
+        emit(rl, `${C.warn}not sent: ${body.error ?? response.status}${C.reset}`);
       }
     } catch (error) {
-      emit(rl, `${C.warn}servidor inacessível: ${error instanceof Error ? error.message : error}${C.reset}`);
+      emit(rl, `${C.warn}server unreachable: ${error instanceof Error ? error.message : error}${C.reset}`);
     }
   };
 
@@ -623,13 +623,13 @@ export async function runConsole(
       );
       const body = (await response.json().catch(() => ({}))) as { attachment?: AttachmentInfo; error?: string };
       if (!response.ok || !body.attachment) {
-        emit(rl, `${C.warn}anexo recusado: ${body.error ?? response.status}${C.reset}`);
+        emit(rl, `${C.warn}attachment refused: ${body.error ?? response.status}${C.reset}`);
         return;
       }
       composer.attach(body.attachment);
-      emit(rl, `${C.dim}anexos: ${composer.draftLine()} — Enter envia · /show vê · /drop n remove · /clear descarta${C.reset}`);
+      emit(rl, `${C.dim}attachments: ${composer.draftLine()} — Enter sends · /show lists · /drop n removes · /clear discards${C.reset}`);
     } catch (error) {
-      emit(rl, `${C.warn}servidor inacessível: ${error instanceof Error ? error.message : error}${C.reset}`);
+      emit(rl, `${C.warn}server unreachable: ${error instanceof Error ? error.message : error}${C.reset}`);
     }
   };
 
@@ -638,13 +638,13 @@ export async function runConsole(
       const { bytes, name } = readAttachableFile(file);
       void upload(bytes, name);
     } catch (error) {
-      emit(rl, `${C.warn}não foi possível anexar: ${error instanceof Error ? error.message : error}${C.reset}`);
+      emit(rl, `${C.warn}could not attach: ${error instanceof Error ? error.message : error}${C.reset}`);
     }
   };
 
   const stagePaste = (paste: string) => {
     composer.stage(paste);
-    emit(rl, `${C.dim}${composer.summary(paste)} — Enter envia, /show inspeciona, /clear descarta${C.reset}`);
+    emit(rl, `${C.dim}${composer.summary(paste)} — Enter sends · /show lists · /clear discards${C.reset}`);
   };
 
   // Ctrl+V pastes whatever the clipboard holds: an image or a copied file
@@ -681,7 +681,7 @@ export async function runConsole(
       signal: controller.signal,
       headers: { Accept: "text/event-stream" },
     });
-    if (!response.body) throw new Error("stream sem corpo");
+    if (!response.body) throw new Error("stream has no body");
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -716,7 +716,7 @@ export async function runConsole(
           const participants = payload as ParticipantView[];
           if (statusPane) {
             const parts = statusParts(participants);
-            mux(driver!, ["set-option", "-p", "-t", statusPane, STATUS_TAG, parts.length ? toTmuxStyle(parts.join("  ")) : "#[dim]sala vazia"]);
+            mux(driver!, ["set-option", "-p", "-t", statusPane, STATUS_TAG, parts.length ? toTmuxStyle(parts.join("  ")) : "#[dim]room is empty"]);
           } else emit(rl, renderStatus(participants));
           const stuck = needsAttention(participants);
           const fingerprint = stuck.map((p) => `${p.agent}:${p.status}`).join(",");
@@ -724,7 +724,7 @@ export async function runConsole(
             for (const p of stuck) {
               emit(
                 rl,
-                `${C.alert}${C.bold}→ ${p.agent} precisa de você${C.reset} ${C.dim}(${p.status})${C.reset}  ` +
+                `${C.alert}${C.bold}→ ${p.agent} needs you${C.reset} ${C.dim}(${p.status})${C.reset}  ` +
                   `use ${C.bold}/attach ${p.agent}${C.reset}`
               );
             }
@@ -749,7 +749,7 @@ export async function runConsole(
       } catch (error) {
         if (controller.signal.aborted) return;
         if (!announced) {
-          emit(rl, `${C.warn}feed interrompido (${error instanceof Error ? error.message : error}); reconectando…${C.reset}`);
+          emit(rl, `${C.warn}feed lost (${error instanceof Error ? error.message : error}); reconnecting…${C.reset}`);
           announced = true;
         }
       }
@@ -759,7 +759,7 @@ export async function runConsole(
       if (announced) {
         const up = await fetch(`${options.baseUrl}/health`).then((r) => r.ok).catch(() => false);
         if (up) {
-          emit(rl, `${C.dim}feed reconectado.${C.reset}`);
+          emit(rl, `${C.dim}feed reconnected.${C.reset}`);
           announced = false;
         }
       }
@@ -780,7 +780,7 @@ export async function runConsole(
       const [cmd, ...rest] = text.slice(1).split(/\s+/);
       switch (cmd) {
         case "attach":
-          if (!rest[0]) emit(rl, `${C.warn}uso: /attach <agente>${C.reset}`);
+          if (!rest[0]) emit(rl, `${C.warn}usage: /attach <agent>${C.reset}`);
           else attach(rest[0]);
           break;
         case "agents":
@@ -791,9 +791,9 @@ export async function runConsole(
             .then((r) => r.json())
             .then((d) => {
               const participants = (d as { participants?: ParticipantView[] }).participants ?? [];
-              emit(rl, participants.map((p) => renderParticipant(p)).join("  ") || `${C.dim}sala vazia${C.reset}`);
+              emit(rl, participants.map((p) => renderParticipant(p)).join("  ") || `${C.dim}room is empty${C.reset}`);
             })
-            .catch(() => emit(rl, `${C.warn}servidor inacessível${C.reset}`));
+            .catch(() => emit(rl, `${C.warn}server unreachable${C.reset}`));
           break;
         case "panes":
         case "hide":
@@ -803,35 +803,35 @@ export async function runConsole(
             emit(
               rl,
               composer.empty
-                ? `${C.dim}nada colado nem anexado no rascunho.${C.reset}`
+                ? `${C.dim}nothing pasted or attached in the draft.${C.reset}`
                 : [
-                    composer.pending ? `${C.dim}rascunho (${composer.pending} colagem(ns)):${C.reset}\n${composer.staged()}` : "",
-                    composer.attachments.length ? `${C.dim}anexos:${C.reset} ${composer.draftLine()}` : "",
+                    composer.pending ? `${C.dim}draft (${composer.pending} paste(s)):${C.reset}\n${composer.staged()}` : "",
+                    composer.attachments.length ? `${C.dim}attachments:${C.reset} ${composer.draftLine()}` : "",
                   ].filter(Boolean).join("\n")
             );
             break;
           }
           if (!driver || driver.name !== "tmux" || !sessionExists(driver, workspace)) {
-            emit(rl, `${C.warn}sem workspace tmux para esta sala.${C.reset}`);
+            emit(rl, `${C.warn}no tmux workspace for this room.${C.reset}`);
             break;
           }
           if (cmd === "panes") {
             const states = paneStates(driver, workspace);
-            emit(rl, states.map((p) => `${p.hidden ? C.dim + "[ ]" : "[x]"} ${p.agent}${C.reset}`).join("  ") || `${C.dim}nenhum pane.${C.reset}`);
+            emit(rl, states.map((p) => `${p.hidden ? C.dim + "[ ]" : "[x]"} ${p.agent}${C.reset}`).join("  ") || `${C.dim}no panes.${C.reset}`);
             break;
           }
           if (!rest[0]) {
-            emit(rl, `${C.warn}uso: /${cmd} <pane>${C.reset}`);
+            emit(rl, `${C.warn}usage: /${cmd} <pane>${C.reset}`);
             break;
           }
           const result = setPaneVisible(driver, workspace, rest[0], cmd);
-          emit(rl, result.ok ? `${C.dim}${rest[0]}: ${result.hidden ? "escondido" : "visível"}${C.reset}` : `${C.warn}${result.error}${C.reset}`);
+          emit(rl, result.ok ? `${C.dim}${rest[0]}: ${result.hidden ? "hidden" : "visible"}${C.reset}` : `${C.warn}${result.error}${C.reset}`);
           break;
         }
         case "remove":
         case "add": {
           if (!rest[0]) {
-            emit(rl, `${C.warn}uso: /${cmd} <agente>${cmd === "add" ? " [papel]" : ""}${C.reset}`);
+            emit(rl, `${C.warn}usage: /${cmd} <agent>${cmd === "add" ? " [role]" : ""}${C.reset}`);
             break;
           }
           void Promise.all([import("./cast.js"), import("./db/index.js")]).then(([cast, dbModule]) => {
@@ -851,8 +851,8 @@ export async function runConsole(
               else if (result.confirm) {
                 emit(
                   rl,
-                  `${C.warn}${rest[0]} já está na sala.${C.reset} ${C.dim}outra instância gasta tokens próprios; confirme com${C.reset} ` +
-                    `${C.bold}/add ${rest[0]}${role ? ` ${role}` : ""} sim${C.reset} ${C.dim}para abrir ${result.confirm}, ou ${C.reset}${C.bold}/remove ${rest[0]}${C.reset}${C.dim} antes para trocá-lo${C.reset}`
+                  `${C.warn}${rest[0]} is already in the room.${C.reset} ${C.dim}another instance spends its own tokens; confirm with${C.reset} ` +
+                    `${C.bold}/add ${rest[0]}${role ? ` ${role}` : ""} yes${C.reset} ${C.dim}to open ${result.confirm}, or ${C.reset}${C.bold}/remove ${rest[0]}${C.reset}${C.dim} first to replace it${C.reset}`
                 );
               } else emit(rl, `${C.warn}${result.detail}${C.reset}`);
             } finally {
@@ -874,11 +874,11 @@ export async function runConsole(
           // back as it was launched, with the code now on disk.
           const pane = process.env.TMUX_PANE;
           if (!pane || !driver || driver.name !== "tmux") {
-            emit(rl, `${C.warn}/reload só funciona no pane do workspace; aqui, saia com /quit e abra de novo.${C.reset}`);
+            emit(rl, `${C.warn}/reload works in the workspace pane only; here, /quit and open it again.${C.reset}`);
             break;
           }
           if (!composer.empty) {
-            emit(rl, `${C.warn}o rascunho seria perdido; envie com Enter ou descarte com /clear antes do /reload.${C.reset}`);
+            emit(rl, `${C.warn}the draft would be lost; send it with Enter or /clear it before /reload.${C.reset}`);
             break;
           }
           mux(driver, ["respawn-pane", "-k", "-t", pane]);
@@ -902,16 +902,16 @@ export async function runConsole(
           emit(
             rl,
             dropped
-              ? `${C.dim}removido: ${dropped.name}${composer.attachments.length ? ` · anexos: ${composer.draftLine()}` : ""}${C.reset}`
-              : `${C.warn}uso: /drop <n> — anexos: ${composer.draftLine() || "nenhum"}${C.reset}`
+              ? `${C.dim}removed: ${dropped.name}${composer.attachments.length ? ` · attachments: ${composer.draftLine()}` : ""}${C.reset}`
+              : `${C.warn}usage: /drop <n> — attachments: ${composer.draftLine() || "none"}${C.reset}`
           );
           break;
         }
         case "clear":
           if (!composer.empty) {
             composer.clear();
-            emit(rl, `${C.dim}rascunho descartado.${C.reset}`);
-          } else emit(rl, `${C.dim}nada para descartar.${C.reset}`);
+            emit(rl, `${C.dim}draft discarded.${C.reset}`);
+          } else emit(rl, `${C.dim}nothing to discard.${C.reset}`);
           break;
         case "help":
           emit(rl, HELP);
@@ -923,7 +923,7 @@ export async function runConsole(
         default: {
           const skill = skills.find((candidate) => candidate.name === cmd);
           if (!skill) {
-            emit(rl, `${C.warn}comando desconhecido: /${cmd} — /help, /skills${C.reset}`);
+            emit(rl, `${C.warn}unknown command: /${cmd} — /help, /skills${C.reset}`);
             break;
           }
           requestSkill(skill, rest);
@@ -941,7 +941,7 @@ export async function runConsole(
     rl.on("close", () => {
       stopBracketedPaste();
       controller.abort();
-      console.log(`\n${C.dim}console encerrado. Os agentes continuam rodando.${C.reset}`);
+      console.log(`\n${C.dim}console closed. The agents keep running.${C.reset}`);
       resolve();
     });
   });

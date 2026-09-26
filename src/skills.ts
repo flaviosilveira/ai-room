@@ -104,10 +104,10 @@ export function discoverSkills(cwd: string = process.cwd(), home: string = os.ho
   return [...skills.values()];
 }
 
-const SOURCE_TITLE: Record<SkillSource, string> = { project: "projeto", user: "usuário", plugin: "plugins" };
+const SOURCE_TITLE: Record<SkillSource, string> = { project: "project", user: "user", plugin: "plugins" };
 
 export function renderSkills(skills: Skill[], width = process.stdout.columns || 100): string {
-  if (!skills.length) return "nenhuma skill encontrada (projeto, ~/.claude/skills, ~/.agents/skills ou plugins).";
+  if (!skills.length) return "no skills found (project, ~/.claude/skills, ~/.agents/skills or plugins).";
   const nameWidth = Math.min(28, Math.max(...skills.map((s) => s.name.length)) + 2);
   const lines: string[] = [];
   for (const source of ["project", "user", "plugin"] as SkillSource[]) {

@@ -145,7 +145,7 @@ export function tmuxConfig(self: string = selfCommand(), clipboard: string | nul
     "set -g status-left-length 60",
     `set -g status-left "#[bold] ai-room #{?${ROOM_TAG},#{${ROOM_TAG}},#S} #[default]"`,
     "set -g status-right-length 100",
-    `set -g status-right " #{prefix} m panes | #{prefix} t arquivos | #{prefix} M mouse:#{?mouse,on,off} | F12 sair | #{prefix} X fechar "`,
+    `set -g status-right " #{prefix} m panes | #{prefix} t files | #{prefix} M mouse:#{?mouse,on,off} | F12 detach | #{prefix} x close "`,
     // Hidden panes live in windows named "_<agent>"; the tab list leaves them out.
     `set -g window-status-format "#{?#{m:${HIDDEN_PREFIX}*,#{window_name}},,#I:#W#F}"`,
     `set -g window-status-current-format "#{?#{m:${HIDDEN_PREFIX}*,#{window_name}},,#I:#W#F}"`,
@@ -154,8 +154,8 @@ export function tmuxConfig(self: string = selfCommand(), clipboard: string | nul
     ...both("z", "resize-pane -Z"),
     // Lowercase x too: tmux's own x kills just the focused pane, which in a
     // workspace silently stops one agent instead of closing the room.
-    ...both("X", `confirm-before -p "Fechar a sala? Os agentes serao encerrados, o historico fica. (y/n)" kill-session`),
-    `bind-key x confirm-before -p "Fechar a sala? Os agentes serao encerrados, o historico fica. (y/n)" kill-session`,
+    ...both("X", `confirm-before -p "Close the room? Its agents stop; history and charter stay. (y/n)" kill-session`),
+    `bind-key x confirm-before -p "Close the room? Its agents stop; history and charter stay. (y/n)" kill-session`,
     ...both("d", "detach-client"),
     ...both("q", "detach-client"),
     `bind-key M { set -g mouse ; display-message "mouse: #{?mouse,on,off}" }`,
@@ -713,7 +713,7 @@ const tmuxArg = (value: string) => `"${value.replace(/[\\"$]/g, "\\$&")}"`;
  */
 export function paneMenuCommand(session: string, states: PaneState[], self = selfCommand()): string {
   const label = (state: PaneState) => {
-    const name = state.agent === "monitor" ? "human (monitor)" : state.agent === "files" ? "arquivos" : state.agent;
+    const name = state.agent === "monitor" ? "human (monitor)" : state.agent === "files" ? "files" : state.agent;
     return `${state.hidden ? "[ ]" : "[x]"} ${name}`.replace(/#/g, "##");
   };
   const entries = states.flatMap((state, i) => [
@@ -721,7 +721,7 @@ export function paneMenuCommand(session: string, states: PaneState[], self = sel
     i < 9 ? `${i + 1}` : "",
     `run-shell -b "${tmuxQuoted(`${self} _pane ${shellQuote(session)} ${shellQuote(state.agent)} toggle`)}"`,
   ]);
-  return ["display-menu", ...["-T", "#[align=centre] panes (mostrar/esconder) ", ...entries].map(tmuxArg)].join(" ");
+  return ["display-menu", ...["-T", "#[align=centre] panes (show/hide) ", ...entries].map(tmuxArg)].join(" ");
 }
 
 export function paneMenuFile(session: string): string {
