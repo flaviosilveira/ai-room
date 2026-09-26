@@ -35,6 +35,15 @@ describe("ai-room store", () => {
     expect(result.participant.active).toBe(true);
   });
 
+  it("keeps who a message is for, and leaves it out for the whole room", () => {
+    roomJoin(db, { room: "r", agent: "claude" });
+    roomJoin(db, { room: "r", agent: "claude-2" });
+    expect(roomSend(db, { room: "r", agent: "claude", message: "you own the fix", to: ["claude-2", "claude-2"] }).to).toEqual(["claude-2"]);
+    roomSend(db, { room: "r", agent: "claude", message: "status for everyone" });
+    expect(roomHistory(db, { room: "r" }).map((m) => m.to)).toEqual([["claude-2"], undefined]);
+    expect(roomListen(db, { room: "r", agent: "claude-2" })[0].to).toEqual(["claude-2"]);
+  });
+
   it("preserves legacy room_join creation and can reject accidental room creation", () => {
     expect(roomJoin(db, { room: "existing", agent: "claude" }).created).toBe(true);
     expect(roomJoin(db, { room: "existing", agent: "codex", createIfMissing: false }).created).toBe(

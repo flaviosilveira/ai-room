@@ -71,6 +71,8 @@ export interface MessageInfo {
   createdAt: number;
   /** Present only when the message has attachments, so older readers see what they always did. */
   attachments?: AttachmentInfo[];
+  /** Who the message is for; absent means the whole room. */
+  to?: string[];
 }
 
 /**

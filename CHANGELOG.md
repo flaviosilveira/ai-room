@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `room_send` takes an optional `to` (`["claude-2"]`, `["human"]`). With a
+  lead, the console leaves out the lead's asides to teammates too, so with
+  `claude` and `claude-2` the human no longer reads the lead delegating work;
+  `/all` shows them as `claude → claude-2`.
 - `ai-room open` trusts the folder it runs in for the Claude Code and Codex
   instances it launches, instead of each pane asking. Claude's question
   defaults to "No, exit": with `claude:2`, one Enter too many closed an

@@ -75,10 +75,14 @@ export function createAiRoomServer(
         room: z.string(),
         agent: z.string(),
         message: z.string(),
+        to: z
+          .array(z.string())
+          .optional()
+          .describe('Who the message is for, e.g. ["claude-2"] or ["human"]. Everyone still sees it; leave it out when it is for the whole room.'),
       },
     },
-    async ({ room, agent, message }) => {
-      const result = roomSend(db, { room, agent, message });
+    async ({ room, agent, message, to }) => {
+      const result = roomSend(db, { room, agent, message, to });
       waitRegistry.notify(room);
       // Anyone idle in this room is asleep by design; this is what brings them
       // back, and only when they actually have something unread.

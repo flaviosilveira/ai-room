@@ -205,8 +205,10 @@ export function roomSend(
     origin?: MessageInfo["origin"];
     /** Uploaded to this room beforehand; they become part of this one message. */
     attachmentIds?: string[];
+    to?: string[];
   }
 ): MessageInfo {
+  const to = [...new Set((params.to ?? []).map((name) => name.trim()).filter(Boolean))];
   const origin = params.origin ?? "agent";
   const attachmentIds = [...new Set(params.attachmentIds ?? [])];
   if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
@@ -227,10 +229,10 @@ export function roomSend(
     }
     const inserted = db
       .prepare(
-        `INSERT INTO messages (room, agent, origin, content, created_at)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO messages (room, agent, origin, content, created_at, recipients)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(params.room, params.agent, origin, params.message, now);
+      .run(params.room, params.agent, origin, params.message, now, to.length ? JSON.stringify(to) : null);
     attachmentIds.forEach((id, position) => {
       db.prepare(
         `INSERT INTO message_attachments (message_id, attachment_id, position) VALUES (?, ?, ?)`
@@ -252,6 +254,7 @@ export function roomSend(
     origin,
     content: params.message,
     createdAt: now,
+    ...(to.length ? { to } : {}),
     ...(attachmentIds.length ? { attachments: attachmentIds.map((id) => getAttachment(db, params.room, id)!) } : {}),
   };
 }
@@ -272,7 +275,7 @@ export function roomListen(
 
     const rows = db
       .prepare(
-        `SELECT id, room, agent, origin, content, created_at as createdAt
+        `SELECT id, room, agent, origin, content, created_at as createdAt, recipients
          FROM messages
          WHERE room = ? AND id > ? AND agent != ?
          ORDER BY id ASC`
@@ -377,8 +380,8 @@ export function roomHistory(
 
   const rows = db
     .prepare(
-      `SELECT id, room, agent, origin, content, createdAt FROM (
-         SELECT id, room, agent, origin, content, created_at as createdAt
+      `SELECT id, room, agent, origin, content, createdAt, recipients FROM (
+         SELECT id, room, agent, origin, content, created_at as createdAt, recipients
          FROM messages
          WHERE ${clauses.join(" AND ")}
          ORDER BY id ${pageForward ? "ASC" : "DESC"}
@@ -422,7 +425,8 @@ function toAttachment(row: AttachmentRow): AttachmentInfo {
   };
 }
 
-function withAttachments(db: Database.Database, messages: MessageInfo[]): MessageInfo[] {
+function withAttachments(db: Database.Database, stored: (MessageInfo & { recipients?: string | null })[]): MessageInfo[] {
+  const messages: MessageInfo[] = stored.map(({ recipients, ...message }) => (recipients ? { ...message, to: JSON.parse(recipients) } : message));
   if (!messages.length) return messages;
   const ids = messages.map((m) => m.id);
   const rows = db

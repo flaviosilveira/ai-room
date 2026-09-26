@@ -99,6 +99,8 @@ function migrate(db: Database.Database): void {
   ensureColumn(db, "participants", "status_detail", "TEXT");
   ensureColumn(db, "participants", "status_updated_at", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "messages", "origin", "TEXT NOT NULL DEFAULT 'agent'");
+  // JSON array of addressees; NULL is the whole room.
+  ensureColumn(db, "messages", "recipients", "TEXT");
   // Identity and wake-up target. `harness` separates which CLI runs an instance
   // from who that instance is in the room, so one harness can hold several.
   ensureColumn(db, "participants", "harness", "TEXT");

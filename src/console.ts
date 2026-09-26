@@ -88,7 +88,7 @@ export function attachmentChip(a: Pick<AttachmentInfo, "name" | "mime" | "bytes"
 
 function renderMessage(m: MessageInfo): string {
   const color = m.origin === "human" ? C.human : m.origin === "system" ? C.system : C.agent;
-  const who = m.origin === "human" ? `${m.agent} (you)` : m.agent;
+  const who = (m.origin === "human" ? `${m.agent} (you)` : m.agent) + (m.to?.length ? ` → ${m.to.join(", ")}` : "");
   const chips = m.attachments?.length ? ` ${C.warn}${m.attachments.map(attachmentChip).join(" ")}${C.reset}` : "";
   return `${C.dim}${stamp(m.createdAt)}${C.reset} ${color}${C.bold}${who}${C.reset}  ${m.content}${chips}`;
 }
@@ -709,8 +709,12 @@ export async function runConsole(
           const message = payload as MessageInfo;
           lastMessageId = Math.max(lastMessageId, message.id);
           // Don't echo the line the user just typed back at them.
-          const fromTeammate = message.origin === "agent" && leads.size > 0 && !leads.has(message.agent);
-          if (!(message.origin === "human" && message.agent === me) && (showAll || !fromTeammate)) {
+          // With a lead, the human hears the lead talking to the human or the whole room.
+          const aside =
+            message.origin === "agent" &&
+            leads.size > 0 &&
+            (!leads.has(message.agent) || Boolean(message.to?.length && !message.to.includes(me)));
+          if (!(message.origin === "human" && message.agent === me) && (showAll || !aside)) {
             emit(rl, renderMessage(message));
           }
         } else if (event === "status") {
