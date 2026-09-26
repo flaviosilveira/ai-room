@@ -169,16 +169,18 @@ the room is told so the others pick up its part.
 
 ## 5. Attachments
 
-Everything in the draft (text and attachments) goes out as one message on Enter.
-While something is waiting, the prompt says so — `human [2 img · 1 text]>` — so
-messages scrolling past never hide it. `/show` lists it, `/clear` drops it.
+A paste or an attachment lands in the line as a token — `[Pasted #1: 40 lines]`,
+`[Image #2]`, `[PDF #3: spec.pdf]` — like in Claude Code and Codex. Move the
+cursor around it and keep writing; Backspace right after a token removes it
+whole. Enter sends the line as one message, each paste expanded in its place.
+`/show` lists the tokens, `/clear` drops them all.
 
 | Command | Does |
 |---|---|
-| `Ctrl+V` or `/paste` | Pastes the clipboard: a screenshot or a copied file is attached, text goes into the draft |
+| `Ctrl+V` or `/paste` | Pastes the clipboard: a screenshot or a copied file is attached, text goes in as a token |
 | `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf, text) |
 | drag a file in | Attaches it too |
-| `/drop <n>` | Removes attachment n from the draft |
+| `/drop <n>` | Removes token n from the draft |
 
 Limits: 10MB per file, 5 per message. Agents only receive the metadata and open
 the file with `room_attachment` when they need it.

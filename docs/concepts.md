@@ -145,7 +145,7 @@ after `/` completes them:
 | `/show` · `/clear` | Shows · discards the draft |
 | `Ctrl+V` or `/paste` | Pastes the clipboard: an image or a copied file is attached, text goes into the draft |
 | `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf or text) |
-| `/drop <n>` | Removes attachment n from the draft |
+| `/drop <n>` | Removes token n from the draft |
 | `/panes` · `/hide <pane>` · `/show <pane>` | Lists, hides and shows workspace panes |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
 | `/skills [filter]` · `/<skill> @agent text` | Lists skills · asks an agent to run one |
@@ -157,11 +157,11 @@ after `/` completes them:
 A paste is one thing. The console turns on bracketed paste (`DECSET 2004`), so
 the terminal marks where a paste starts and ends; a filter takes that block out
 of the stream before readline — which would drop the markers and split it into
-one message per line — and keeps it in the draft. Enter sends it all as **one**
-message with its line breaks, worth one history entry, one unread and one wake.
-Typing and Enter behave as always. While something is waiting in the draft the
-prompt says so — `human [2 img · 1 text]>` — so messages scrolling past never
-hide it. Without a TTY (redirected output, `screen`) a paste cannot be told from
+one message per line — and puts a token in the line instead: `[Pasted #1: 40
+lines]`. The cursor moves around it like any word, Backspace right after it
+removes it whole, and Enter sends **one** message with each paste expanded in
+its place, worth one history entry, one unread and one wake. Typing and Enter
+behave as always. Without a TTY (redirected output, `screen`) a paste cannot be told from
 typing, and the old behaviour stays.
 
 ### Attachments: a screenshot in `human>`
@@ -170,8 +170,7 @@ Take a screenshot, press `Ctrl+V` in the console, write "look at this error"
 and press Enter: the agents receive **one** message with the image reachable.
 
 ```
-attachments: [1] img clipboard-2026-09-22.png 412KB — Enter sends · /drop n removes
-human [1 img]> look at this error▊
+human> look at this error [Image #1]▊
 ```
 
 - A terminal only carries text, so the console reads the clipboard itself

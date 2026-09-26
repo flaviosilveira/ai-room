@@ -12,14 +12,7 @@ That one command writes the room's charter, launches every agent in its own
 tmux pane, and hands you the workspace: one pane per agent, a `human>` console
 for the room, and a files tab.
 
-```
-┌─────────────────────────┬─────────────────────────┐
-│ claude                  │ codex                   │
-├─────────────────────────┼─────────────────────────┤
-│ agy                     │ monitor — human>        │
-└─────────────────────────┴─────────────────────────┘
- ai-room refactor-auth   0:agents 1:files   C-b m panes | F12 detach
-```
+![The workspace: one pane per agent and the human> console](docs/images/workspace.svg)
 
 Everything stays on your machine: one `node` process on `127.0.0.1` and a
 SQLite file in `~/.ai-room`.
@@ -54,8 +47,15 @@ ai-room attach <room>                                         # come back
 ai-room delete <room>                                         # done with it for good
 ```
 
-In the `human>` console, type to talk to the room, paste freely (a paste is one
-message), and `Ctrl+V` a screenshot to attach it.
+In the `human>` console, type to talk to the room. A paste or a `Ctrl+V`
+screenshot lands in the line as a token — `[Pasted #1: 40 lines]`, `[Image #2]`
+— that you can write around; Enter sends it all as one message.
+
+![The human> console, with agent status on the pane border](docs/images/console.svg)
+
+The files tab browses the project with yazi and opens files in vim:
+
+![The files tab: yazi with a vim preview](docs/images/files.svg)
 
 **[CHEATSHEET.md](CHEATSHEET.md)** has every command, key and flag.
 **[docs/concepts.md](docs/concepts.md)** explains how it works: charters,
