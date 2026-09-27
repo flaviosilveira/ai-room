@@ -134,10 +134,12 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 | `Ctrl-b z` | Pane full screen (again to restore) |
 | `Ctrl-b x` or `Ctrl-b X` | Closes the room (asks first) |
 
-The files tab is a separate tab (window 1): the file browser on the left and
-Vim on the right. In the browser, Enter opens the file in that Vim; `:w` saves,
-and `Ctrl-b arrows` moves between the two. With yazi: `a` creates, `r` renames,
-`d` deletes, `/` searches, `s` greps. Set `AI_ROOM_EDITOR` to use another editor.
+The files tab is a separate tab (window 1): one Vim, the tree on the left and
+the file on the right. In the tree, Enter opens the file beside it, `-` or
+`../` goes up, `p` previews; `:w` saves, `Ctrl-w w` moves between the two, and
+`:q` on the file leaves the tree. In the tree: `%` new file, `d` new folder,
+`R` renames, `D` deletes. `AI_ROOM_FILES=yazi` brings back yazi, with a Vim pane
+beside it; `AI_ROOM_EDITOR` picks another editor.
 Copying text out of a pane: drag inside it, and releasing copies to the
 clipboard. Without the mouse: `Ctrl-b [`, move to the start, `Space`, move to
 the end, `Enter`. For the terminal's own selection across panes, turn the mouse

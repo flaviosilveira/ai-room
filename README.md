@@ -53,9 +53,8 @@ screenshot lands in the line as a token — `[Pasted #1: 40 lines]`, `[Image #2]
 
 ![The human> console, with agent status on the pane border](docs/images/console.svg)
 
-The files tab browses the project with yazi and opens files in vim:
-
-![The files tab: yazi with a vim preview](docs/images/files.svg)
+The files tab is one vim: the project tree on the left, the file you open on
+the right, ready to edit.
 
 **[CHEATSHEET.md](CHEATSHEET.md)** has every command, key and flag.
 **[docs/concepts.md](docs/concepts.md)** explains how it works: charters,

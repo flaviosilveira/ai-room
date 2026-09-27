@@ -17,7 +17,7 @@ import {
   roomSetCharter,
   roomWho,
 } from "./store.js";
-import { closeRoom, harnessFor, invite, logDir, openWorkspace, planWorkspace } from "./invite.js";
+import { closeRoom, editorCommand, harnessFor, invite, logDir, openWorkspace, planWorkspace } from "./invite.js";
 import {
   INSTALL_HINT,
   attachWorkspace,
@@ -719,7 +719,7 @@ switch (cmd) {
     // editor right here when there is none.
     const files = process.argv.slice(4);
     const tmux = detectMultiplexer("tmux");
-    const sent = tmux && arg ? openInEditorPane(tmux, arg, files) : { ok: false };
+    const sent = tmux && arg ? openInEditorPane(tmux, arg, files, editorCommand()) : { ok: false };
     if (!sent.ok) {
       const { spawnSync } = await import("node:child_process");
       process.exitCode = spawnSync(process.env.AI_ROOM_FALLBACK_EDITOR || "vim", files, { stdio: "inherit" }).status ?? 1;

@@ -767,9 +767,22 @@ export function vimEscape(file: string): string {
 export function openInEditorPane(
   driver: MultiplexerDriver,
   session: string,
-  files: string[]
+  files: string[],
+  editorArgv: string[] | null = null
 ): { ok: boolean; error?: string } {
-  const editor = paneStates(driver, session).find((state) => state.agent === "editor");
+  const states = paneStates(driver, session);
+  const editor = states.find((state) => state.agent === "editor");
+  const browser = states.find((state) => state.agent === "files");
+  // `:q` in the editor closes its pane; opening vim over the browser instead
+  // hid the tree until that vim quit too. The editor comes back beside it.
+  if (!editor && browser && editorArgv && files.length) {
+    const made = mux(driver, ["split-window", "-h", "-l", "70%", "-P", "-F", "#{pane_id}", "-t", browser.paneId,
+      ...editorArgv, ...files.map((file) => path.resolve(file))]);
+    if (!made.ok) return { ok: false, error: made.error };
+    const paneId = made.out.trim();
+    mux(driver, ["set-option", "-p", "-t", paneId, PANE_TAG, "editor", ";", "set-option", "-p", "-t", paneId, HOME_TAG, browser.home]);
+    return { ok: true };
+  }
   if (!editor) return { ok: false, error: "no editor pane in this workspace" };
   if (editor.hidden) setPaneVisible(driver, session, "editor", "show");
   const commands = files.map((file, i) => `:${i ? "badd" : "e"} ${vimEscape(path.resolve(file))}`);

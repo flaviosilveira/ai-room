@@ -192,27 +192,28 @@ export function trustFolder(dir: string, harnesses: Set<string>, home = os.homed
 }
 
 /**
- * The file browser for the workspace's "files" tab: the first one installed,
- * with vim's own netrw tree as the fallback every machine already has.
+ * The file browser for the workspace's "files" tab: vim's own netrw tree, which
+ * every machine already has, then the first dedicated browser installed.
  * `AI_ROOM_FILES` names any other command, run through the shell.
  */
 const FILE_BROWSERS: { bin: string; args: string[] }[] = [
+  // netrw as a NERDTree-style sidebar in one vim: the tree on the left, `../`
+  // to go up, and the file opened (Enter, or a click with --mouse) beside it,
+  // already editable. `:q` there closes only the file; the tree stays.
+  ...["vim", "nvim"].map((bin) => ({
+    bin,
+    args: [
+      "-c",
+      "set hidden | let g:netrw_liststyle = 3 | let g:netrw_banner = 0 | let g:netrw_browse_split = 4 | let g:netrw_altv = 1 | let g:netrw_winsize = 25 | set mouse=a",
+      "-c",
+      "Lexplore",
+    ],
+  })),
   { bin: "yazi", args: [] },
   { bin: "broot", args: [] },
   { bin: "lf", args: [] },
   { bin: "ranger", args: [] },
   { bin: "nnn", args: [] },
-  // netrw as a NERDTree-style sidebar: the tree on the left, the file opened
-  // (Enter, or a click with --mouse) in the window beside it.
-  ...["nvim", "vim"].map((bin) => ({
-    bin,
-    args: [
-      "-c",
-      "let g:netrw_liststyle = 3 | let g:netrw_banner = 0 | let g:netrw_browse_split = 4 | let g:netrw_altv = 1 | let g:netrw_winsize = 25 | set mouse=a",
-      "-c",
-      "Lexplore",
-    ],
-  })),
 ];
 
 export function filesCommand(

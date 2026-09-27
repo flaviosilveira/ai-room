@@ -46,11 +46,11 @@ pane lets you talk to that agent directly and answer its own approval prompts.
 The monitor pane runs `ai-room console` for the room feed; the agents' status
 sits on its top border instead of scrolling through the chat.
 
-A second tab, **files**, holds a file browser for the working directory — the
-first of yazi, broot, lf, ranger or nnn that is installed — with Vim beside it:
-opening a file in the browser loads it in that Vim. Without any of them, vim's
-netrw serves as a tree with the file opening beside it. `AI_ROOM_FILES` and
-`AI_ROOM_EDITOR` pick other commands; `--no-files` leaves the tab out.
+A second tab, **files**, is one Vim for the working directory: netrw's tree on
+the left, `../` to go up, and the file opened beside it, ready to edit. `:q`
+there closes the file and leaves the tree. `AI_ROOM_FILES` picks another
+browser (`AI_ROOM_FILES=yazi`), which then gets a Vim pane beside it —
+`AI_ROOM_EDITOR` picks another editor; `--no-files` leaves the tab out.
 
 The workspace runs on a tmux server of its own (`tmux -L ai-room`), so its keys
 never change your other tmux sessions. Your `~/.tmux.conf` is loaded first; on

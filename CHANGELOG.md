@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The files tab is one Vim: the netrw tree on the left (`../` goes up) and
+  the file opened beside it, editable at once, with no pause per file. yazi is
+  still used when `AI_ROOM_FILES=yazi`, and a picked file no longer opens over
+  its tree after the editor pane was quit: the pane comes back beside it.
 - The terminal window is titled `ai-room: <room>` instead of the whole
   `ai-room open … --brief …` command line.
 - Codex joins in auto-review (`--approve-for-me`): safe requests are approved

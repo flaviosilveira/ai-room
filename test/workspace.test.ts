@@ -183,7 +183,8 @@ describe("workspace planning", () => {
   });
 
   it("prefers a real file browser and falls back to vim's tree", () => {
-    expect(filesCommand({}, (bin) => bin === "yazi" || bin === "vim")).toEqual(["yazi"]);
+    expect(filesCommand({}, (bin) => bin === "yazi" || bin === "vim")?.[0]).toBe("vim");
+    expect(filesCommand({}, (bin) => bin === "yazi")).toEqual(["yazi"]);
     expect(filesCommand({}, (bin) => bin === "vim")?.slice(0, 1)).toEqual(["vim"]);
     expect(filesCommand({}, () => false)).toBeNull();
     expect(filesCommand({ AI_ROOM_FILES: "tree -C | less" }, () => false)).toEqual(["sh", "-c", "tree -C | less"]);
@@ -478,6 +479,13 @@ describe.skipIf(!tmux)("tmux workspace lifecycle (real tmux)", () => {
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(fs.readFileSync(sink, "utf8")).toContain(":e /tmp/my\\ file.ts");
     fs.rmSync(sink, { force: true });
+  });
+
+  it("brings the editor back beside the browser after it was quit", () => {
+    ensureWorkspace(tmux!, session, process.cwd(), [pane("claude"), { ...pane("files"), window: "files" }]);
+    expect(openInEditorPane(tmux!, session, ["/tmp/a.ts"], ["sh", "-c", "sleep 30"]).ok).toBe(true);
+    const editor = paneStates(tmux!, session).find((p) => p.agent === "editor");
+    expect(editor).toMatchObject({ window: "files", home: "files" });
   });
 
   it("builds a pane menu tmux accepts", () => {
