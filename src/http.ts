@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { requestApproval } from "./approvals.js";
 import express from "express";
 import type { Express } from "express";
 import { createAiRoomServer } from "./server.js";
@@ -158,6 +159,36 @@ export function createHttpApp(
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  // The gate hook files what it stopped an agent from doing. It can only ask:
+  // answers come from the console, which writes them itself, so nothing that
+  // reaches this port can approve anything.
+  app.post("/gate/request", express.json(), (req, res) => {
+    const room = typeof req.body?.room === "string" ? req.body.room : "";
+    const agent = typeof req.body?.agent === "string" ? req.body.agent : "";
+    const action = typeof req.body?.action === "string" ? req.body.action.slice(0, 500) : "";
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 300) : undefined;
+    try {
+      if (!room || !agent || !action || !roomWho(db, { room }).some((p) => p.agent === agent)) throw new Error();
+      res.json({ ok: true, ...requestApproval(db, { room, agent, action, reason }) });
+    } catch {
+      res.status(400).json({ ok: false, error: "room, a participant agent and action are required" });
+    }
+  });
+
+  // After the console writes something itself (an approval, a plan), this
+  // brings back whoever it was for. It sends nothing: an agent with nothing
+  // unread for it stays asleep.
+  app.post("/wake", express.json(), (req, res) => {
+    const room = typeof req.body?.room === "string" ? req.body.room : "";
+    if (!room) {
+      res.status(400).json({ ok: false, error: "room is required" });
+      return;
+    }
+    waitRegistry.notify(room);
+    wakeService.wakeRoom(db, room);
+    res.json({ ok: true });
   });
 
   // Live feed for the console: replays recent history, then streams new

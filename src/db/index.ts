@@ -87,6 +87,18 @@ function migrate(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_message_attachments_attachment ON message_attachments(attachment_id);
 
+    CREATE TABLE IF NOT EXISTS approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room TEXT NOT NULL REFERENCES rooms(name),
+      agent TEXT NOT NULL,
+      action TEXT NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_approvals_room ON approvals(room, status);
+
     CREATE TABLE IF NOT EXISTS cursors (
       room TEXT NOT NULL REFERENCES rooms(name),
       agent TEXT NOT NULL,

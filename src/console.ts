@@ -188,6 +188,8 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/remove <agent>${C.reset}    take an agent out (e.g. it hit its limit); the rest keep working
   ${C.bold}/add <agent> [role]${C.reset} bring an agent in, new or back
   ${C.bold}/approve${C.reset}           approve the lead's plan and launch the team (with no plan: launch who is waiting)
+  ${C.bold}/allow [n]${C.reset}         list what agents were stopped from doing; allow request n once
+  ${C.bold}/deny <n>${C.reset}          refuse request n
   ${C.bold}/skills [filter]${C.reset}    project, user and plugin skills (Tab completes after /)
   ${C.bold}/<skill> @agent text${C.reset}  ask an agent to run a skill (no @: ask the room)
   ${C.bold}/detach${C.reset}            detach from the workspace (agents and room keep running)
@@ -211,7 +213,7 @@ alone; start it with @codex (or @codex @agy) for someone else, @all for everyone
  * what leaves the console is one message with its line breaks intact.
  */
 export const CONSOLE_COMMANDS = [
-  "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "approve", "skills", "reload",
+  "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "approve", "allow", "deny", "skills", "reload",
   "detach", "close", "paste", "file", "drop", "clear", "help", "quit",
 ];
 
@@ -598,6 +600,14 @@ export async function runConsole(
     emit(rl, lines.join("\n") || `${C.dim}nothing live in this room.${C.reset}`);
   };
 
+  // The console writes approvals and plans itself; this brings back whoever they are for.
+  const wakeRoom = () =>
+    void fetch(`${options.baseUrl}/wake`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room }),
+    }).catch(() => undefined);
+
   const say = async (draft: { message: string; attachmentIds: string[] }) => {
     try {
       const response = await fetch(`${options.baseUrl}/say`, {
@@ -847,6 +857,35 @@ export async function runConsole(
             try {
               const result = cast.approvePlan(db, room);
               emit(rl, result.ok ? `${C.dim}${result.detail}${C.reset}` : `${C.warn}${result.detail}${C.reset}`);
+              if (result.ok) wakeRoom();
+            } finally {
+              db.close();
+            }
+          });
+          break;
+        case "allow":
+        case "deny":
+          void Promise.all([import("./approvals.js"), import("./db/index.js")]).then(([approvals, dbModule]) => {
+            const db = dbModule.openDb();
+            try {
+              const pending = approvals.pendingApprovals(db, room);
+              const id = Number(rest[0] ?? (cmd === "allow" && pending.length === 1 ? pending[0].id : NaN));
+              if (!Number.isInteger(id)) {
+                emit(
+                  rl,
+                  pending.length
+                    ? `${C.dim}waiting for you:${C.reset}\n${pending.map((a) => `  #${a.id} ${a.agent}: ${a.action}${a.reason ? ` ${C.dim}(${a.reason})${C.reset}` : ""}`).join("\n")}\n${C.dim}/allow <n> or /deny <n>${C.reset}`
+                    : `${C.dim}nothing waiting for your approval.${C.reset}`
+                );
+                return;
+              }
+              const decided = approvals.decideApproval(db, room, id, cmd === "allow");
+              if (!decided) {
+                emit(rl, `${C.warn}no open request #${id} in this room${C.reset}`);
+                return;
+              }
+              emit(rl, `${C.dim}${cmd === "allow" ? "allowed once" : "denied"}: #${id} ${decided.agent}: ${decided.action}${C.reset}`);
+              wakeRoom();
             } finally {
               db.close();
             }

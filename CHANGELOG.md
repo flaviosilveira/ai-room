@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The gate: `hooks/ai-room-gate.py`, a PreToolUse hook for Claude Code, Codex
+  and agy. In a room, what the policy says to ask about is stopped and filed
+  for the human instead of prompting in a pane; `/allow <n>` in the console
+  lets that one retry through, `/deny <n>` refuses it. Only the console can
+  answer: the HTTP side (`POST /gate/request`) can only ask. `POST /wake`
+  brings back whoever a console action was for.
 - For a medium or large task, or an ambiguous brief, the lead grills the human
   before proposing the team: one `[FOR YOU #n]` question at a time, the
   grill-me / grill-with-docs method, with the decisions in

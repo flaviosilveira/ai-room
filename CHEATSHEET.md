@@ -111,6 +111,18 @@ delegation to `claude-2` from waking `codex` to read it and reply "ok". The
 lead sends findings and decisions without `to`, so the others still weigh in
 where it matters.
 
+### Approvals in one place: the gate
+
+`hooks/ai-room-gate.py` is a PreToolUse hook for Claude Code, Codex and agy.
+In a room, anything on the ask list (`~/.ai-room/policy.json`: `allow`, `ask`,
+`deny` command prefixes) is stopped and filed for you instead of prompting in
+the agent's pane: your console shows `agy needs your approval #3: git push …`,
+and `/allow 3` lets exactly that one retry through. Anything that changes
+`~/.ai-room` or an agent's settings is refused. Claude and Codex keep their own
+auto mode for everything else; agy, which has none, gets the allow list, reads,
+edits inside the workspace and a reviewer model, and the rest is filed for you.
+Out of a room the gate does nothing. Log: `~/.ai-room/logs/gate.log`.
+
 ### Several instances of one agent
 
 Number them: the name picks the CLI, so `claude-2` runs Claude Code as a separate
@@ -201,6 +213,7 @@ the room is told so the others pick up its part.
 | `/agents` | Live panes and sessions |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
 | `/approve` | Approves the lead's plan and launches the team (no plan: launches whoever is waiting) |
+| `/allow` · `/allow <n>` · `/deny <n>` | Lists what the gate stopped agents from doing · allows request n once · refuses it |
 | `@codex …` · `@all …` | A message for one agent · for everyone (plain text goes to the lead) |
 | `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |
