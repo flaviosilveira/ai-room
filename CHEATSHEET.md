@@ -95,6 +95,12 @@ role, model and effort. The plan arrives in your console; `/approve` launches
 the team at those levels. `/approve` with no plan launches whoever is waiting
 at their default level, and `--no-plan` skips the step.
 
+For a medium or large task, or a vague brief, the lead grills you first: one
+`[FOR YOU #n]` question at a time, the grill-me / grill-with-docs way, until the
+decisions are settled in `.ai-room/for-human/plan.md`; the plan it proposes
+points to that file. "Enough" or "go ahead" stops the questions. A small, clear
+task is proposed directly.
+
 A plan has at least two agents, and never everyone on a light setting (a low
 effort or a haiku/mini/lite/-low model). One agent is still possible: invite
 only one.

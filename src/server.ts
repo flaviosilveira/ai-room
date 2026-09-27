@@ -378,6 +378,7 @@ export function createAiRoomServer(
         agent: z.string().describe("Your own identifier: the lead's."),
         size: z.string().max(300).describe('The task\'s touch points, e.g. "small: 4 changes in 2 files" or "large: 3 modules, a migration".'),
         reason: z.string().max(500).optional(),
+        plan: z.string().max(300).optional().describe("Path of the file with the decisions the grilling settled, e.g. .ai-room/for-human/plan.md."),
         agents: z
           .array(
             z.object({
@@ -395,8 +396,8 @@ export function createAiRoomServer(
           .min(1),
       },
     },
-    async ({ room, agent, size, reason, agents }) => {
-      const result = proposePlan(db, room, agent, { size, reason, agents });
+    async ({ room, agent, size, reason, plan, agents }) => {
+      const result = proposePlan(db, room, agent, { size, reason, plan, agents });
       return { content: [{ type: "text", text: JSON.stringify(result) }], isError: !result.ok };
     }
   );

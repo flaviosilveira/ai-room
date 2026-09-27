@@ -87,12 +87,14 @@ describe("the lead's plan", () => {
   it("tells the human the plan and applies it on approval", () => {
     const proposed = proposePlan(db, "r", "claude", {
       size: "small: 4 changes in 2 files",
+      plan: ".ai-room/for-human/plan.md",
       agents: [{ agent: "codex", role: "reviewer", model: "gpt-5.5", effort: "medium" }],
     });
     expect(proposed.ok).toBe(true);
     const note = roomHistory(db, { room: "r" }).find((m) => m.agent === "claude");
     expect(note?.to).toEqual(["human"]);
     expect(note?.content).toMatch(/codex \(reviewer\): gpt-5.5 medium/);
+    expect(note?.content).toMatch(/Decisions: .ai-room\/for-human\/plan.md/);
 
     expect(approvePlan(db, "r").ok).toBe(true);
     const charter = roomCharter(db, "r")!;

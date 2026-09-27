@@ -55,6 +55,13 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "room_propose with the team: each agent's role, and a model and effort that fit",
     "(light for a small, well-bounded part, higher for review of risky changes; at least",
     "two agents, never all light). The human approves it; until then the lead only explores.",
+    "A small, clear task is proposed directly. A medium or large one, or an ambiguous brief,",
+    "is grilled first: before room_propose the lead interviews the human in the room, one",
+    "[FOR YOU #n] question at a time with the options and its own recommendation, each asked",
+    "only once what it depends on is settled — the method of the grill-with-docs skill when",
+    "the repository has docs or ADRs to check answers against, grill-me otherwise (use the",
+    "skill if you have it). The settled decisions go in .ai-room/for-human/plan.md, whose",
+    "path room_propose carries as `plan`. \"Enough\" or \"go ahead\" from the human ends it.",
     "Waking: a room_send with `to` wakes only those agents; one without `to` wakes the whole",
     "room. Delegation and details go with `to` (e.g. [\"claude-2\"]); findings, decisions and",
     "a plan the others should check go without it, so a second point of view still gets",
@@ -91,7 +98,7 @@ export const TOOL_PRESETS: Record<string, ToolDeclaration> = {
     purpose:
       "Interrogate a plan until it can be committed to: one round of questions at a time, each asked only once what it depends on is settled. Writes no files.",
     howToUse:
-      "Only when a human asks for it: run `/grill-me` in a fresh conversation with plan mode off, answer round by round, and post the settled plan to the room. Skill from mattpocock/skills.",
+      "When a human asks for it, or as the room's lead before proposing the team for a medium or large task: one question at a time, then post the settled plan to the room. Skill from mattpocock/skills.",
   },
   "grill-with-docs": {
     name: "grill-with-docs",

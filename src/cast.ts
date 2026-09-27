@@ -172,7 +172,7 @@ export function proposePlan(
   db: Database.Database,
   room: string,
   by: string,
-  plan: { size: string; reason?: string; agents: RosterEntry[] }
+  plan: { size: string; reason?: string; plan?: string; agents: RosterEntry[] }
 ): { ok: boolean; detail: string } {
   const charter = roomCharter(db, room);
   if (!charter) return { ok: false, detail: `no charter for "${room}"` };
@@ -185,7 +185,7 @@ export function proposePlan(
   const problem = checkProposal(agents);
   if (problem) return { ok: false, detail: problem };
 
-  roomSetCharter(db, { room, proposal: { by, size: plan.size, reason: plan.reason, agents, createdAt: Date.now() } });
+  roomSetCharter(db, { room, proposal: { by, size: plan.size, reason: plan.reason, plan: plan.plan, agents, createdAt: Date.now() } });
   const lines = agents.map((entry) => {
     const level = [entry.model, entry.effort].filter(Boolean).join(" ") || "default level";
     return `- ${entry.agent}${entry.role ? ` (${entry.role})` : ""}: ${level}`;
@@ -194,7 +194,12 @@ export function proposePlan(
     room,
     agent: by,
     to: ["human"],
-    message: [`Plan: ${plan.size}.${plan.reason ? ` ${plan.reason}` : ""}`, ...lines, "Approve with /approve, or change it with --model/--effort and /add."].join("\n"),
+    message: [
+      `Plan: ${plan.size}.${plan.reason ? ` ${plan.reason}` : ""}`,
+      ...(plan.plan ? [`Decisions: ${plan.plan}`] : []),
+      ...lines,
+      "Approve with /approve, or change it with --model/--effort and /add.",
+    ].join("\n"),
   });
   return { ok: true, detail: "proposed; the human approves it with /approve" };
 }
@@ -237,7 +242,7 @@ export function approvePlan(db: Database.Database, room: string): { ok: boolean;
     agent: "human",
     origin: "human",
     to: lead ? [lead] : undefined,
-    message: `The human approved the plan.${joining.length ? ` Joining: ${joining.join(", ")}.` : ""}`,
+    message: `The human approved the plan.${proposal?.plan ? ` Decisions: ${proposal.plan}; read it before starting.` : ""}${joining.length ? ` Joining: ${joining.join(", ")}.` : ""}`,
   });
   if (!joining.length) return { ok: true, detail: "plan approved; everyone in it is already running" };
   if (!live) return { ok: true, detail: `plan approved; ${joining.join(", ")} start with: ai-room attach ${room}` };

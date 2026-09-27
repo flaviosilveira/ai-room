@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- For a medium or large task, or an ambiguous brief, the lead grills the human
+  before proposing the team: one `[FOR YOU #n]` question at a time, the
+  grill-me / grill-with-docs method, with the decisions in
+  `.ai-room/for-human/plan.md`. `room_propose` takes its path as `plan`, and the
+  agents that join are told to read it. Small, clear tasks skip it.
 - `ai-room setup` asks for the defaults of new rooms (agents, lead, tools,
   conventions, mouse), suggesting the agents and tools installed on the
   machine, and saves them to `~/.ai-room/config.json`. The first `open` offers
