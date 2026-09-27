@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { harnessFor } from "./invite.js";
-import type { RosterEntry } from "./types.js";
+import { EFFORTS } from "./types.js";
+import type { Effort, RosterEntry } from "./types.js";
 
 export interface OpenFlags {
   brief?: string;
@@ -11,6 +12,10 @@ export interface OpenFlags {
   tools: string[];
   invite: string[];
   roles: Map<string, string>;
+  models: Map<string, string>;
+  efforts: Map<string, Effort>;
+  /** A new team starts with its lead alone, who sizes the task and proposes the rest. */
+  plan: boolean;
   /** Who talks to the human: an agent, false for nobody, undefined to pick one. */
   lead?: string | false;
   dryRun: boolean;
@@ -62,6 +67,9 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     tools: [],
     invite: [],
     roles: new Map(),
+    models: new Map(),
+    efforts: new Map(),
+    plan: true,
     dryRun: false,
     detached: false,
     monitor: true,
@@ -72,6 +80,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const value = () => argv[++i] ?? "";
+    const pairs = () => value().split(",").map((pair) => pair.split("=")).filter(([agent, v]) => agent && v);
     if (arg === "--brief") flags.brief = value();
     else if (arg === "--convention") flags.convention = value();
     else if (arg === "--tool") flags.tools.push(...value().split(",").filter(Boolean));
@@ -79,7 +88,11 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--role") {
       const [agent, ...rest] = value().split("=");
       if (agent && rest.length) flags.roles.set(agent, rest.join("="));
-    } else if (arg === "--reuse") flags.reuse = true;
+    } else if (arg === "--model") for (const [agent, model] of pairs()) flags.models.set(agent, model);
+    else if (arg === "--effort") {
+      for (const [agent, effort] of pairs()) flags.efforts.set(agent, parseEffort(effort));
+    } else if (arg === "--no-plan") flags.plan = false;
+    else if (arg === "--reuse") flags.reuse = true;
     else if (arg === "--dry-run") flags.dryRun = true;
     else if (arg === "--detached") flags.detached = true;
     else if (arg === "--no-monitor") flags.monitor = false;
@@ -92,6 +105,12 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;
+}
+
+export function parseEffort(value: string): Effort {
+  const effort = value === "xhigh" ? "max" : value;
+  if (!(EFFORTS as readonly string[]).includes(effort)) throw new Error(`effort "${value}": one of ${EFFORTS.join(", ")}`);
+  return effort as Effort;
 }
 
 export interface OpenDefaults {
@@ -218,6 +237,8 @@ export function charterPatch(room: string, flags: OpenFlags): CharterPatch {
       agent,
       harness: harnessFor(agent),
       role: flags.roles.get(agent),
+      model: flags.models.get(agent),
+      effort: flags.efforts.get(agent),
     }));
   }
   return patch;
@@ -229,8 +250,20 @@ export function charterPatch(room: string, flags: OpenFlags): CharterPatch {
  * to an empty one. The human is a participant, never a launchable harness.
  */
 export function agentsToLaunch(flags: OpenFlags, roster: RosterEntry[]): string[] {
-  if (flags.invite.length) return flags.invite;
-  return roster.map((entry) => entry.agent).filter((agent) => agent !== "human");
+  const held = new Set(roster.filter((entry) => entry.held).map((entry) => entry.agent));
+  const agents = flags.invite.length ? flags.invite : roster.map((entry) => entry.agent).filter((agent) => agent !== "human");
+  return agents.filter((agent) => !held.has(agent));
+}
+
+/**
+ * A new team opens with its lead alone: the lead sizes the task first and
+ * proposes who works on it at which level, so nobody spends tokens on a brief
+ * before the plan exists. One agent, no lead or `--no-plan` launch everyone.
+ */
+export function holdForPlan(roster: RosterEntry[], flags: OpenFlags, roomIsNew: boolean): RosterEntry[] {
+  const lead = roster.find((entry) => isLead(entry.role));
+  if (!roomIsNew || !flags.plan || !flags.brief || !lead || roster.length < 2) return roster;
+  return roster.map((entry) => (entry === lead ? entry : { ...entry, held: true }));
 }
 
 export type ReuseVerdict =

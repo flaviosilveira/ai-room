@@ -17,7 +17,7 @@ import {
   roomSetCharter,
   roomWho,
 } from "./store.js";
-import { closeRoom, editorCommand, harnessFor, invite, logDir, openWorkspace, planWorkspace } from "./invite.js";
+import { closeRoom, editorCommand, harnessFor, invite, launchProfile, logDir, openWorkspace, planWorkspace } from "./invite.js";
 import {
   INSTALL_HINT,
   attachWorkspace,
@@ -41,6 +41,7 @@ import { missingTools } from "./presets.js";
 import { attachmentRoot, formatBytes } from "./attachments.js";
 import {
   agentsToLaunch,
+  holdForPlan,
   charterPatch,
   assignLead,
   classifyJoins,
@@ -255,7 +256,9 @@ async function open(room: string, argv: string[]): Promise<void> {
     }
   }
 
-  const charter = roomSetCharter(db, charterPatch(room, flags));
+  let charter = roomSetCharter(db, charterPatch(room, flags));
+  const held = holdForPlan(charter.roster, flags, verdict.kind === "new");
+  if (held !== charter.roster) charter = roomSetCharter(db, { room, roster: held });
 
   console.log(`room: ${room}`);
   console.log(`brief: ${charter.brief ?? "(none)"}`);
@@ -268,6 +271,11 @@ async function open(room: string, argv: string[]): Promise<void> {
   }
 
   const agents = agentsToLaunch(flags, charter.roster);
+  const profiles = Object.fromEntries(charter.roster.map((entry) => [entry.agent, launchProfile(entry)]));
+  const waiting = charter.roster.filter((entry) => entry.held).map((entry) => entry.agent);
+  if (waiting.length) {
+    console.log(`waiting for the lead's plan: ${waiting.join(", ")} (approve it with /approve in the console)`);
+  }
 
   console.log("");
 
@@ -275,7 +283,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   const useWorkspace = !flags.detached && Boolean(tmux);
 
   if (flags.dryRun) {
-    const plan = planWorkspace(room, agents, { monitor: flags.monitor, files: flags.files });
+    const plan = planWorkspace(room, agents, { monitor: flags.monitor, files: flags.files, profiles });
     console.log(`mode: ${useWorkspace ? "tmux workspace" : flags.detached ? "detached" : "detached (no tmux)"}`);
     for (const pane of plan.panes) {
       console.log(`  ${pane.title}: ${pane.command.join(" ")}`);
@@ -291,6 +299,7 @@ async function open(room: string, argv: string[]): Promise<void> {
         monitor: flags.monitor,
         files: flags.files,
         mouse: flags.mouse,
+        profiles,
         size: process.stdout.isTTY
           ? { columns: process.stdout.columns, rows: Math.max(10, process.stdout.rows - 1) }
           : undefined,
@@ -344,7 +353,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   }
 
   for (const agent of agents) {
-    const result = invite(room, agent, {});
+    const result = invite(room, agent, { profile: profiles[agent] });
     if (result.status === "launched") {
       console.log(
         result.mode === "headless"

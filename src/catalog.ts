@@ -27,6 +27,7 @@ export const TOOL_CATALOG: ToolSummary[] = [
   { name: "room_charter", summary: "Read a room's charter.", mutates: false },
   { name: "room_attachment", summary: "Open one attachment of a room message: metadata, path, text, or the image itself.", mutates: false },
   { name: "room_set_status", summary: "Publish observable agent state.", mutates: true },
+  { name: "room_propose", summary: "Lead only: propose the team for the task (roles, models, efforts) for the human to approve.", mutates: true },
   { name: "room_history", summary: "Read message history, newest first by default.", mutates: false },
   { name: "room_who", summary: "List participants and their last activity.", mutates: false },
   { name: "room_leave", summary: "Mark an agent as having left. The explicit exit from the wait loop.", mutates: true },

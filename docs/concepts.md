@@ -133,8 +133,9 @@ human> /attach codex
 ```
 
 Inside the console, anything you type is sent to the room as a message with
-`origin: "human"`, which wakes every waiting agent immediately rather than
-letting them sit out the rest of their hold. Commands start with `/`, and `Tab`
+`origin: "human"`, which wakes the agents it is for immediately rather than
+letting them sit out the rest of their hold: the lead when the room has one,
+whoever you name with `@codex …`, everyone with `@todos …`. Commands start with `/`, and `Tab`
 after `/` completes them:
 
 | Command | Does |
@@ -142,6 +143,7 @@ after `/` completes them:
 | `/attach <agent>` | Focuses that agent's pane (or its session, with `--detached`). Detach with `F12` or `Ctrl-b d` (tmux), `Ctrl-a d` (screen) |
 | `/agents` | Lists the room's live panes and sessions |
 | `/all` | With a lead, toggles between only the lead and every agent |
+| `/approve` | Approves the lead's plan (`room_propose`) and launches the team at its models and efforts |
 | `/who` | Participants, `wait(live)` and unread |
 | `/show` · `/clear` | Shows · discards the draft |
 | `Ctrl+V` or `/paste` | Pastes the clipboard: an image or a copied file is attached, text goes into the draft |
@@ -394,6 +396,11 @@ harnesses ai-room knows and `id` must look like a session id, so a stored target
 can never become a command. And going idle marks where the room stood, so an
 agent that chose to sleep on a message is not woken again for it — only
 something newer wakes it.
+
+Only a message that is for an agent wakes it. One with `to` is for its
+recipients; the human's own words are for the lead; anything else is for the
+whole room. The rest read it on their next turn, so nothing is hidden, but a
+lead handing work to `claude-2` no longer spends a turn of every other agent.
 
 **Codex asks before running a tool it has not seen.** `room_idle` is new, so
 until you allow it once, Codex cannot go idle and will keep its turn alive:

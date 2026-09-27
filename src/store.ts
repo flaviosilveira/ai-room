@@ -10,6 +10,7 @@ import type {
   WakeSpec,
   AgentBriefing,
   RoomCharter,
+  Proposal,
   RosterEntry,
   ToolDeclaration,
   AgentStatus,
@@ -696,14 +697,57 @@ export interface WakeTarget {
   cursor: number;
 }
 
+/**
+ * Whether a message calls this agent back. Everyone still reads every message
+ * once awake; this only decides who is woken for it. A message with recipients
+ * is for them, the human's own words go to the lead who answers them, and
+ * anything else is for the whole room. Waking all on every aside is what spent
+ * the tokens: the lead delegating to claude-2 woke codex to read it and say ok.
+ */
+export function callsAgent(
+  message: { agent: string; origin: string; recipients: string | null },
+  agent: string,
+  leads: Set<string>
+): boolean {
+  if (message.agent === agent) return false;
+  const to = message.recipients ? (JSON.parse(message.recipients) as string[]) : [];
+  if (to.length) return to.includes(agent);
+  if (message.origin === "human" && leads.size) return leads.has(agent);
+  return true;
+}
+
+const EVERYONE = new Set(["todos", "all", "everyone"]);
+
+/**
+ * The human's `@codex @agy …` at the start of a line names who it is for;
+ * `@todos` is every agent. Only names in the room count, so an email address
+ * or a stray @ stays text.
+ */
+export function mentionedAgents(db: Database.Database, room: string, message: string): string[] | undefined {
+  const agents = (db.prepare("SELECT agent FROM participants WHERE room = ? AND active = 1 AND agent != 'human'").all(room) as { agent: string }[])
+    .map((row) => row.agent);
+  const opening = /^\s*((?:@[\w.-]+[,:]?\s*)+)/.exec(message)?.[1] ?? "";
+  const names = [...opening.matchAll(/@([\w.-]+)/g)].map((match) => match[1].toLowerCase());
+  if (names.some((name) => EVERYONE.has(name))) return agents;
+  const to = [...new Set(names.filter((name) => agents.includes(name)))];
+  return to.length ? to : undefined;
+}
+
+export function roomLeads(db: Database.Database, room: string): Set<string> {
+  const rows = db.prepare("SELECT agent, role FROM participants WHERE room = ? AND active = 1").all(room) as { agent: string; role: string | null }[];
+  return new Set(rows.filter((row) => row.role?.split(/,\s*/).includes("lead")).map((row) => row.agent));
+}
+
 /** Idle agents in this room that have something to come back for. */
 export function idleParticipantsWithUnread(
   db: Database.Database,
   room: string
 ): WakeTarget[] {
-  return db
+  const leads = roomLeads(db, room);
+  const since = db.prepare("SELECT agent, origin, recipients FROM messages WHERE room = ? AND id > ?");
+  return (db
     .prepare(
-      `SELECT p.agent, p.wake_kind as wakeKind, p.wake_id as wakeId,
+      `SELECT p.agent, p.wake_kind as wakeKind, p.wake_id as wakeId, p.idle_mark as idleMark,
               COALESCE((SELECT c.last_message_id FROM cursors c
                          WHERE c.room = p.room AND c.agent = p.agent), 0) as cursor,
               (SELECT COUNT(*) FROM messages m
@@ -714,15 +758,18 @@ export function idleParticipantsWithUnread(
        FROM participants p
        WHERE p.room = ? AND p.active = 1 AND p.status = 'idle'
          AND p.wake_kind IS NOT NULL AND p.wake_id IS NOT NULL
-         -- Something it has not read, that arrived after it fell asleep.
-         AND EXISTS (SELECT 1 FROM messages m
-                      WHERE m.room = p.room AND m.agent != p.agent AND m.id > p.idle_mark)
          -- And it has not already been resumed twice for this same position.
          AND (p.wake_cursor != COALESCE((SELECT c.last_message_id FROM cursors c
                                           WHERE c.room = p.room AND c.agent = p.agent), 0)
               OR p.wake_attempts < ${WAKE_ATTEMPT_LIMIT})`
     )
-    .all(room) as WakeTarget[];
+    .all(room) as (WakeTarget & { idleMark: number })[])
+    // Something for it, that arrived after it fell asleep.
+    .filter((target) =>
+      (since.all(room, target.idleMark) as { agent: string; origin: string; recipients: string | null }[])
+        .some((message) => callsAgent(message, target.agent, leads))
+    )
+    .map(({ idleMark: _, ...target }) => target);
 }
 
 /**
@@ -914,6 +961,7 @@ interface CharterRow {
   conventionPreset: string | null;
   tools: string | null;
   roster: string | null;
+  proposal: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -925,7 +973,7 @@ export function roomCharter(
   const row = db
     .prepare(
       `SELECT room, brief, conventions, convention_preset as conventionPreset,
-              tools, roster, created_at as createdAt, updated_at as updatedAt
+              tools, roster, proposal, created_at as createdAt, updated_at as updatedAt
        FROM room_profiles WHERE room = ?`
     )
     .get(room) as CharterRow | undefined;
@@ -934,6 +982,7 @@ export function roomCharter(
     ...row,
     tools: parseJson<ToolDeclaration[]>(row.tools, []),
     roster: parseJson<RosterEntry[]>(row.roster, []),
+    proposal: parseJson<Proposal | null>(row.proposal, null),
   };
 }
 
@@ -967,6 +1016,7 @@ export function roomSetCharter(
     conventions?: string | null;
     tools?: (string | ToolDeclaration)[];
     roster?: RosterEntry[];
+    proposal?: Proposal | null;
   }
 ): RoomCharter {
   ensureRoom(db, params.room, false, "Call room_join first to create it.");
@@ -993,17 +1043,19 @@ export function roomSetCharter(
       : existing?.tools ?? [];
   const roster = params.roster !== undefined ? params.roster : existing?.roster ?? [];
   const brief = params.brief !== undefined ? params.brief : existing?.brief ?? null;
+  const proposal = params.proposal !== undefined ? params.proposal : existing?.proposal ?? null;
 
   db.prepare(
     `INSERT INTO room_profiles
-       (room, brief, conventions, convention_preset, tools, roster, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       (room, brief, conventions, convention_preset, tools, roster, proposal, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(room) DO UPDATE SET
        brief = excluded.brief,
        conventions = excluded.conventions,
        convention_preset = excluded.convention_preset,
        tools = excluded.tools,
        roster = excluded.roster,
+       proposal = excluded.proposal,
        updated_at = excluded.updated_at`
   ).run(
     params.room,
@@ -1012,6 +1064,7 @@ export function roomSetCharter(
     preset,
     JSON.stringify(tools),
     JSON.stringify(roster),
+    proposal ? JSON.stringify(proposal) : null,
     existing?.createdAt ?? now,
     now
   );

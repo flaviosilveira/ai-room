@@ -1,8 +1,9 @@
 import type Database from "better-sqlite3";
-import { LAUNCHERS, harnessFor, openWorkspace } from "./invite.js";
+import { LAUNCHERS, harnessFor, launchProfile, openWorkspace } from "./invite.js";
 import { detectMultiplexer, killWorkspace, mux, paneStates, sessionExists, sessionName, workspaceName } from "./session.js";
 import { roomCharter, roomExists, roomLeave, roomSend, roomSetCharter, roomWho } from "./store.js";
-import { LEAD_ROLE, isLead, pickLead, withLeadRole } from "./open.js";
+import { LEAD_ROLE, MAX_INSTANCES, isLead, pickLead, withLeadRole } from "./open.js";
+import type { RosterEntry } from "./types.js";
 
 /**
  * Changing who is in a room while it runs. An agent that hit its usage limit
@@ -133,11 +134,115 @@ export function addAgent(
   }
 
   const roster = roomCharter(db, room)?.roster ?? [];
-  const entry = { agent, harness, role: role ?? roster.find((e) => e.agent === agent)?.role };
+  const before = roster.find((e) => e.agent === agent);
+  const entry = { ...before, agent, harness, role: role ?? before?.role, held: undefined };
   roomSetCharter(db, { room, roster: [...roster.filter((e) => e.agent !== agent), entry] });
 
   if (!live) return { ok: true, agent, detail: `${agent} added to the roster; it starts with: ai-room attach ${room}` };
-  const { plan } = openWorkspace(room, [agent], { monitor: false, files: false });
+  const { plan } = openWorkspace(room, [agent], { monitor: false, files: false, profiles: { [agent]: launchProfile(entry) } });
   if (plan.missing.length) return { ok: false, detail: `${LAUNCHERS[harness].bin} is not on PATH` };
   return { ok: true, agent, detail: `${agent} launched in a new pane` };
+}
+
+/** A team the human would not want: every member on a light model or effort. */
+const LIGHT_MODEL = /haiku|mini|nano|lite|-low\b/i;
+
+export function lightweight(entry: RosterEntry): boolean {
+  return entry.effort === "low" || LIGHT_MODEL.test(entry.model ?? "");
+}
+
+/**
+ * Checks the lead's plan before the human sees it. Two agents at least, since
+ * the second point of view is the reason for a room; one alone is what the
+ * human asks for by inviting one. Never everyone on a light setting.
+ */
+export function checkProposal(agents: RosterEntry[]): string | null {
+  if (agents.length < 2) return "a plan needs at least two agents: the second point of view is the point of the room";
+  for (const entry of agents) {
+    if (!LAUNCHERS[harnessFor(entry.agent, entry.harness)]) return `no launcher for "${entry.agent}". Known: ${Object.keys(LAUNCHERS).join(", ")}`;
+  }
+  const perHarness = new Map<string, number>();
+  for (const entry of agents) perHarness.set(harnessFor(entry.agent, entry.harness), (perHarness.get(harnessFor(entry.agent, entry.harness)) ?? 0) + 1);
+  for (const [harness, count] of perHarness) if (count > MAX_INSTANCES) return `more than ${MAX_INSTANCES} instances of ${harness}`;
+  if (agents.every(lightweight)) return "every agent is on a light model or effort; keep at least one at medium or above";
+  return null;
+}
+
+export function proposePlan(
+  db: Database.Database,
+  room: string,
+  by: string,
+  plan: { size: string; reason?: string; agents: RosterEntry[] }
+): { ok: boolean; detail: string } {
+  const charter = roomCharter(db, room);
+  if (!charter) return { ok: false, detail: `no charter for "${room}"` };
+  if (!isLead(charter.roster.find((entry) => entry.agent === by)?.role)) {
+    return { ok: false, detail: `only the lead proposes the team; ${by} is not the lead of ${room}` };
+  }
+  const agents = plan.agents.some((entry) => entry.agent === by)
+    ? plan.agents
+    : [{ agent: by }, ...plan.agents];
+  const problem = checkProposal(agents);
+  if (problem) return { ok: false, detail: problem };
+
+  roomSetCharter(db, { room, proposal: { by, size: plan.size, reason: plan.reason, agents, createdAt: Date.now() } });
+  const lines = agents.map((entry) => {
+    const level = [entry.model, entry.effort].filter(Boolean).join(" ") || "default level";
+    return `- ${entry.agent}${entry.role ? ` (${entry.role})` : ""}: ${level}`;
+  });
+  roomSend(db, {
+    room,
+    agent: by,
+    to: ["human"],
+    message: [`Plan: ${plan.size}.${plan.reason ? ` ${plan.reason}` : ""}`, ...lines, "Approve with /approve, or change it with --model/--effort and /add."].join("\n"),
+  });
+  return { ok: true, detail: "proposed; the human approves it with /approve" };
+}
+
+/**
+ * Applies the lead's plan (or, with none, just lets the held agents in) and
+ * launches whoever it adds. Agents already running keep running: a new level
+ * for one of them applies the next time it is launched.
+ */
+export function approvePlan(db: Database.Database, room: string): { ok: boolean; detail: string } {
+  const charter = roomCharter(db, room);
+  if (!charter) return { ok: false, detail: `no charter for "${room}"` };
+  const proposal = charter.proposal;
+  const current = new Map(charter.roster.map((entry) => [entry.agent, entry]));
+
+  let roster: RosterEntry[];
+  if (proposal) {
+    const planned = proposal.agents.map((entry) => {
+      const before = current.get(entry.agent);
+      const role = isLead(before?.role) ? withLeadRole(entry.role ?? undefined) : entry.role ?? before?.role;
+      return { ...before, ...entry, role, harness: entry.harness ?? before?.harness ?? harnessFor(entry.agent), held: undefined };
+    });
+    const kept = charter.roster.filter((entry) => !entry.held && !planned.some((p) => p.agent === entry.agent));
+    roster = [...planned, ...kept];
+  } else {
+    if (!charter.roster.some((entry) => entry.held)) return { ok: false, detail: "no plan to approve and nobody waiting" };
+    roster = charter.roster.map((entry) => ({ ...entry, held: undefined }));
+  }
+  roomSetCharter(db, { room, roster, proposal: null });
+
+  const tmux = detectMultiplexer("tmux");
+  const workspace = workspaceName(room);
+  const live = tmux && sessionExists(tmux, workspace);
+  const running = new Set(live ? paneStates(tmux, workspace).map((state) => state.agent) : []);
+  const joining = roster.map((entry) => entry.agent).filter((agent) => !running.has(agent));
+  const lead = roster.find((entry) => isLead(entry.role))?.agent;
+
+  roomSend(db, {
+    room,
+    agent: "human",
+    origin: "human",
+    to: lead ? [lead] : undefined,
+    message: `The human approved the plan.${joining.length ? ` Joining: ${joining.join(", ")}.` : ""}`,
+  });
+  if (!joining.length) return { ok: true, detail: "plan approved; everyone in it is already running" };
+  if (!live) return { ok: true, detail: `plan approved; ${joining.join(", ")} start with: ai-room attach ${room}` };
+  const profiles = Object.fromEntries(roster.map((entry) => [entry.agent, launchProfile(entry)]));
+  const { plan } = openWorkspace(room, joining, { monitor: false, files: false, profiles });
+  const missing = plan.missing.length ? `; not on PATH: ${plan.missing.join(", ")}` : "";
+  return { ok: true, detail: `plan approved; launched ${plan.agents.join(", ") || "nobody"}${missing}` };
 }

@@ -23,6 +23,8 @@ import {
   roomSetStatus,
   roomWho,
 } from "./store.js";
+import { proposePlan } from "./cast.js";
+import { EFFORTS } from "./types.js";
 import { WAKE_KINDS, WakeService, parseWakeSpec } from "./wake.js";
 import {
   DEFAULT_WAIT_MS,
@@ -78,7 +80,10 @@ export function createAiRoomServer(
         to: z
           .array(z.string())
           .optional()
-          .describe('Who the message is for, e.g. ["claude-2"] or ["human"]. Everyone still sees it; leave it out when it is for the whole room.'),
+          .describe(
+            'Who the message is for, e.g. ["claude-2"] or ["human"]. Only they are woken; everyone else still reads it when next awake. ' +
+              "Leave it out for what the whole room should weigh in on now: findings, decisions, a plan to check."
+          ),
       },
     },
     async ({ room, agent, message, to }) => {
@@ -359,6 +364,40 @@ export function createAiRoomServer(
     async ({ room, agent, status, detail }) => {
       const result = roomSetStatus(db, { room, agent, status, detail });
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.registerTool(
+    "room_propose",
+    {
+      description:
+        "Lead only. After sizing the task, propose the team that works on it: each agent's role, model and reasoning effort. " +
+        "The teammates are not launched until the human approves the plan with /approve. At least two agents, and never all on a light model or effort.",
+      inputSchema: {
+        room: z.string(),
+        agent: z.string().describe("Your own identifier: the lead's."),
+        size: z.string().max(300).describe('The task\'s touch points, e.g. "small: 4 changes in 2 files" or "large: 3 modules, a migration".'),
+        reason: z.string().max(500).optional(),
+        agents: z
+          .array(
+            z.object({
+              agent: z.string().regex(/^[\w.-]{1,40}$/).describe('An instance name: "codex", "claude-2", "agy".'),
+              role: z.string().max(200).optional(),
+              model: z
+                .string()
+                .regex(/^[\w.:/-]{1,100}$/, "a model name: letters, digits and . : / - _")
+                .optional()
+                .describe("The harness's own model name; leave out for its default."),
+              effort: z.enum(EFFORTS).optional(),
+              instructions: z.string().max(1000).optional(),
+            })
+          )
+          .min(1),
+      },
+    },
+    async ({ room, agent, size, reason, agents }) => {
+      const result = proposePlan(db, room, agent, { size, reason, agents });
+      return { content: [{ type: "text", text: JSON.stringify(result) }], isError: !result.ok };
     }
   );
 

@@ -10,6 +10,7 @@ import {
   createAttachment,
   markRead,
   roomHistory,
+  mentionedAgents,
   roomSend,
   roomWho,
 } from "./store.js";
@@ -145,7 +146,7 @@ export function createHttpApp(
       return;
     }
     try {
-      const sent = roomSend(db, { room, agent, message, origin: "human", attachmentIds });
+      const sent = roomSend(db, { room, agent, message, origin: "human", attachmentIds, to: mentionedAgents(db, room, message) });
       // Wake every waiter immediately instead of letting them sit out the hold,
       // and resume anyone who went idle — they have no way to notice by themselves.
       waitRegistry.notify(room);

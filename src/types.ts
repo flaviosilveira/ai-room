@@ -131,6 +131,23 @@ export interface RosterEntry {
   harness?: string;
   role?: string;
   instructions?: string;
+  /** Launch settings for this instance; unset means the harness's own default. */
+  model?: string;
+  effort?: Effort;
+  /** Invited, but not launched until the human approves the lead's plan. */
+  held?: boolean;
+}
+
+export const EFFORTS = ["low", "medium", "high", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+/** The lead's sizing of the task and the team it asks for, waiting for the human. */
+export interface Proposal {
+  by: string;
+  size: string;
+  reason?: string;
+  agents: RosterEntry[];
+  createdAt: number;
 }
 
 export interface ToolDeclaration {
@@ -146,6 +163,7 @@ export interface RoomCharter {
   conventionPreset: string | null;
   tools: ToolDeclaration[];
   roster: RosterEntry[];
+  proposal: Proposal | null;
   createdAt: number;
   updatedAt: number;
 }

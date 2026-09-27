@@ -187,6 +187,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/show <pane>${C.reset}       show a hidden pane again
   ${C.bold}/remove <agent>${C.reset}    take an agent out (e.g. it hit its limit); the rest keep working
   ${C.bold}/add <agent> [role]${C.reset} bring an agent in, new or back
+  ${C.bold}/approve${C.reset}           approve the lead's plan and launch the team (with no plan: launch who is waiting)
   ${C.bold}/skills [filter]${C.reset}    project, user and plugin skills (Tab completes after /)
   ${C.bold}/<skill> @agent text${C.reset}  ask an agent to run a skill (no @: ask the room)
   ${C.bold}/detach${C.reset}            detach from the workspace (agents and room keep running)
@@ -200,7 +201,8 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/help${C.reset}              this help
   ${C.bold}/quit${C.reset}              leave the console (agents keep running)
 
-Any other line goes to the room as your message.
+Any other line goes to the room as your message. With a lead, it wakes the lead
+alone; start it with @codex (or @codex @agy) for someone else, @todos for everyone.
 `;
 
 /**
@@ -209,7 +211,7 @@ Any other line goes to the room as your message.
  * what leaves the console is one message with its line breaks intact.
  */
 export const CONSOLE_COMMANDS = [
-  "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "skills", "reload",
+  "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "approve", "skills", "reload",
   "detach", "close", "paste", "file", "drop", "clear", "help", "quit",
 ];
 
@@ -839,6 +841,17 @@ export async function runConsole(
           emit(rl, result.ok ? `${C.dim}${rest[0]}: ${result.hidden ? "hidden" : "visible"}${C.reset}` : `${C.warn}${result.error}${C.reset}`);
           break;
         }
+        case "approve":
+          void Promise.all([import("./cast.js"), import("./db/index.js")]).then(([cast, dbModule]) => {
+            const db = dbModule.openDb();
+            try {
+              const result = cast.approvePlan(db, room);
+              emit(rl, result.ok ? `${C.dim}${result.detail}${C.reset}` : `${C.warn}${result.detail}${C.reset}`);
+            } finally {
+              db.close();
+            }
+          });
+          break;
         case "remove":
         case "add": {
           if (!rest[0]) {

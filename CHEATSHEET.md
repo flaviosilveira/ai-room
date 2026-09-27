@@ -56,6 +56,9 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--convention caveman,ponytail` | Writing rules for every agent |
 | `--role codex=reviewer` | One agent's role |
 | `--lead agy` · `--no-lead` | Picks the agent who talks to you · none (see below) |
+| `--model codex=gpt-5.5` | One instance's model, in its CLI's own names (`agy models` lists agy's) |
+| `--effort codex=medium,agy=low` | One instance's reasoning effort: `low`, `medium`, `high`, `max` |
+| `--no-plan` | Launches the whole team at once, without waiting for the lead's plan |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
 | `--no-files` | No files tab |
 | `--no-mouse` | Starts with the mouse off (it is on by default) |
@@ -75,11 +78,32 @@ addresses you. The others pass what they need from you through it.
 - Picked by preference: claude, then agy, then codex (codex runs out of usage
   first). `--lead <agent>` chooses; `--no-lead` or `"lead": false` in the
   config turns it off; `"lead": ["agy", "claude", "codex"]` changes the order.
+- Your plain messages wake the lead alone. `@codex …` (or `@codex @agy …`)
+  goes to whoever you name, `@todos …` to everyone.
 - Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
 - Anything to read or forward arrives as a file in `.ai-room/for-human/`
   (git-ignored), opened in the files tab: `[FOR YOU] deliverable: <path>`.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
+
+### The lead sizes the task first
+
+A new room with a brief and two or more agents opens with **the lead alone**.
+The lead takes a quick look, sizes the task by its touch points ("4 small
+changes in 2 files"), and proposes the team with `room_propose`: each agent's
+role, model and effort. The plan arrives in your console; `/approve` launches
+the team at those levels. `/approve` with no plan launches whoever is waiting
+at their default level, and `--no-plan` skips the step.
+
+A plan has at least two agents, and never everyone on a light setting (a low
+effort or a haiku/mini/lite/-low model). One agent is still possible: invite
+only one.
+
+Who is woken: a message with `to` wakes only its recipients, one without `to`
+wakes the whole room. Everyone reads everything once awake; this only stops a
+delegation to `claude-2` from waking `codex` to read it and reply "ok". The
+lead sends findings and decisions without `to`, so the others still weigh in
+where it matters.
 
 ### Several instances of one agent
 
@@ -168,6 +192,8 @@ the room is told so the others pick up its part.
 | `/panes` · `/hide <x>` · `/show <x>` | Lists, hides and shows panes |
 | `/agents` | Live panes and sessions |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
+| `/approve` | Approves the lead's plan and launches the team (no plan: launches whoever is waiting) |
+| `@codex …` · `@todos …` | A message for one agent · for everyone (plain text goes to the lead) |
 | `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |
 | `/close yes` | Closes the room |

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- A message wakes only who it is for: `to` wakes its recipients, the human's
+  plain words the lead, and a message with no `to` the whole room. Everyone
+  still reads everything once awake; a lead delegating to `claude-2` no longer
+  wakes `codex` to reply "ok". In the console, `@codex …` addresses one agent
+  and `@todos …` everyone.
+- A new team starts with its lead alone. The lead sizes the task and proposes
+  who works at which model and effort with the new `room_propose` tool; the
+  human approves with `/approve` and the team is launched at those levels. At
+  least two agents, never all on a light setting. `--no-plan` skips it.
+- `--model codex=gpt-5.5` and `--effort codex=medium` set one instance's level;
+  the roster keeps it for every relaunch.
 - The files tab is one Vim: the netrw tree on the left (`../` goes up) and
   the file opened beside it, editable at once, with no pause per file. yazi is
   still used when `AI_ROOM_FILES=yazi`, and a picked file no longer opens over

@@ -16,6 +16,17 @@ import {
   workspaceName,
 } from "./session.js";
 import type { MultiplexerDriver, PaneSpec, WorkspaceResult } from "./session.js";
+import type { Effort, RosterEntry } from "./types.js";
+
+/**
+ * How one instance is launched. `env` is where an account plugs in later: a
+ * second Claude login is the same CLI with its own CLAUDE_CONFIG_DIR.
+ */
+export interface LaunchProfile {
+  model?: string;
+  effort?: Effort;
+  env?: Record<string, string>;
+}
 
 export interface AgentLauncher {
   bin: string;
@@ -25,16 +36,37 @@ export interface AgentLauncher {
    * would leave the human nothing to answer.
    */
   args: (prompt: string) => string[];
+  /** Flags for a model and a reasoning effort, in this CLI's own words. */
+  level: (profile: LaunchProfile) => string[];
 }
 
 export const LAUNCHERS: Record<string, AgentLauncher> = {
-  claude: { bin: "claude", args: (prompt) => [prompt] },
+  claude: {
+    bin: "claude",
+    args: (prompt) => [prompt],
+    level: ({ model, effort }) => [...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : [])],
+  },
   // Claude's auto mode comes from its own settings. Codex's equivalent is a
   // reviewer that approves safe requests and still asks for the rest; agy has
   // no reviewer, only a skip-everything flag, so it only stops asking for edits.
-  codex: { bin: "codex", args: (prompt) => ["--approve-for-me", prompt] },
-  agy: { bin: "agy", args: (prompt) => ["--mode", "accept-edits", "-i", prompt] },
+  codex: {
+    bin: "codex",
+    args: (prompt) => ["--approve-for-me", prompt],
+    level: ({ model, effort }) => [
+      ...(model ? ["-m", model] : []),
+      ...(effort ? ["-c", `model_reasoning_effort="${effort === "max" ? "xhigh" : effort}"`] : []),
+    ],
+  },
+  agy: {
+    bin: "agy",
+    args: (prompt) => ["--mode", "accept-edits", "-i", prompt],
+    level: ({ model, effort }) => [...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : [])],
+  },
 };
+
+export function launchProfile(entry: RosterEntry | undefined): LaunchProfile {
+  return { model: entry?.model, effort: entry?.effort };
+}
 
 /**
  * How each harness can be resumed once its turn has ended, and the environment
@@ -122,11 +154,11 @@ export function agentEnv(
   return { AI_ROOM_ROOM: room, AI_ROOM_AGENT: agent, AI_ROOM_HARNESS: harness };
 }
 
-export function agentCommand(room: string, agent: string, launcherName?: string): string[] | null {
+export function agentCommand(room: string, agent: string, launcherName?: string, profile: LaunchProfile = {}): string[] | null {
   const harness = harnessFor(agent, launcherName);
   const launcher = LAUNCHERS[harness];
   if (!launcher) return null;
-  return [launcher.bin, ...launcher.args(joinPrompt(room, agent, harness))];
+  return [launcher.bin, ...launcher.level(profile), ...launcher.args(joinPrompt(room, agent, harness))];
 }
 
 export function onPath(bin: string): boolean {
@@ -279,9 +311,9 @@ export interface InviteResult {
 export function invite(
   room: string,
   agent: string,
-  options: { launcher?: string; cwd?: string; dryRun?: boolean; driver?: MultiplexerDriver | null } = {}
+  options: { launcher?: string; cwd?: string; dryRun?: boolean; driver?: MultiplexerDriver | null; profile?: LaunchProfile } = {}
 ): InviteResult {
-  const argv = agentCommand(room, agent, options.launcher ?? agent);
+  const argv = agentCommand(room, agent, options.launcher ?? agent, options.profile);
   if (!argv) {
     return {
       agent,
@@ -320,7 +352,7 @@ export function invite(
   }
 
   try {
-    const started = startSession(driver, session, cwd, argv, agentEnv(room, agent));
+    const started = startSession(driver, session, cwd, argv, { ...agentEnv(room, agent), ...options.profile?.env });
     return {
       agent,
       command,
@@ -383,6 +415,7 @@ export function planWorkspace(
     files?: boolean;
     filesCommand?: string[] | null;
     editorCommand?: string[] | null;
+    profiles?: Record<string, LaunchProfile>;
   } = {}
 ): WorkspacePlan {
   const panes: PaneSpec[] = [];
@@ -390,12 +423,13 @@ export function planWorkspace(
   const launched: string[] = [];
 
   for (const agent of agents) {
-    const argv = agentCommand(room, agent);
+    const profile = options.profiles?.[agent] ?? {};
+    const argv = agentCommand(room, agent, undefined, profile);
     if (!argv || !onPath(argv[0])) {
       missing.push(agent);
       continue;
     }
-    panes.push({ title: agent, command: argv, env: agentEnv(room, agent) });
+    panes.push({ title: agent, command: argv, env: { ...agentEnv(room, agent), ...profile.env } });
     launched.push(agent);
   }
 
@@ -436,6 +470,7 @@ export function openWorkspace(
     files?: boolean;
     mouse?: boolean;
     size?: { columns: number; rows: number };
+    profiles?: Record<string, LaunchProfile>;
   } = {}
 ): { plan: WorkspacePlan; result: WorkspaceResult } {
   const driver = detectMultiplexer("tmux");
