@@ -106,21 +106,24 @@ export async function runSetup(file = defaultsPath()): Promise<OpenDefaults> {
 
 /**
  * The first `open` on a machine with no config offers the questions instead
- * of leaving the defaults to be found by reading the docs. A "no" is saved
- * too, so it is asked once.
+ * of leaving the defaults to be found by reading the docs. "Not now" asks
+ * again next time; "don't ask" saves empty defaults so it never does.
  */
 export async function offerSetup(file = defaultsPath()): Promise<void> {
   if (fs.existsSync(file) || !process.stdin.isTTY || !process.stdout.isTTY) return;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  let yes: boolean;
+  let answer: string;
   try {
-    yes = !(await rl.question("No ai-room defaults yet (which agents, lead, tools). Set them up now? [Y/n] ")).trim().toLowerCase().startsWith("n");
+    answer = (await rl.question(
+      "No ai-room defaults yet (which agents, lead, tools). Set them up now? [Y]es / [n]ot now / [d]on't ask again: "
+    )).trim().toLowerCase();
   } finally {
     rl.close();
   }
-  if (yes) await runSetup(file);
-  else {
+  if (answer.startsWith("d")) {
     saveDefaults({}, file);
-    console.log("ok. Set them up later with: ai-room setup\n");
-  }
+    console.log("ok, not asking again. Set them up any time with: ai-room setup\n");
+  } else if (answer.startsWith("n")) {
+    console.log("ok. Set them up any time with: ai-room setup\n");
+  } else await runSetup(file);
 }

@@ -132,7 +132,7 @@ keep the views apart. Each instance spends its own tokens; with many panes use
 
 Defaults for new rooms, in `~/.ai-room/config.json`. `ai-room setup` asks for
 them, suggesting the agents and tools it finds installed; the first
-`ai-room open` offers it when the file does not exist yet. By hand:
+`ai-room open` offers it when the file does not exist yet (not now, or don't ask again). By hand:
 
 ```json
 { "defaults": { "tools": ["rtk", "graphify"], "convention": "caveman,ponytail" } }

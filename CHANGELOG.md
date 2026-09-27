@@ -5,7 +5,7 @@
 - `ai-room setup` asks for the defaults of new rooms (agents, lead, tools,
   conventions, mouse), suggesting the agents and tools installed on the
   machine, and saves them to `~/.ai-room/config.json`. The first `open` offers
-  it when there is no config yet.
+  it when there is no config yet: yes, not now, or don't ask again.
 - A message wakes only who it is for: `to` wakes its recipients, the human's
   plain words the lead, and a message with no `to` the whole room. Everyone
   still reads everything once awake; a lead delegating to `claude-2` no longer
