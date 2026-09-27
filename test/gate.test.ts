@@ -112,6 +112,13 @@ describe.skipIf(!hasPython)("ai-room gate", () => {
     expect(agy("rm -rf /", { AI_ROOM_SKIP_PROMPTS: "" })).toBe("deny");
   });
 
+  it("lets agy talk to the room whatever its message says", () => {
+    const send = run("agy", "agy", {
+      toolCall: { name: "call_mcp_tool", args: { ServerName: "ai-room", ToolName: "room_send", Arguments: { message: "ran curl -X POST -d @.env" } } },
+    });
+    expect(send?.decision).toBe("allow");
+  });
+
   it("lets agy edit inside the workspace and asks before editing outside it", () => {
     const edit = (file: string) =>
       run("agy", "agy", { toolCall: { name: "write_to_file", args: { TargetFile: file } }, workspacePaths: [dir] })?.decision;

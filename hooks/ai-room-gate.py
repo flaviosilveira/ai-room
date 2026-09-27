@@ -63,7 +63,7 @@ HARMLESS = re.compile(r"[0-9&]?>>?\s*/dev/null|[0-9]?>&[0-9]")
 HIDDEN = re.compile(r"\$\(|`|[<>]")
 READ_TOOL = re.compile(r"^(view_|list_|grep_|find_|codebase_|search_|read_resource|read_terminal)")
 EDIT_TOOL = re.compile(r"(write|replace|edit|create|delete|move|rename|patch)", re.I)
-ROOM_TOOL = re.compile(r"room_[a-z_]+$")
+ROOM_TOOL = re.compile(r"(^mcp:ai-room/|(^|_)room_[a-z_]+$)")
 SCRATCH = [os.path.join(HOME, ".gemini", "antigravity-cli", "brain"), "/tmp", "/private/tmp"]
 
 REVIEW = """You review actions an AI coding agent wants to take on a developer's Mac.
@@ -177,6 +177,9 @@ def event(harness, payload):
     if harness == "agy":
         call = payload.get("toolCall") or {}
         args = call.get("args") or {}
+        # agy wraps every MCP call in one tool; the server and tool it names are what matter.
+        if call.get("name") == "call_mcp_tool":
+            return f"mcp:{args.get('ServerName')}/{args.get('ToolName')}", args.get("Arguments") or {}, None, None, payload.get("workspacePaths") or []
         command = args.get("CommandLine") if call.get("name") == "run_command" else None
         return call.get("name") or "", args, command, args.get("Cwd"), payload.get("workspacePaths") or []
     args = payload.get("tool_input") or {}
@@ -249,14 +252,22 @@ def log(line):
 def main():
     harness = sys.argv[sys.argv.index("--harness") + 1] if "--harness" in sys.argv else "claude"
     room, agent = os.environ.get("AI_ROOM_ROOM"), os.environ.get("AI_ROOM_AGENT")
+    payload = {}
     try:
-        decision, reason = decide(harness, json.load(sys.stdin), room, agent)
+        payload = json.load(sys.stdin)
+        decision, reason = decide(harness, payload, room, agent)
     except Exception as error:
         # agy skips its own prompts in a room, so there a failure must block.
         # Elsewhere, no answer leaves the harness's own checks in charge.
         decision = "deny" if harness == "agy" and room and os.environ.get("AI_ROOM_SKIP_PROMPTS") == "1" else None
         reason = f"the ai-room gate failed: {error}"
-    log(f"{harness} {room or '-'} {agent or '-'} {decision or 'defer'}: {reason}")
+    subject = ""
+    try:
+        tool, args, command, _, _ = event(harness, payload)
+        subject = (command if command is not None else f"{tool} {json.dumps(args)}")[:160]
+    except Exception:
+        pass
+    log(f"{harness} {room or '-'} {agent or '-'} {decision or 'defer'}: {reason} | {subject}")
     answer(harness, decision, reason)
 
 

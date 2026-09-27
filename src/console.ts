@@ -869,7 +869,8 @@ export async function runConsole(
             const db = dbModule.openDb();
             try {
               const pending = approvals.pendingApprovals(db, room);
-              const id = Number(rest[0] ?? (cmd === "allow" && pending.length === 1 ? pending[0].id : NaN));
+              // A bare /allow only lists: approving has to name the request.
+              const id = Number(rest[0] ?? NaN);
               if (!Number.isInteger(id)) {
                 emit(
                   rl,
