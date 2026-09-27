@@ -52,6 +52,7 @@ describe.skipIf(!hasPython)("ai-room gate", () => {
       AI_ROOM_POLICY: path.join(dir, "policy.json"),
       AI_ROOM_GATE_CLAUDE: reviewer,
       AI_ROOM_ROOM: "r",
+      AI_ROOM_SKIP_PROMPTS: "1",
     };
   }, 20_000);
 
@@ -104,6 +105,11 @@ describe.skipIf(!hasPython)("ai-room gate", () => {
   it("hands agy its own prompt back outside a room, and blocks agy in a room when the server is gone", () => {
     expect(agy("swift -e 1", { AI_ROOM_ROOM: "" })).toBe("ask");
     expect(agy("git push", { AI_ROOM_PORT: "1" })).toBe("deny");
+  });
+
+  it("leaves an agy that still prompts to its own prompt for what the lists do not cover", () => {
+    expect(agy("swift -e 'print(1)'", { AI_ROOM_SKIP_PROMPTS: "" })).toBe("ask");
+    expect(agy("rm -rf /", { AI_ROOM_SKIP_PROMPTS: "" })).toBe("deny");
   });
 
   it("lets agy edit inside the workspace and asks before editing outside it", () => {

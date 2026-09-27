@@ -13,7 +13,8 @@ In a room (the launcher sets AI_ROOM_ROOM and AI_ROOM_AGENT):
                                                           human; allowed once after /allow
   anything else, Claude and Codex                      -> no answer: their own auto
                                                           mode / reviewer decides
-  anything else, agy                                   -> agy runs with every prompt
+  anything else, agy launched with AI_ROOM_SKIP_PROMPTS=1
+                                                       -> agy runs with every prompt
                                                           skipped, so this is its only
                                                           check: the allow list, reads,
                                                           edits inside the workspace, or
@@ -200,11 +201,15 @@ def decide(harness, payload, room, agent):
     if not room:
         return ("ask", "no room to ask in") if harness == "agy" else (None, "")
 
+    # Only an agy launched with its prompts skipped needs this gate to decide
+    # everything; otherwise its own prompt still comes after, so no answer is
+    # needed for what the lists do not cover.
+    skipping = harness == "agy" and os.environ.get("AI_ROOM_SKIP_PROMPTS") == "1"
     reason = None
     if verdict == "ask":
         reason = "on the ask list"
-    elif harness != "agy":
-        return None, ""
+    elif not skipping:
+        return ("ask", "agy's own prompt") if harness == "agy" else (None, "")
     elif verdict == "allow" or ROOM_TOOL.search(tool) or READ_TOOL.search(tool):
         return "allow", "routine"
     elif command is None and EDIT_TOOL.search(tool):
@@ -249,7 +254,7 @@ def main():
     except Exception as error:
         # agy skips its own prompts in a room, so there a failure must block.
         # Elsewhere, no answer leaves the harness's own checks in charge.
-        decision = "deny" if harness == "agy" and room else None
+        decision = "deny" if harness == "agy" and room and os.environ.get("AI_ROOM_SKIP_PROMPTS") == "1" else None
         reason = f"the ai-room gate failed: {error}"
     log(f"{harness} {room or '-'} {agent or '-'} {decision or 'defer'}: {reason}")
     answer(harness, decision, reason)
