@@ -202,7 +202,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/quit${C.reset}              leave the console (agents keep running)
 
 Any other line goes to the room as your message. With a lead, it wakes the lead
-alone; start it with @codex (or @codex @agy) for someone else, @todos for everyone.
+alone; start it with @codex (or @codex @agy) for someone else, @all for everyone.
 `;
 
 /**

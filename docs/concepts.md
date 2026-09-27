@@ -135,7 +135,7 @@ human> /attach codex
 Inside the console, anything you type is sent to the room as a message with
 `origin: "human"`, which wakes the agents it is for immediately rather than
 letting them sit out the rest of their hold: the lead when the room has one,
-whoever you name with `@codex …`, everyone with `@todos …`. Commands start with `/`, and `Tab`
+whoever you name with `@codex …`, everyone with `@all …`. Commands start with `/`, and `Tab`
 after `/` completes them:
 
 | Command | Does |

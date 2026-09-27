@@ -195,6 +195,10 @@ async function open(room: string, argv: string[]): Promise<void> {
   }
 
   const db = openDb();
+  if (!argv.includes("--no-defaults") && !argv.includes("--dry-run")) {
+    const { offerSetup } = await import("./setup.js");
+    await offerSetup();
+  }
   const defaults = loadOpenDefaults();
   const existed = roomExists(db, room);
   let flags = withDefaults(parseOpenFlags(argv), defaults, !existed);
@@ -792,6 +796,11 @@ switch (cmd) {
   case "hooks":
     hooks(process.argv.includes("--json"));
     break;
+  case "setup": {
+    const { runSetup } = await import("./setup.js");
+    await runSetup();
+    break;
+  }
   case "tools":
     tools(process.argv.includes("--json"));
     break;
@@ -803,7 +812,7 @@ switch (cmd) {
       break;
     }
     console.error(
-      "usage: ai-room <serve|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
+      "usage: ai-room <serve|setup|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );

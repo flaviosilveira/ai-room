@@ -79,7 +79,7 @@ addresses you. The others pass what they need from you through it.
   first). `--lead <agent>` chooses; `--no-lead` or `"lead": false` in the
   config turns it off; `"lead": ["agy", "claude", "codex"]` changes the order.
 - Your plain messages wake the lead alone. `@codex …` (or `@codex @agy …`)
-  goes to whoever you name, `@todos …` to everyone.
+  goes to whoever you name, `@all …` to everyone.
 - Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
 - Anything to read or forward arrives as a file in `.ai-room/for-human/`
   (git-ignored), opened in the files tab: `[FOR YOU] deliverable: <path>`.
@@ -130,7 +130,9 @@ room they drift toward whoever spoke first. Give each a different `--role` to
 keep the views apart. Each instance spends its own tokens; with many panes use
 `Ctrl-b z` to zoom one and `Ctrl-b m` to hide the rest.
 
-Defaults for new rooms, in `~/.ai-room/config.json`:
+Defaults for new rooms, in `~/.ai-room/config.json`. `ai-room setup` asks for
+them, suggesting the agents and tools it finds installed; the first
+`ai-room open` offers it when the file does not exist yet. By hand:
 
 ```json
 { "defaults": { "tools": ["rtk", "graphify"], "convention": "caveman,ponytail" } }
@@ -193,7 +195,7 @@ the room is told so the others pick up its part.
 | `/agents` | Live panes and sessions |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
 | `/approve` | Approves the lead's plan and launches the team (no plan: launches whoever is waiting) |
-| `@codex …` · `@todos …` | A message for one agent · for everyone (plain text goes to the lead) |
+| `@codex …` · `@all …` | A message for one agent · for everyone (plain text goes to the lead) |
 | `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |
 | `/close yes` | Closes the room |

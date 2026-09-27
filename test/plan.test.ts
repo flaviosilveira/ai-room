@@ -52,7 +52,7 @@ describe("waking by address", () => {
 
   it("reads @names only at the start, and only for agents in the room", () => {
     expect(mentionedAgents(db, "r", "@codex @codex-2: check")).toEqual(["codex", "codex-2"]);
-    expect(mentionedAgents(db, "r", "@todos check")?.sort()).toEqual(["claude", "codex", "codex-2"]);
+    expect(mentionedAgents(db, "r", "@all check")?.sort()).toEqual(["claude", "codex", "codex-2"]);
     expect(mentionedAgents(db, "r", "mail me at a@codex")).toBeUndefined();
     expect(mentionedAgents(db, "r", "@nobody hi")).toBeUndefined();
   });

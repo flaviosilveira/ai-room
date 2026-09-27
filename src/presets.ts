@@ -59,7 +59,7 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "room. Delegation and details go with `to` (e.g. [\"claude-2\"]); findings, decisions and",
     "a plan the others should check go without it, so a second point of view still gets",
     "its say where it matters. The human's plain messages reach the lead alone, and",
-    "\"@codex …\" or \"@todos …\" from the human reaches whoever it names.",
+    "\"@codex …\" or \"@all …\" from the human reaches whoever it names.",
     "The human's console shows only the lead's messages that have no `to` or include",
     "\"human\", so the lead also keeps the human up to date on the team's thinking,",
     "crediting who found what (\"agy found\", \"codex hit this problem\") in a few lines,",

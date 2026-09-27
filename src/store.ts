@@ -716,11 +716,11 @@ export function callsAgent(
   return true;
 }
 
-const EVERYONE = new Set(["todos", "all", "everyone"]);
+const EVERYONE = new Set(["all", "everyone", "todos"]);
 
 /**
  * The human's `@codex @agy …` at the start of a line names who it is for;
- * `@todos` is every agent. Only names in the room count, so an email address
+ * `@all` is every agent. Only names in the room count, so an email address
  * or a stray @ stays text.
  */
 export function mentionedAgents(db: Database.Database, room: string, message: string): string[] | undefined {
