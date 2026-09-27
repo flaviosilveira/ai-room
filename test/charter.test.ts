@@ -1,4 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
+
+// The launcher reads agy's real hooks file; these tests describe a machine without the gate.
+process.env.AI_ROOM_AGY_HOOKS = "/nonexistent/hooks.json";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
 import { roomBriefing, roomCharter, roomJoin, roomSetCharter, roomWho } from "../src/store.js";

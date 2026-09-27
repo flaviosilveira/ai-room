@@ -13,7 +13,10 @@ import {
 } from "../src/store.js";
 import { approvePlan, checkProposal, proposePlan } from "../src/cast.js";
 import { agentsToLaunch, holdForPlan, parseOpenFlags } from "../src/open.js";
-import { agentCommand } from "../src/invite.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { agentCommand, agentEnv } from "../src/invite.js";
 
 const wake = (n: number) => ({ kind: "codex-queue" as const, id: `00000000-1111-2222-3333-44444444444${n}` });
 
@@ -102,6 +105,23 @@ describe("the lead's plan", () => {
     expect(charter.roster.find((entry) => entry.agent === "codex")).toMatchObject({ role: "reviewer", model: "gpt-5.5", effort: "medium" });
     expect(charter.roster.find((entry) => entry.agent === "codex")?.held).toBeUndefined();
     expect(charter.roster.find((entry) => entry.agent === "claude")?.role).toBe("lead");
+  });
+
+  it("skips agy's prompts only when the gate is in its hooks", () => {
+    const hooks = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "airoom-agy-")), "hooks.json");
+    const previous = process.env.AI_ROOM_AGY_HOOKS;
+    try {
+      process.env.AI_ROOM_AGY_HOOKS = hooks;
+      expect(agentCommand("r", "agy")).toContain("--mode");
+      fs.writeFileSync(hooks, JSON.stringify({ "ai-room-gate": { PreToolUse: [{ matcher: "*", hooks: [{ command: "python3 /x/ai-room-gate.py --harness agy" }] }] } }));
+      expect(agentCommand("r", "agy")).toContain("--dangerously-skip-permissions");
+      expect(agentEnv("r", "agy").AI_ROOM_SKIP_PROMPTS).toBe("1");
+      fs.writeFileSync(hooks, JSON.stringify({ "ai-room-gate": { enabled: false, PreToolUse: [{ hooks: [{ command: "ai-room-gate.py" }] }] } }));
+      expect(agentCommand("r", "agy")).not.toContain("--dangerously-skip-permissions");
+      expect(agentEnv("r", "agy").AI_ROOM_SKIP_PROMPTS).toBeUndefined();
+    } finally {
+      process.env.AI_ROOM_AGY_HOOKS = previous;
+    }
   });
 
   it("launches each harness at the level it was given", () => {
