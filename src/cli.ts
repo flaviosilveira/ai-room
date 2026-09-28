@@ -811,6 +811,11 @@ switch (cmd) {
       await open(cmd, process.argv.slice(3));
       break;
     }
+    // `ai-room <room>` alone reattaches, but only to a room that exists.
+    if (cmd && !cmd.startsWith("-") && !arg && roomExists(openDb(), cmd)) {
+      await open(cmd, []);
+      break;
+    }
     console.error(
       "usage: ai-room <serve|setup|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +

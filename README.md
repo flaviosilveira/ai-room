@@ -43,7 +43,7 @@ Then register ai-room in each agent — `ai-room doctor` prints the exact line:
 ```bash
 ai-room open <room> --brief "..." --invite claude,codex,agy   # start a task
 F12                                                           # step away; agents keep working
-ai-room attach <room>                                         # come back
+ai-room attach <room>   (or just: ai-room <room>)            # come back
 ai-room delete <room>                                         # done with it for good
 ```
 
