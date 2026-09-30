@@ -186,7 +186,8 @@ async function confirmReuse(room: string, messages: number): Promise<boolean> {
 }
 
 async function open(room: string, argv: string[]): Promise<void> {
-  if (!room) {
+  if (!room || room.startsWith("-")) {
+    console.error("Missing room name: pass a name after 'ai-room open', before any flags.");
     console.error(
       'usage: ai-room open <room> [--brief "..."] [--convention caveman|ponytail] [--tool graphify,rtk,grill-me]\n' +
         "                       [--invite codex,agy] [--role codex=reviewer] [--reuse] [--mouse] [--no-files] [--no-defaults] [--detached] [--dry-run]"

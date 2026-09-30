@@ -5,8 +5,25 @@ import { roomCharter, roomJoin, roomSetCharter } from "../src/store.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { agentsToLaunch, charterPatch, expandInvite, loadOpenDefaults, parseOpenFlags, pickLead, withDefaults } from "../src/open.js";
 import { DRIVERS_FOR_TEST, attachArgv, canAttach, insideMultiplexer } from "../src/session.js";
+
+describe("open command arguments", () => {
+  it.each([[], ["--brief", "Invoice classification", "--invite", "claude:2,codex,agy"]])(
+    "reports a missing room name for %j",
+    (...args) => {
+      const result = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "open", ...args], {
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Missing room name");
+      expect(result.stderr).toContain("usage: ai-room open <room>");
+      expect(result.stderr).not.toContain("Unknown flag");
+    }
+  );
+});
 
 describe("reopening a room", () => {
   let db: Database.Database;
