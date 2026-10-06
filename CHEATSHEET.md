@@ -214,7 +214,7 @@ the room is told so the others pick up its part.
 |---|---|
 | text + Enter | Sends a message to the room |
 | paste several lines | Becomes a single message |
-| `/show` · `/discard` | Shows · discards the draft |
+| `/show` | Lists what is pasted and attached in the draft; Backspace after a token removes it |
 | `/clear` | Clears the screen; the room's history and the draft stay |
 | `/all` | With a lead: toggles between only the lead and every agent |
 | `/who` | Agent status (it is also always on the monitor's top border) |
@@ -243,14 +243,13 @@ A paste or an attachment lands in the line as a token — `[Pasted #1: 40 lines]
 `[Image #2]`, `[PDF #3: spec.pdf]` — like in Claude Code and Codex. Move the
 cursor around it and keep writing; Backspace right after a token removes it
 whole. Enter sends the line as one message, each paste expanded in its place.
-`/show` lists the tokens, `/discard` drops them all.
+`/show` lists the tokens; only the tokens still on the line are sent.
 
 | Command | Does |
 |---|---|
 | `Ctrl+V` or `/paste` | Pastes the clipboard: a screenshot or a copied file is attached, text goes in as a token |
 | `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf, text) |
 | drag a file in | Attaches it too |
-| `/drop <n>` | Removes token n from the draft |
 
 Limits: 10MB per file, 5 per message. Agents only receive the metadata and open
 the file with `room_attachment` when they need it.

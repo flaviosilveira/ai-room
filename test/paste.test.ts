@@ -129,11 +129,9 @@ describe("the composer puts pastes in the line as tokens", () => {
     expect(composer.backspaceWidth("olha ")).toBe(1);
   });
 
-  it("drops and discards on request", () => {
+  it("empties the draft", () => {
     const composer = new Composer();
     composer.stage("a");
-    expect(composer.drop(1)).toBe("[Pasted #1: 1 chars]");
-    expect(composer.drop(9)).toBeNull();
     composer.stage("b");
     composer.clear();
     expect(composer.empty).toBe(true);

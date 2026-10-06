@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- `/clear` in the console clears the screen and the pane's scrollback; the
-  draft is discarded with `/discard` now.
+- `/clear` in the console clears the screen and the pane's scrollback.
+  `/drop` is gone: Backspace after a token already removes it from the message.
 - The lead answers its teammates' unusual requests with the new `room_allow`
   tool; production, secrets, data leaving the machine, pushes to `main` and
   deploys still wait for the human, who can answer several with

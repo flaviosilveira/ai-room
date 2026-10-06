@@ -196,10 +196,8 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/close yes${C.reset}         close the room's panes and sessions (history and charter stay)
   ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
   ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
-  ${C.bold}/drop <n>${C.reset}          remove item n ([Image #n], [Pasted #n]) from the draft
   ${C.bold}/show${C.reset}              list what is pasted and attached in the draft
   ${C.bold}/clear${C.reset}             clear the screen (the room's history and the draft stay)
-  ${C.bold}/discard${C.reset}           discard the draft
   ${C.bold}/reload${C.reset}            restart this console with the ai-room now on disk
   ${C.bold}/help${C.reset}              this help
   ${C.bold}/quit${C.reset}              leave the console (agents keep running)
@@ -215,7 +213,7 @@ alone; start it with @codex (or @codex @agy) for someone else, @all for everyone
  */
 export const CONSOLE_COMMANDS = [
   "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "approve", "allow", "deny", "skills", "reload",
-  "detach", "close", "paste", "file", "drop", "clear", "discard", "help", "quit",
+  "detach", "close", "paste", "file", "clear", "help", "quit",
 ];
 
 /**
@@ -283,12 +281,6 @@ export class Composer {
       if (beforeCursor.endsWith(token)) return token.length;
     }
     return 1;
-  }
-
-  drop(id: number): string | null {
-    const token = this.tokenOf(id);
-    this.items.delete(id);
-    return token;
   }
 
   list(): string[] {
@@ -963,10 +955,6 @@ export async function runConsole(
             emit(rl, `${C.warn}/reload works in the workspace pane only; here, /quit and open it again.${C.reset}`);
             break;
           }
-          if (!composer.empty) {
-            emit(rl, `${C.warn}the draft would be lost; send it with Enter or /discard it before /reload.${C.reset}`);
-            break;
-          }
           mux(driver, ["respawn-pane", "-k", "-t", pane]);
           break;
         }
@@ -983,21 +971,10 @@ export async function runConsole(
           if (!rest.length) emit(rl, `${C.warn}uso: /file <caminho>${C.reset}`);
           else attachFile(text.slice(text.indexOf(" ") + 1).trim());
           break;
-        case "drop": {
-          const dropped = composer.drop(Number(rest[0]));
-          emit(rl, dropped ? `${C.dim}removed ${dropped}${C.reset}` : `${C.warn}usage: /drop <n>, the number in the token${C.reset}`);
-          break;
-        }
         case "clear":
           // The screen and the pane's scrollback; the room's history and the draft stay.
           process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
           if (process.env.TMUX_PANE && driver?.name === "tmux") mux(driver, ["clear-history", "-t", process.env.TMUX_PANE]);
-          break;
-        case "discard":
-          if (!composer.empty) {
-            composer.clear();
-            emit(rl, `${C.dim}draft discarded.${C.reset}`);
-          } else emit(rl, `${C.dim}nothing to discard.${C.reset}`);
           break;
         case "help":
           emit(rl, HELP);
