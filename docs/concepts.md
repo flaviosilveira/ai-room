@@ -145,7 +145,8 @@ after `/` completes them:
 | `/all` | With a lead, toggles between only the lead and every agent |
 | `/approve` | Approves the lead's plan (`room_propose`) and launches the team at its models and efforts |
 | `/who` | Participants, `wait(live)` and unread |
-| `/show` · `/clear` | Shows · discards the draft |
+| `/show` · `/discard` | Shows · discards the draft |
+| `/clear` | Clears the screen; the room's history and the draft stay |
 | `Ctrl+V` or `/paste` | Pastes the clipboard: an image or a copied file is attached, text goes into the draft |
 | `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf or text) |
 | `/drop <n>` | Removes token n from the draft |

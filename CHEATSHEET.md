@@ -214,7 +214,8 @@ the room is told so the others pick up its part.
 |---|---|
 | text + Enter | Sends a message to the room |
 | paste several lines | Becomes a single message |
-| `/show` · `/clear` | Shows · discards the draft |
+| `/show` · `/discard` | Shows · discards the draft |
+| `/clear` | Clears the screen; the room's history and the draft stay |
 | `/all` | With a lead: toggles between only the lead and every agent |
 | `/who` | Agent status (it is also always on the monitor's top border) |
 | `/attach <agent>` | Goes to the agent's pane |
@@ -242,7 +243,7 @@ A paste or an attachment lands in the line as a token — `[Pasted #1: 40 lines]
 `[Image #2]`, `[PDF #3: spec.pdf]` — like in Claude Code and Codex. Move the
 cursor around it and keep writing; Backspace right after a token removes it
 whole. Enter sends the line as one message, each paste expanded in its place.
-`/show` lists the tokens, `/clear` drops them all.
+`/show` lists the tokens, `/discard` drops them all.
 
 | Command | Does |
 |---|---|
