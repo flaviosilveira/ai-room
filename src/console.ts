@@ -188,8 +188,8 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/remove <agent>${C.reset}    take an agent out (e.g. it hit its limit); the rest keep working
   ${C.bold}/add <agent> [role]${C.reset} bring an agent in, new or back
   ${C.bold}/approve${C.reset}           approve the lead's plan and launch the team (with no plan: launch who is waiting)
-  ${C.bold}/allow [n…]${C.reset}        list what agents were stopped from doing; allow requests n… once
-  ${C.bold}/deny <n…>${C.reset}         refuse requests n…
+  ${C.bold}/allow [n…|all]${C.reset}    list what agents were stopped from doing; allow those requests once
+  ${C.bold}/deny <n…|all>${C.reset}     refuse them
   ${C.bold}/skills [filter]${C.reset}    project, user and plugin skills (Tab completes after /)
   ${C.bold}/<skill> @agent text${C.reset}  ask an agent to run a skill (no @: ask the room)
   ${C.bold}/detach${C.reset}            detach from the workspace (agents and room keep running)
@@ -868,17 +868,32 @@ export async function runConsole(
           void Promise.all([import("./approvals.js"), import("./db/index.js")]).then(([approvals, dbModule]) => {
             const db = dbModule.openDb();
             try {
-              // A bare /allow only lists: approving has to name the request.
-              const ids = rest.map((word) => Number(word.replace(/^#/, "")));
+              // A bare /allow only lists: approving has to name the requests, or say all.
+              const pending = approvals.pendingApprovals(db, room);
+              const everything = rest[0]?.toLowerCase() === "all";
+              // All at once is fine for the lead's kind; the human's kind is shown and confirmed first.
+              if (everything && cmd === "allow" && pending.some((a) => a.tier === "human") && !CONFIRMATIONS.has((rest[1] ?? "").toLowerCase())) {
+                emit(
+                  rl,
+                  `${C.warn}these include production, secrets or data leaving the machine:${C.reset}\n` +
+                    pending.filter((a) => a.tier === "human").map((a) => `  #${a.id} ${a.agent}: ${a.action.slice(0, 160)}`).join("\n") +
+                    `\n${C.dim}confirm with${C.reset} ${C.bold}/allow all yes${C.reset}${C.dim}, or answer them one by one${C.reset}`
+                );
+                return;
+              }
+              const ids = everything ? pending.map((a) => a.id) : rest.map((word) => Number(word.replace(/^#/, "")));
+              if (everything && !ids.length) {
+                emit(rl, `${C.dim}nothing waiting for your approval.${C.reset}`);
+                return;
+              }
               if (!ids.length || ids.some((id) => !Number.isInteger(id))) {
-                const pending = approvals.pendingApprovals(db, room);
                 const line = (a: (typeof pending)[number]) =>
                   `  #${a.id} ${a.agent}: ${a.action.length > 160 ? `${a.action.slice(0, 160)}…` : a.action}` +
                   `${a.reason ? ` ${C.dim}(${a.reason})${C.reset}` : ""}${a.tier === "lead" ? ` ${C.dim}[the lead may answer]${C.reset}` : ""}`;
                 emit(
                   rl,
                   pending.length
-                    ? `${C.dim}waiting:${C.reset}\n${pending.map(line).join("\n")}\n${C.dim}/allow <n> [n…] or /deny <n> [n…]${C.reset}`
+                    ? `${C.dim}waiting:${C.reset}\n${pending.map(line).join("\n")}\n${C.dim}/allow <n> [n…] · /allow all · /deny <n> [n…] · /deny all${C.reset}`
                     : `${C.dim}nothing waiting for your approval.${C.reset}`
                 );
                 return;

@@ -222,7 +222,7 @@ the room is told so the others pick up its part.
 | `/agents` | Live panes and sessions |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
 | `/approve` | Approves the lead's plan and launches the team (no plan: launches whoever is waiting) |
-| `/allow` · `/allow <n…>` · `/deny <n…>` | Lists what the gate stopped agents from doing · allows those requests once · refuses them |
+| `/allow` · `/allow <n…>` · `/allow all` · `/deny <n…\|all>` | Lists what the gate stopped agents from doing · allows those requests once (`all` asks `/allow all yes` when one of them is production or secrets) · refuses them |
 | `@codex …` · `@all …` | A message for one agent · for everyone (plain text goes to the lead) |
 | `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |
