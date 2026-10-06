@@ -606,7 +606,7 @@ export function ensureWorkspace(
   // The terminal's own window title otherwise shows the whole `ai-room open … --brief …` line.
   if (options?.room) {
     mux(driver, ["set-option", "-t", session, "set-titles", "on", ";",
-      "set-option", "-t", session, "set-titles-string", literal(`ai-room: ${options.room}`)], cwd);
+      "set-option", "-t", session, "set-titles-string", literal(options.room.replace(/#/g, "##"))], cwd);
   }
 
   const added = missing.map((pane) => pane.title);
