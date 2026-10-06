@@ -188,8 +188,8 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/remove <agent>${C.reset}    take an agent out (e.g. it hit its limit); the rest keep working
   ${C.bold}/add <agent> [role]${C.reset} bring an agent in, new or back
   ${C.bold}/approve${C.reset}           approve the lead's plan and launch the team (with no plan: launch who is waiting)
-  ${C.bold}/allow [n]${C.reset}         list what agents were stopped from doing; allow request n once
-  ${C.bold}/deny <n>${C.reset}          refuse request n
+  ${C.bold}/allow [n…]${C.reset}        list what agents were stopped from doing; allow requests n… once
+  ${C.bold}/deny <n…>${C.reset}         refuse requests n…
   ${C.bold}/skills [filter]${C.reset}    project, user and plugin skills (Tab completes after /)
   ${C.bold}/<skill> @agent text${C.reset}  ask an agent to run a skill (no @: ask the room)
   ${C.bold}/detach${C.reset}            detach from the workspace (agents and room keep running)
@@ -868,24 +868,30 @@ export async function runConsole(
           void Promise.all([import("./approvals.js"), import("./db/index.js")]).then(([approvals, dbModule]) => {
             const db = dbModule.openDb();
             try {
-              const pending = approvals.pendingApprovals(db, room);
               // A bare /allow only lists: approving has to name the request.
-              const id = Number(rest[0] ?? NaN);
-              if (!Number.isInteger(id)) {
+              const ids = rest.map((word) => Number(word.replace(/^#/, "")));
+              if (!ids.length || ids.some((id) => !Number.isInteger(id))) {
+                const pending = approvals.pendingApprovals(db, room);
+                const line = (a: (typeof pending)[number]) =>
+                  `  #${a.id} ${a.agent}: ${a.action.length > 160 ? `${a.action.slice(0, 160)}…` : a.action}` +
+                  `${a.reason ? ` ${C.dim}(${a.reason})${C.reset}` : ""}${a.tier === "lead" ? ` ${C.dim}[the lead may answer]${C.reset}` : ""}`;
                 emit(
                   rl,
                   pending.length
-                    ? `${C.dim}waiting for you:${C.reset}\n${pending.map((a) => `  #${a.id} ${a.agent}: ${a.action}${a.reason ? ` ${C.dim}(${a.reason})${C.reset}` : ""}`).join("\n")}\n${C.dim}/allow <n> or /deny <n>${C.reset}`
+                    ? `${C.dim}waiting:${C.reset}\n${pending.map(line).join("\n")}\n${C.dim}/allow <n> [n…] or /deny <n> [n…]${C.reset}`
                     : `${C.dim}nothing waiting for your approval.${C.reset}`
                 );
                 return;
               }
-              const decided = approvals.decideApproval(db, room, id, cmd === "allow");
-              if (!decided) {
-                emit(rl, `${C.warn}no open request #${id} in this room${C.reset}`);
-                return;
+              for (const id of ids) {
+                const decided = approvals.decideApproval(db, room, id, cmd === "allow");
+                emit(
+                  rl,
+                  decided.ok
+                    ? `${C.dim}${cmd === "allow" ? "allowed once" : "denied"}: #${id} ${decided.approval.agent}: ${decided.approval.action}${C.reset}`
+                    : `${C.warn}${decided.error}${C.reset}`
+                );
               }
-              emit(rl, `${C.dim}${cmd === "allow" ? "allowed once" : "denied"}: #${id} ${decided.agent}: ${decided.action}${C.reset}`);
               wakeRoom();
             } finally {
               db.close();

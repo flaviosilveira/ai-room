@@ -169,9 +169,10 @@ export function createHttpApp(
     const agent = typeof req.body?.agent === "string" ? req.body.agent : "";
     const action = typeof req.body?.action === "string" ? req.body.action.slice(0, 500) : "";
     const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 300) : undefined;
+    const tier = req.body?.tier === "lead" ? "lead" : "human";
     try {
       if (!room || !agent || !action || !roomWho(db, { room }).some((p) => p.agent === agent)) throw new Error();
-      res.json({ ok: true, ...requestApproval(db, { room, agent, action, reason }) });
+      res.json({ ok: true, ...requestApproval(db, { room, agent, action, reason, tier }) });
     } catch {
       res.status(400).json({ ok: false, error: "room, a participant agent and action are required" });
     }

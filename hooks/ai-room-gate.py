@@ -66,6 +66,20 @@ EDIT_TOOL = re.compile(r"(write|replace|edit|create|delete|move|rename|patch)", 
 ROOM_TOOL = re.compile(r"(^mcp:ai-room/|(^|_)room_[a-z_]+$)")
 SCRATCH = [os.path.join(HOME, ".gemini", "antigravity-cli", "brain"), "/tmp", "/private/tmp"]
 
+# What only the human answers, beyond the ask list: production, data leaving
+# the machine, other machines. The room's lead may answer anything else.
+CRITICAL = [
+    (re.compile(r"^(rtk\s+)?git\s+push\b.*\b(main|master)\b"), "a push to main/master"),
+    (re.compile(r"^(rtk\s+)?(curl|wget|https?)\b.*(\s-[a-zA-Z]*[dFT]\b|\s--(data\S*|form|upload-file|json)\b|\s(-X|--request)\s*(POST|PUT|PATCH|DELETE))", re.I),
+     "it sends data out"),
+    (re.compile(r"^(rtk\s+)?(scp|rsync|sftp|ssh|nc\b(?!\s+-z))"), "it reaches another machine"),
+    (re.compile(r"\bus-west-1\b"), "it touches production (us-west-1)"),
+]
+# A reviewer's reason in these words means the human, not the lead.
+ESCALATE = re.compile(r"deploy|pipeline|production|\bprod\b|secret|credential|password|token|exfil|upload|publish|sudo|global", re.I)
+SYSTEM_PATHS = ["/etc", "/usr", "/System", "/Library", "/bin", "/sbin", "/opt",
+                *(os.path.join(HOME, name) for name in (".ssh", ".aws", ".zshrc", ".bashrc", ".profile", ".gitconfig"))]
+
 REVIEW = """You review actions an AI coding agent wants to take on a developer's Mac.
 Answer ALLOW when the action only reads, inspects or queries (including GET requests
 and DNS lookups), or only creates or changes files inside the project or a temp folder,
@@ -124,6 +138,18 @@ def classify(command, policy):
     return None
 
 
+def critical(command):
+    try:
+        segments = parts(HARMLESS.sub(" ", command))
+    except ValueError:
+        segments = [command]
+    for segment in segments:
+        for pattern, reason in CRITICAL:
+            if pattern.search(segment):
+                return reason
+    return None
+
+
 def protected(text):
     expanded = text.replace("~/", HOME + "/")
     return any(path in expanded for path in PROTECTED)
@@ -154,9 +180,9 @@ def review(action, cwd):
     return line[4:].strip() if line.startswith("ASK:") else "the reviewer gave no answer"
 
 
-def ask_human(room, agent, action, reason):
-    """Files the request; True only if the human already allowed this exact action."""
-    body = json.dumps({"room": room, "agent": agent, "action": action, "reason": reason}).encode()
+def ask_human(room, agent, action, reason, tier):
+    """Files the request; True only if this exact action was already allowed by someone the tier allows."""
+    body = json.dumps({"room": room, "agent": agent, "action": action, "reason": reason, "tier": tier}).encode()
     request = urllib.request.Request(f"{BASE_URL}/gate/request", data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=3) as response:
         answer = json.loads(response.read().decode())
@@ -165,11 +191,12 @@ def ask_human(room, agent, action, reason):
     return False, answer
 
 
-def blocked_message(answer, reason):
+def blocked_message(answer, reason, tier):
     if answer.get("status") == "denied":
-        return f"The human denied this (request #{answer.get('id')}). Do not retry it; find another way or ask in the room."
-    return (f"Blocked until the human allows it (request #{answer.get('id')}): {reason}. "
-            "Say in the room why you need it, go idle, and run exactly the same thing again once you are told it is approved.")
+        return f"This was denied (request #{answer.get('id')}). Do not retry it; find another way or ask in the room."
+    who = "the human" if tier == "human" else "the lead or the human"
+    return (f"Blocked until {who} allows it (request #{answer.get('id')}): {reason}. "
+            "Keep working on whatever does not need it; when you are told it is approved, run exactly the same thing again.")
 
 
 def event(harness, payload):
@@ -208,9 +235,12 @@ def decide(harness, payload, room, agent):
     # everything; otherwise its own prompt still comes after, so no answer is
     # needed for what the lists do not cover.
     skipping = harness == "agy" and os.environ.get("AI_ROOM_SKIP_PROMPTS") == "1"
-    reason = None
+    reason, tier = None, "lead"
+    serious = critical(command) if command is not None else None
     if verdict == "ask":
-        reason = "on the ask list"
+        reason, tier = "on the ask list", "human"
+    elif serious:
+        reason, tier = serious, "human"
     elif not skipping:
         return ("ask", "agy's own prompt") if harness == "agy" else (None, "")
     elif verdict == "allow" or ROOM_TOOL.search(tool) or READ_TOOL.search(tool):
@@ -221,15 +251,19 @@ def decide(harness, payload, room, agent):
         if targets and all(inside(path, roots) for path in targets):
             return "allow", "an edit inside the workspace"
         reason = "an edit outside the workspace"
+        if any(inside(path, [os.path.realpath(p) for p in SYSTEM_PATHS]) for path in targets):
+            reason, tier = "an edit to system or account settings", "human"
     else:
         reason = review(subject, cwd)
         if reason is None:
             return "allow", "reviewer: routine"
+        if ESCALATE.search(reason):
+            tier = "human"
 
-    allowed, answer = ask_human(room, agent, subject[:500], reason)
+    allowed, answer = ask_human(room, agent, subject[:500], reason, tier)
     if allowed:
-        return "allow", f"allowed by the human (request #{answer})"
-    return "deny", blocked_message(answer, reason)
+        return "allow", f"allowed (request #{answer})"
+    return "deny", blocked_message(answer, reason, tier)
 
 
 def answer(harness, decision, reason):

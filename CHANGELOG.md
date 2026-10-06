@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The lead answers its teammates' unusual requests with the new `room_allow`
+  tool; production, secrets, data leaving the machine, pushes to `main` and
+  deploys still wait for the human, who can answer several with
+  `/allow 3 5 7`. The gate decides which kind a request is on every retry, so
+  an agent's approval never counts for the human's kind.
 - The gate: `hooks/ai-room-gate.py`, a PreToolUse hook for Claude Code, Codex
   and agy. In a room, what the policy says to ask about is stopped and filed
   for the human instead of prompting in a pane; `/allow <n>` in the console

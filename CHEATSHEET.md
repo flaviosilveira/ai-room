@@ -123,6 +123,15 @@ auto mode for everything else; agy, which has none, gets the allow list, reads,
 edits inside the workspace and a reviewer model, and the rest is filed for you.
 Out of a room the gate does nothing. Log: `~/.ai-room/logs/gate.log`.
 
+Two kinds of request. What is merely unusual (a command the reviewer
+questioned, an edit outside the workspace) goes to the room's lead, who answers
+it with `room_allow`. Production, secrets and what cannot be undone — the ask
+list, a push to `main`/`master`, data sent out with `curl -d`, `scp`/`ssh`,
+anything in `us-west-1`, a deploy — wait for you; the lead says in a line
+whether it would approve, and the team keeps working meanwhile. `/allow 3 5 7`
+answers several at once. The gate works the kind out itself on every retry, so
+a lead's approval never counts for a request that is yours.
+
 ### Several instances of one agent
 
 Number them: the name picks the CLI, so `claude-2` runs Claude Code as a separate
@@ -213,7 +222,7 @@ the room is told so the others pick up its part.
 | `/agents` | Live panes and sessions |
 | `/remove <agent>` · `/add <agent> [role]` | Takes an agent out · brings one in |
 | `/approve` | Approves the lead's plan and launches the team (no plan: launches whoever is waiting) |
-| `/allow` · `/allow <n>` · `/deny <n>` | Lists what the gate stopped agents from doing · allows request n once · refuses it |
+| `/allow` · `/allow <n…>` · `/deny <n…>` | Lists what the gate stopped agents from doing · allows those requests once · refuses them |
 | `@codex …` · `@all …` | A message for one agent · for everyone (plain text goes to the lead) |
 | `/add codex sim` | Codex already there: confirms another instance, numbered for you |
 | `/detach` | Leaves the workspace |

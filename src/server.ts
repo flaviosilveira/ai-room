@@ -24,6 +24,7 @@ import {
   roomWho,
 } from "./store.js";
 import { proposePlan } from "./cast.js";
+import { decideApproval } from "./approvals.js";
 import { EFFORTS } from "./types.js";
 import { WAKE_KINDS, WakeService, parseWakeSpec } from "./wake.js";
 import {
@@ -398,6 +399,31 @@ export function createAiRoomServer(
     },
     async ({ room, agent, size, reason, plan, agents }) => {
       const result = proposePlan(db, room, agent, { size, reason, plan, agents });
+      return { content: [{ type: "text", text: JSON.stringify(result) }], isError: !result.ok };
+    }
+  );
+
+  server.registerTool(
+    "room_allow",
+    {
+      description:
+        "Lead only. Answer a teammate's request that the gate stopped and filed for the lead (the room message says \"asks #n\"). " +
+        "Allow what is routine for the task; deny what you would not do yourself; leave it unanswered for the human when unsure. " +
+        "Requests that touch production, secrets or cannot be undone are the human's alone and are refused here.",
+      inputSchema: {
+        room: z.string(),
+        agent: z.string().describe("Your own identifier: the lead's."),
+        id: z.number().int().positive(),
+        allow: z.boolean(),
+        reason: z.string().max(300).optional().describe("One line on why, shown to the teammate and the human."),
+      },
+    },
+    async ({ room, agent, id, allow, reason }) => {
+      const result = decideApproval(db, room, id, allow, agent, reason);
+      if (result.ok) {
+        waitRegistry.notify(room);
+        wakeService.wakeRoom(db, room);
+      }
       return { content: [{ type: "text", text: JSON.stringify(result) }], isError: !result.ok };
     }
   );

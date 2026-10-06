@@ -71,6 +71,12 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "\"human\", so the lead also keeps the human up to date on the team's thinking,",
     "crediting who found what (\"agy found\", \"codex hit this problem\") in a few lines,",
     "not relaying every message.",
+    "Approvals: when the gate stops a teammate it files the request. One addressed to the",
+    "lead (\"asks #n\") the lead answers with room_allow — allow what is routine for this task,",
+    "deny what it would not do itself, and leave to the human what it is unsure of. One for the",
+    "human (production, secrets, data leaving, pushes to main) only the human can answer: the",
+    "lead says in one line whether it would approve, and the team keeps working on everything",
+    "that does not depend on it, so the human finds the rest done.",
     "If the lead leaves, the room says who takes over.",
   ].join(" "),
 

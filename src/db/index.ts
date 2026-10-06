@@ -114,6 +114,8 @@ function migrate(db: Database.Database): void {
   // JSON array of addressees; NULL is the whole room.
   ensureColumn(db, "messages", "recipients", "TEXT");
   ensureColumn(db, "room_profiles", "proposal", "TEXT");
+  ensureColumn(db, "approvals", "tier", "TEXT NOT NULL DEFAULT 'human'");
+  ensureColumn(db, "approvals", "decided_by", "TEXT");
   // Identity and wake-up target. `harness` separates which CLI runs an instance
   // from who that instance is in the room, so one harness can hold several.
   ensureColumn(db, "participants", "harness", "TEXT");
@@ -135,7 +137,7 @@ function migrate(db: Database.Database): void {
 
 function ensureColumn(
   db: Database.Database,
-  table: "participants" | "messages" | "room_profiles",
+  table: "participants" | "messages" | "room_profiles" | "approvals",
   column: string,
   definition: string
 ): void {
