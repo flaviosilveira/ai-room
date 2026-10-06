@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- In the files tab, `:q` on a file no longer leaves the tree alone: an empty
+  window comes back beside it, so the next file opens to the right instead of
+  above the tree.
 - `/clear` in the console clears the screen and the pane's scrollback.
   `/drop` is gone: Backspace after a token already removes it from the message.
 - The lead answers its teammates' unusual requests with the new `room_allow`

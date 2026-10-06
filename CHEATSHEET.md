@@ -190,7 +190,8 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 The files tab is a separate tab (window 1): one Vim, the tree on the left and
 the file on the right. In the tree, Enter opens the file beside it, `-` or
 `../` goes up, `p` previews; `:w` saves, `Ctrl-w w` moves between the two, and
-`:q` on the file leaves the tree. In the tree: `%` new file, `d` new folder,
+`:q` on the file leaves the tree, with an empty window beside it for the next
+file; `:Lexplore` brings the tree back if you closed it, `:qa` quits. In the tree: `%` new file, `d` new folder,
 `R` renames, `D` deletes. `AI_ROOM_FILES=yazi` brings back yazi, with a Vim pane
 beside it; `AI_ROOM_EDITOR` picks another editor.
 Copying text out of a pane: drag inside it, and releasing copies to the

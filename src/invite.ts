@@ -256,6 +256,11 @@ const FILE_BROWSERS: { bin: string; args: string[] }[] = [
     args: [
       "-c",
       "set hidden | let g:netrw_liststyle = 3 | let g:netrw_banner = 0 | let g:netrw_browse_split = 4 | let g:netrw_altv = 1 | let g:netrw_winsize = 25 | set mouse=a",
+      // `:q` on the file left the tree alone, and the next file then opened
+      // above it. The empty window comes back beside the tree, after the close
+      // (vim refuses a split while a window is closing).
+      "-c",
+      "autocmd WinEnter * if winnr('$') == 1 && &filetype ==# 'netrw' | call timer_start(0, {-> winnr('$') == 1 ? execute('botright vnew | wincmd p | vertical resize ' . (&columns * g:netrw_winsize / 100)) : 0}) | endif",
       "-c",
       "Lexplore",
     ],
