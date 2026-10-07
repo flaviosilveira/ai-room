@@ -1,71 +1,89 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
-- In the files tab, `:q` on a file no longer leaves the tree alone: an empty
-  window comes back beside it, so the next file opens to the right instead of
-  above the tree.
-- `/clear` in the console clears the screen and the pane's scrollback.
-  `/drop` is gone: Backspace after a token already removes it from the message.
-- The lead answers its teammates' unusual requests with the new `room_allow`
-  tool; production, secrets, data leaving the machine, pushes to `main` and
-  deploys still wait for the human, who can answer several with
-  `/allow 3 5 7`. The gate decides which kind a request is on every retry, so
-  an agent's approval never counts for the human's kind.
-- The gate: `hooks/ai-room-gate.py`, a PreToolUse hook for Claude Code, Codex
-  and agy. In a room, what the policy says to ask about is stopped and filed
-  for the human instead of prompting in a pane; `/allow <n>` in the console
-  lets that one retry through, `/deny <n>` refuses it. Only the console can
-  answer: the HTTP side (`POST /gate/request`) can only ask. `POST /wake`
-  brings back whoever a console action was for.
-- For a medium or large task, or an ambiguous brief, the lead grills the human
-  before proposing the team: one `[FOR YOU #n]` question at a time, the
-  grill-me / grill-with-docs method, with the decisions in
-  `.ai-room/for-human/plan.md`. `room_propose` takes its path as `plan`, and the
-  agents that join are told to read it. Small, clear tasks skip it.
-- `ai-room setup` asks for the defaults of new rooms (agents, lead, tools,
-  conventions, mouse), suggesting the agents and tools installed on the
-  machine, and saves them to `~/.ai-room/config.json`. The first `open` offers
-  it when there is no config yet: yes, not now, or don't ask again.
+### Team and plan
+
+- A new room with a brief and two or more agents opens with its lead alone.
+  The lead sizes the task by its touch points and proposes the team with the
+  new `room_propose` tool: each agent's role, model and effort. The human
+  approves it with `/approve` in the console and the team is launched at those
+  levels; `/approve` with no plan launches whoever is waiting, `--no-plan`
+  skips the step. A plan has at least two agents and never everyone on a light
+  setting; one agent is still a room invited with one.
+- For a medium or large task, or a vague brief, the lead first grills the
+  human, one `[FOR YOU #n]` question at a time (the grill-me /
+  grill-with-docs method), and keeps the decisions in
+  `.ai-room/for-human/plan.md`; the plan points to it and the agents that join
+  are told to read it.
+- `--model codex=gpt-5.5` and `--effort codex=medium` (`low`, `medium`,
+  `high`, `max`) set one instance's level, in each CLI's own flags; the roster
+  keeps it for every relaunch.
+
+### Waking and the console
+
 - A message wakes only who it is for: `to` wakes its recipients, the human's
-  plain words the lead, and a message with no `to` the whole room. Everyone
-  still reads everything once awake; a lead delegating to `claude-2` no longer
-  wakes `codex` to reply "ok". In the console, `@codex …` addresses one agent
-  and `@all …` everyone.
-- A new team starts with its lead alone. The lead sizes the task and proposes
-  who works at which model and effort with the new `room_propose` tool; the
-  human approves with `/approve` and the team is launched at those levels. At
-  least two agents, never all on a light setting. `--no-plan` skips it.
-- `--model codex=gpt-5.5` and `--effort codex=medium` set one instance's level;
-  the roster keeps it for every relaunch.
-- The files tab is one Vim: the netrw tree on the left (`../` goes up) and
-  the file opened beside it, editable at once, with no pause per file. yazi is
-  still used when `AI_ROOM_FILES=yazi`, and a picked file no longer opens over
-  its tree after the editor pane was quit: the pane comes back beside it.
-- The terminal window is titled with the room's name instead of the whole
-  `ai-room open … --brief …` command line.
-- Codex joins in auto-review (`--approve-for-me`): safe requests are approved
-  and the rest still asks, like Claude's auto mode. agy has no reviewer, so it
-  joins accepting edits (`--mode accept-edits`) and still asks for commands.
-- `ai-room <room> --brief … --invite …` works as `open`; leaving the word out
-  printed the usage.
-- `room_send` takes an optional `to` (`["claude-2"]`, `["human"]`). With a
-  lead, the console leaves out the lead's asides to teammates too, so with
-  `claude` and `claude-2` the human no longer reads the lead delegating work;
-  `/all` shows them as `claude → claude-2`.
+  plain words the lead, a message with no `to` the whole room. Everyone still
+  reads everything once awake; a lead delegating to `claude-2` no longer wakes
+  `codex` to reply "ok". In the console, `@codex …` addresses one agent and
+  `@all …` everyone.
+- With a lead, the `human>` console shows only the lead, which relays the
+  team's findings with credit ("agy found…"); `/all` shows every message, the
+  asides as `claude → claude-2`.
+- `/clear` clears the screen and the pane's scrollback. `/discard` and `/drop`
+  are gone: only the tokens still on the line are sent, so Backspace already
+  does what they did.
+
+### Approvals
+
+- The gate, `hooks/ai-room-gate.py`: a PreToolUse hook for Claude Code, Codex
+  and agy that, in a room, stops what the policy (`~/.ai-room/policy.json`)
+  says to ask about and files it instead of prompting in a pane. Anything that
+  changes `~/.ai-room` or an agent's settings is refused. Out of a room it does
+  nothing.
+- Two kinds of request. What is merely unusual goes to the room's lead, who
+  answers it with the new `room_allow` tool. Production, secrets, data leaving
+  the machine, pushes to `main`/`master` and deploys wait for the human. The
+  gate works the kind out itself on every retry, so an agent's approval never
+  counts for the human's kind, and a lead never answers its own request.
+- In the console, `/allow` lists what is waiting, `/allow 3 5 7` and
+  `/deny 4` answer it, `/allow all` and `/deny all` answer everything
+  (`/allow all yes` when one of them is the human's kind). A bare `/allow`
+  only lists. An allowed request is spent by the one retry it was granted for.
+- agy, which has no reviewer of its own, runs with its prompts skipped when
+  the gate is in its hooks: the gate lets through the allow list, reads, edits
+  inside the workspace and what a reviewer model passes, and files the rest.
+  Without the gate, agy still asks. Codex joins with `--approve-for-me`.
+
+### Workspace
+
+- The files tab is one Vim: the netrw tree on the left (`../` goes up) and the
+  file beside it, editable at once. `:q` on the file leaves an empty window
+  beside the tree for the next one instead of opening it above the tree.
+  `AI_ROOM_FILES=yazi` brings yazi back, with an editor pane that returns
+  after it is quit.
+- The terminal window is titled with the room's name.
 - `ai-room open` trusts the folder it runs in for the Claude Code and Codex
-  instances it launches, instead of each pane asking. Claude's question
-  defaults to "No, exit": with `claude:2`, one Enter too many closed an
-  instance and left the room waking a pane that was gone (`wake_failed`).
-- With a lead, the `human>` console shows only the lead; teammates' messages
-  stay in the room and `/all` shows them too. The lead convention now has the
-  lead relay the team's findings with credit ("agy found…"). Roles follow the
-  roster when it changes: a participant kept the role it joined with, so a
-  room whose lead was set later had no lead on record.
+  instances it launches; Claude's question defaulted to "No, exit" and closed
+  an instance of `claude:2`.
+
+### Setup and CLI
+
+- `ai-room setup` asks for the defaults of new rooms (agents, lead, tools,
+  conventions, mouse), suggesting what is installed, and saves them to
+  `~/.ai-room/config.json`. The first `open` offers it: yes, not now, or don't
+  ask again.
+- `ai-room <room>` alone reattaches to an existing room, and
+  `ai-room <room> --brief … --invite …` works as `open`. An unknown name still
+  gets the usage, so a typo never creates a room.
+- The exact pnpm version is pinned for corepack.
+
+### Fixes
+
 - An agent rejoining a room that already has messages is told to read
-  `room_history` and continue from there. Only newcomers were told, so an agent
-  relaunched into its own room (a new process with no memory of it) started the
-  brief over.
+  `room_history` and continue, not to start the brief over.
+- Roles follow the roster when it changes, so a lead set later is on record.
+- `/add` keeps the model and effort of an agent already on the roster.
 
 ## 0.6.2
 

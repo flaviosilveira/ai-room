@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { openDb } from "../src/db/index.js";
 import { createHttpApp } from "../src/http.js";
+import { VERSION } from "../src/version.js";
 import { TOOL_NAMES } from "../src/catalog.js";
 import type Database from "better-sqlite3";
 
@@ -45,7 +46,7 @@ describe("ai-room MCP over Streamable HTTP", () => {
     expect(healthResponse.status).toBe(200);
     await expect(healthResponse.json()).resolves.toMatchObject({
       ok: true,
-      version: "0.6.2",
+      version: VERSION,
       database: "ok",
     });
 
