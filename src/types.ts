@@ -146,7 +146,7 @@ export interface Proposal {
   by: string;
   size: string;
   reason?: string;
-  /** The decisions the grilling settled, as a file the human reads before approving. */
+  /** The decisions the grilling settled with the human, in a few lines. */
   plan?: string;
   agents: RosterEntry[];
   createdAt: number;

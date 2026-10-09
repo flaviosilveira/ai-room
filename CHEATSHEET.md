@@ -81,8 +81,9 @@ addresses you. The others pass what they need from you through it.
 - Your plain messages wake the lead alone. `@codex …` (or `@codex @agy …`)
   goes to whoever you name, `@all …` to everyone.
 - Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
-- Anything to read or forward arrives as a file in `.ai-room/for-human/`
-  (git-ignored), opened in the files tab: `[FOR YOU] deliverable: <path>`.
+- Summaries, plans and drafts come in the message itself; the room keeps them.
+  The lead writes a file only when you ask for one, or for something meant to
+  be pasted elsewhere whole, such as a PR description.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
 
@@ -97,8 +98,8 @@ at their default level, and `--no-plan` skips the step.
 
 For a medium or large task, or a vague brief, the lead grills you first: one
 `[FOR YOU #n]` question at a time, the grill-me / grill-with-docs way, until the
-decisions are settled in `.ai-room/for-human/plan.md`; the plan it proposes
-points to that file. "Enough" or "go ahead" stops the questions. A small, clear
+decisions are settled; the plan it proposes lists them, and the agents that
+join read them in the approval message. "Enough" or "go ahead" stops the questions. A small, clear
 task is proposed directly.
 
 A plan has at least two agents, and never everyone on a light setting (a low

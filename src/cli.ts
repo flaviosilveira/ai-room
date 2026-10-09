@@ -249,18 +249,6 @@ async function open(room: string, argv: string[]): Promise<void> {
     if (left.length) console.log(`left the room: ${left.join(", ")}`);
   }
 
-  // The lead hands deliverables over as files in the workspace, where every
-  // harness may write; they are for the human, never for a commit.
-  if ((flags.convention ?? "").split(",").includes("lead")) {
-    const handoff = path.join(process.cwd(), ".ai-room");
-    try {
-      fs.mkdirSync(path.join(handoff, "for-human"), { recursive: true });
-      if (!fs.existsSync(path.join(handoff, ".gitignore"))) fs.writeFileSync(path.join(handoff, ".gitignore"), "*\n");
-    } catch {
-      /* the lead can still send its deliverables as messages */
-    }
-  }
-
   let charter = roomSetCharter(db, charterPatch(room, flags));
   const held = holdForPlan(charter.roster, flags, verdict.kind === "new");
   if (held !== charter.roster) charter = roomSetCharter(db, { room, roster: held });

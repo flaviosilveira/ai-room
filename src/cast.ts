@@ -196,7 +196,7 @@ export function proposePlan(
     to: ["human"],
     message: [
       `Plan: ${plan.size}.${plan.reason ? ` ${plan.reason}` : ""}`,
-      ...(plan.plan ? [`Decisions: ${plan.plan}`] : []),
+      ...(plan.plan ? ["Decisions:", plan.plan] : []),
       ...lines,
       "Approve with /approve, or change it with --model/--effort and /add.",
     ].join("\n"),
@@ -242,7 +242,7 @@ export function approvePlan(db: Database.Database, room: string): { ok: boolean;
     agent: "human",
     origin: "human",
     to: lead ? [lead] : undefined,
-    message: `The human approved the plan.${proposal?.plan ? ` Decisions: ${proposal.plan}; read it before starting.` : ""}${joining.length ? ` Joining: ${joining.join(", ")}.` : ""}`,
+    message: `The human approved the plan.${joining.length ? ` Joining: ${joining.join(", ")}.` : ""}${proposal?.plan ? `\nDecisions settled with the human:\n${proposal.plan}` : ""}`,
   });
   if (!joining.length) return { ok: true, detail: "plan approved; everyone in it is already running" };
   if (!live) return { ok: true, detail: `plan approved; ${joining.join(", ")} start with: ai-room attach ${room}` };

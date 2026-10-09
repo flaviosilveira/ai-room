@@ -379,7 +379,7 @@ export function createAiRoomServer(
         agent: z.string().describe("Your own identifier: the lead's."),
         size: z.string().max(300).describe('The task\'s touch points, e.g. "small: 4 changes in 2 files" or "large: 3 modules, a migration".'),
         reason: z.string().max(500).optional(),
-        plan: z.string().max(300).optional().describe("Path of the file with the decisions the grilling settled, e.g. .ai-room/for-human/plan.md."),
+        plan: z.string().max(1500).optional().describe("The decisions the grilling settled with the human, in a few lines."),
         agents: z
           .array(
             z.object({

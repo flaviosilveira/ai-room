@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The lead puts summaries, plans and drafts in the message itself instead of a
+  file under `.ai-room/for-human/`; it writes a file only when the human asks
+  for one, or for something to paste elsewhere whole. The grilling's decisions
+  travel in `room_propose`'s `plan` and in the approval message. `open` no
+  longer creates `.ai-room/for-human/`.
+
 ## 0.7.0
 
 ### Team and plan
