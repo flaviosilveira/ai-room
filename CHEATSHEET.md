@@ -81,9 +81,9 @@ addresses you. The others pass what they need from you through it.
 - Your plain messages wake the lead alone. `@codex …` (or `@codex @agy …`)
   goes to whoever you name, `@all …` to everyone.
 - Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
-- Summaries, plans and drafts come in the message itself; the room keeps them.
-  The lead writes a file only when you ask for one, or for something meant to
-  be pasted elsewhere whole, such as a PR description.
+- Messages to the team and short updates come in the message itself. A report,
+  a summary to keep or share, or anything long arrives as a file in
+  `.ai-room/for-human/` (git-ignored), with one line saying what it is.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
 

@@ -249,6 +249,17 @@ async function open(room: string, argv: string[]): Promise<void> {
     if (left.length) console.log(`left the room: ${left.join(", ")}`);
   }
 
+  // Reports the lead writes for the human land here; they are never for a commit.
+  if ((flags.convention ?? "").split(",").includes("lead")) {
+    try {
+      fs.mkdirSync(path.join(process.cwd(), ".ai-room", "for-human"), { recursive: true });
+      const ignore = path.join(process.cwd(), ".ai-room", ".gitignore");
+      if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, "*\n");
+    } catch {
+      /* the lead can still put its reports in messages */
+    }
+  }
+
   let charter = roomSetCharter(db, charterPatch(room, flags));
   const held = holdForPlan(charter.roster, flags, verdict.kind === "new");
   if (held !== charter.roster) charter = roomSetCharter(db, { room, roster: held });
