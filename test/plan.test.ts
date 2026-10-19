@@ -1,4 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
+
+// The launcher reads the harnesses' real hooks files; these tests describe a machine without the gate.
+process.env.AI_ROOM_HOOKS_HOME = "/nonexistent";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
 import {
@@ -107,20 +110,31 @@ describe("the lead's plan", () => {
     expect(charter.roster.find((entry) => entry.agent === "claude")?.role).toBe("lead");
   });
 
-  it("skips agy's prompts only when the gate is in its hooks", () => {
-    const hooks = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "airoom-agy-")), "hooks.json");
-    const previous = process.env.AI_ROOM_AGY_HOOKS;
+  it("skips a harness's prompts only when the gate is in its hooks", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "airoom-hooks-"));
+    const agyHooks = path.join(home, ".gemini", "config", "hooks.json");
+    const claudeSettings = path.join(home, ".claude", "settings.json");
+    fs.mkdirSync(path.dirname(agyHooks), { recursive: true });
+    fs.mkdirSync(path.dirname(claudeSettings), { recursive: true });
+    const previous = process.env.AI_ROOM_HOOKS_HOME;
     try {
-      process.env.AI_ROOM_AGY_HOOKS = hooks;
+      process.env.AI_ROOM_HOOKS_HOME = home;
       expect(agentCommand("r", "agy")).toContain("--mode");
-      fs.writeFileSync(hooks, JSON.stringify({ "ai-room-gate": { PreToolUse: [{ matcher: "*", hooks: [{ command: "python3 /x/ai-room-gate.py --harness agy" }] }] } }));
+      expect(agentCommand("r", "claude")).not.toContain("--dangerously-skip-permissions");
+
+      fs.writeFileSync(agyHooks, JSON.stringify({ "ai-room-gate": { PreToolUse: [{ matcher: "*", hooks: [{ command: "python3 /x/ai-room-gate.py --harness agy" }] }] } }));
+      fs.writeFileSync(claudeSettings, JSON.stringify({ hooks: { PreToolUse: [{ matcher: "*", hooks: [{ command: "/x/ai-room-gate.sh --harness claude" }] }] } }));
       expect(agentCommand("r", "agy")).toContain("--dangerously-skip-permissions");
-      expect(agentEnv("r", "agy").AI_ROOM_SKIP_PROMPTS).toBe("1");
-      fs.writeFileSync(hooks, JSON.stringify({ "ai-room-gate": { enabled: false, PreToolUse: [{ hooks: [{ command: "ai-room-gate.py" }] }] } }));
+      expect(agentCommand("r", "claude-2")).toContain("--dangerously-skip-permissions");
+      expect(agentEnv("r", "claude-2").AI_ROOM_SKIP_PROMPTS).toBe("1");
+      expect(agentCommand("r", "codex")).not.toContain("--dangerously-skip-permissions");
+
+      fs.writeFileSync(agyHooks, JSON.stringify({ "ai-room-gate": { enabled: false, PreToolUse: [{ hooks: [{ command: "ai-room-gate.py" }] }] } }));
       expect(agentCommand("r", "agy")).not.toContain("--dangerously-skip-permissions");
       expect(agentEnv("r", "agy").AI_ROOM_SKIP_PROMPTS).toBeUndefined();
     } finally {
-      process.env.AI_ROOM_AGY_HOOKS = previous;
+      process.env.AI_ROOM_HOOKS_HOME = previous;
+      fs.rmSync(home, { recursive: true, force: true });
     }
   });
 

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Free mode in rooms: with the gate in its hooks, Claude joins a room with its
+  own prompts skipped, like agy. The gate lets everything through except what
+  cannot be undone, which waits for the human: the ask list (database writes,
+  AWS changes in any region, `terraform apply`, `kubectl apply`), Azure
+  changes, force pushes and pushes to `main`/`master`, and a risky command run
+  over `ssh` (reads over `ssh` stay free). The reviewer model is gone. An edit
+  outside the workspace goes to the lead; one to system or account settings to
+  the human. Codex keeps its own reviewer.
 - The human's own short messages reach an idle agent inside the wake, so it
   acts on them at once instead of spending a turn on `room_listen` first.
   Anything another agent wrote, or a message with attachments, still comes as

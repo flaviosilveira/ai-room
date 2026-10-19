@@ -43,7 +43,7 @@ export interface AgentLauncher {
 export const LAUNCHERS: Record<string, AgentLauncher> = {
   claude: {
     bin: "claude",
-    args: (prompt) => [prompt],
+    args: (prompt) => [...(gateInstalled("claude") ? ["--dangerously-skip-permissions"] : []), prompt],
     level: ({ model, effort }) => [...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : [])],
   },
   // Claude's auto mode comes from its own settings. Codex's equivalent is a
@@ -59,21 +59,30 @@ export const LAUNCHERS: Record<string, AgentLauncher> = {
   },
   agy: {
     bin: "agy",
-    args: (prompt) => [...(agyGateInstalled() ? ["--dangerously-skip-permissions"] : ["--mode", "accept-edits"]), "-i", prompt],
+    args: (prompt) => [...(gateInstalled("agy") ? ["--dangerously-skip-permissions"] : ["--mode", "accept-edits"]), "-i", prompt],
     level: ({ model, effort }) => [...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : [])],
   },
 };
 
 /**
- * agy has no reviewer of its own, only prompts or none. With ai-room's gate in
- * its hooks, the gate is the check and agy's prompts are skipped; without it,
- * nothing would check anything, so the prompts stay.
+ * With ai-room's gate in a harness's hooks, the gate is the check inside a
+ * room and the harness's own prompts are skipped there: only what cannot be
+ * undone waits for the human. Without the gate nothing would check anything,
+ * so the prompts stay.
  */
-export function agyGateInstalled(file = process.env.AI_ROOM_AGY_HOOKS || path.join(os.homedir(), ".gemini", "config", "hooks.json")): boolean {
+const GATE_HOOKS: Record<string, string> = {
+  agy: path.join(".gemini", "config", "hooks.json"),
+  claude: path.join(".claude", "settings.json"),
+};
+
+export function gateInstalled(harness: string, home = process.env.AI_ROOM_HOOKS_HOME || os.homedir()): boolean {
+  const relative = GATE_HOOKS[harness];
+  if (!relative) return false;
   try {
-    const hooks = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, { enabled?: boolean; PreToolUse?: { hooks?: { command?: string }[] }[] }>;
-    return Object.values(hooks).some(
-      (hook) => hook?.enabled !== false && Boolean(hook?.PreToolUse?.some((group) => group.hooks?.some((h) => h.command?.includes("ai-room-gate.py"))))
+    const config = JSON.parse(fs.readFileSync(path.join(home, relative), "utf8")) as Record<string, unknown>;
+    const named = harness === "claude" ? { claude: config.hooks } : config;
+    return Object.values(named as Record<string, { enabled?: boolean; PreToolUse?: { hooks?: { command?: string }[] }[] }>).some(
+      (hook) => hook?.enabled !== false && Boolean(hook?.PreToolUse?.some((group) => group.hooks?.some((h) => h.command?.includes("ai-room-gate"))))
     );
   } catch {
     return false;
@@ -168,8 +177,8 @@ export function agentEnv(
   harness = harnessFor(agent)
 ): Record<string, string> {
   const env: Record<string, string> = { AI_ROOM_ROOM: room, AI_ROOM_AGENT: agent, AI_ROOM_HARNESS: harness };
-  // Tells the gate it is agy's only check, so it decides everything instead of deferring.
-  if (harness === "agy" && agyGateInstalled()) env.AI_ROOM_SKIP_PROMPTS = "1";
+  // Tells the gate it is the harness's only check, so it decides everything instead of deferring.
+  if (gateInstalled(harness)) env.AI_ROOM_SKIP_PROMPTS = "1";
   return env;
 }
 

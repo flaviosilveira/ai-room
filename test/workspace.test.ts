@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 
-// The launcher reads agy's real hooks file; these tests describe a machine without the gate.
-process.env.AI_ROOM_AGY_HOOKS = "/nonexistent/hooks.json";
+// The launcher reads the harnesses' real hooks files; these tests describe a machine without the gate.
+process.env.AI_ROOM_HOOKS_HOME = "/nonexistent";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
