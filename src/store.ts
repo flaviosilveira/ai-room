@@ -312,6 +312,36 @@ export function roomListen(
  * the human's cursor never moved and the monitor showed a human with dozens of
  * "unread" messages it had been watching scroll by all along.
  */
+/**
+ * The unread messages of an idle agent, when they are all the human's own
+ * words and short enough to hand over in the wake itself. Anything an agent
+ * wrote, or a message with attachments, still goes through room_listen.
+ */
+export function humanOnlyUnread(
+  db: Database.Database,
+  room: string,
+  agent: string,
+  after: number,
+  maxChars = 1500
+): { upToId: number; texts: string[] } | null {
+  const rows = db
+    .prepare(
+      `SELECT m.id, m.origin, m.agent, m.content,
+              EXISTS (SELECT 1 FROM message_attachments a WHERE a.message_id = m.id) AS attached
+       FROM messages m WHERE m.room = ? AND m.id > ? AND m.agent != ? ORDER BY m.id`
+    )
+    .all(room, after, agent) as { id: number; origin: string; agent: string; content: string; attached: number }[];
+  if (!rows.length || rows.some((row) => row.origin !== "human" || row.agent !== "human" || row.attached)) return null;
+  const texts = rows.map((row) => row.content);
+  if (texts.join("\n").length > maxChars) return null;
+  return { upToId: rows[rows.length - 1].id, texts };
+}
+
+/** Moves an agent's read position forward after its messages reached it in a wake. */
+export function advanceCursor(db: Database.Database, room: string, agent: string, upToId: number): void {
+  db.prepare("UPDATE cursors SET last_message_id = MAX(last_message_id, ?) WHERE room = ? AND agent = ?").run(upToId, room, agent);
+}
+
 export function markRead(
   db: Database.Database,
   params: { room: string; agent: string; upToId: number }
@@ -764,9 +794,9 @@ export function idleParticipantsWithUnread(
               OR p.wake_attempts < ${WAKE_ATTEMPT_LIMIT})`
     )
     .all(room) as (WakeTarget & { idleMark: number })[])
-    // Something for it, that arrived after it fell asleep.
+    // Something for it that it has not read, and that arrived after it fell asleep.
     .filter((target) =>
-      (since.all(room, target.idleMark) as { agent: string; origin: string; recipients: string | null }[])
+      (since.all(room, Math.max(target.idleMark, target.cursor)) as { agent: string; origin: string; recipients: string | null }[])
         .some((message) => callsAgent(message, target.agent, leads))
     )
     .map(({ idleMark: _, ...target }) => target);

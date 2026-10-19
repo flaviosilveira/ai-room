@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The human's own short messages reach an idle agent inside the wake, so it
+  acts on them at once instead of spending a turn on `room_listen` first.
+  Anything another agent wrote, or a message with attachments, still comes as
+  the notice. An agent is no longer woken for messages it has already read.
+- The gate logs only its decisions, not every call it leaves to the harness,
+  and refuses an agent's post to the console's `/say`, whose messages reach
+  panes as the human's.
 - Short messages stay in the room; a report, a summary to keep or share, or
   anything long goes in a file under `.ai-room/for-human/`, announced in one
   line. Every summary used to become a file. The grilling's decisions travel

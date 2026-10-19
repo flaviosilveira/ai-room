@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type Database from "better-sqlite3";
 import type { WakeSpec, WakeKind } from "./types.js";
-import { idleParticipantsWithUnread, recordWakeAttempt, touchWake } from "./store.js";
+import { advanceCursor, humanOnlyUnread, idleParticipantsWithUnread, recordWakeAttempt, touchWake } from "./store.js";
 import { paneBusy, paneForAgent, pasteIntoPane, tmuxBin } from "./session.js";
 
 /**
@@ -105,6 +105,18 @@ export function wakeMessage(room: string, agent: string, unread: number): string
   );
 }
 
+/**
+ * The human's own words, handed over in the wake: the agent acts on them at
+ * once instead of spending a turn on room_listen first. Only ever the human's
+ * messages — another agent's text typed into a pane would read as the human's.
+ */
+export function humanWakeMessage(room: string, texts: string[]): string {
+  return (
+    `ai-room: the human wrote to you in room "${room}":\n\n${texts.join("\n\n")}\n\n` +
+    `Answer in the room with room_send, and call room_idle when nothing is left to do.`
+  );
+}
+
 export interface WakeAttempt {
   room: string;
   agent: string;
@@ -200,7 +212,8 @@ export class WakeService {
       }
 
       const spec: WakeSpec = { kind: target.wakeKind, id: target.wakeId };
-      const notice = wakeMessage(room, target.agent, target.unread);
+      const fromHuman = humanOnlyUnread(db, room, target.agent, target.cursor);
+      const notice = fromHuman ? humanWakeMessage(room, fromHuman.texts) : wakeMessage(room, target.agent, target.unread);
       const adapter = ADAPTERS[spec.kind];
       if (!adapter) {
         // A row written by an older version, naming a way to wake that this one
@@ -229,6 +242,8 @@ export class WakeService {
         }
       );
       this.lastWake.set(key, this.now());
+      // Delivered in full: nothing is left to read, so the next wake waits for something new.
+      if (fromHuman && result.ok) advanceCursor(db, room, target.agent, fromHuman.upToId);
       recordWakeAttempt(db, room, target.agent, target.cursor);
       touchWake(db, room, target.agent, result.ok, result.error);
       attempts.push({

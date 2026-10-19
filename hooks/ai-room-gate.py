@@ -56,6 +56,8 @@ PROTECTED = [
     os.path.join(HOME, ".codex", "config.toml"), os.path.join(HOME, ".codex", "hooks.json"),
     os.path.join(HOME, ".gemini", "config"), os.path.join(HOME, ".gemini", "antigravity-cli", "settings.json"),
     "ai-room.sqlite",
+    # The console's door: a message posted there is the human's, and reaches panes as such.
+    "49375/say",
 ]
 
 SEPARATORS = {";", "&&", "||", "|", "&", "\n"}
@@ -301,7 +303,9 @@ def main():
         subject = (command if command is not None else f"{tool} {json.dumps(args)}")[:160]
     except Exception:
         pass
-    log(f"{harness} {room or '-'} {agent or '-'} {decision or 'defer'}: {reason} | {subject}")
+    # Passing a call on to the harness's own checks is the common case and says nothing.
+    if decision is not None:
+        log(f"{harness} {room or '-'} {agent or '-'} {decision}: {reason} | {subject}")
     answer(harness, decision, reason)
 
 
