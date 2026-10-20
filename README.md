@@ -27,6 +27,7 @@ cd ai-room
 pnpm install && pnpm build
 npm link                    # puts `ai-room` on PATH
 ai-room service install     # runs the server in the background, at every login
+ai-room setup               # which agents to use, and the approvals gate
 ai-room doctor              # checks the rest and prints the fix for each gap
 ```
 
@@ -59,6 +60,54 @@ the right, ready to edit.
 **[CHEATSHEET.md](CHEATSHEET.md)** has every command, key and flag.
 **[docs/concepts.md](docs/concepts.md)** explains how it works: charters,
 idle and wake, hooks, attachments, security and limitations.
+
+## Configuration
+
+Two files in `~/.ai-room/`, both plain JSON you can edit. `ai-room setup` writes
+the first and offers the second; the first `ai-room open` offers `setup` when
+neither exists.
+
+**`config.json`** — the defaults of a new room. Flags given to `ai-room open`
+win, and a room keeps its own charter once created.
+
+```json
+{
+  "defaults": {
+    "invite": ["claude", "codex"],
+    "lead": ["claude", "agy", "codex"],
+    "tools": ["rtk"],
+    "convention": "caveman",
+    "mouse": true
+  }
+}
+```
+
+| Key | What it sets |
+|---|---|
+| `invite` | The agents a room starts with (`claude:2` for two Claudes) |
+| `lead` | Who talks to you, in order of preference; `false` for no lead |
+| `tools` | Tools every room is told about (`rtk`, `graphify`, `grill-me`, `ponytail`…) |
+| `convention` | How agents write: `caveman` (terse), `ponytail` (simplest code), `rigorous` |
+| `mouse` | The mouse in the workspace (on by default) |
+
+**`policy.json`** — what the approvals gate stops. Installed by
+`ai-room gate install`, it is a PreToolUse hook for Claude Code, Codex and agy.
+In a room, Claude and agy then work without asking, and what is in `ask` waits
+for you: `/allow <n>` in the console or a tap in the web view. `deny` is always
+refused. Out of a room the gate does nothing.
+
+```json
+{
+  "ask": ["git push --force", "terraform apply", "aws * delete-*", "mysql"],
+  "deny": ["rm -rf /"]
+}
+```
+
+Entries are command prefixes; `*` matches any words. A push to `main`/`master`,
+an Azure change and a risky command over `ssh` wait for you whatever the list
+says. The full default is [`hooks/default-policy.json`](hooks/default-policy.json).
+`ai-room gate status` shows where it is installed, `ai-room gate uninstall`
+removes it.
 
 ## Agent tools
 

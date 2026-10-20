@@ -77,27 +77,46 @@ export function saveDefaults(defaults: OpenDefaults, file = defaultsPath()): voi
   fs.writeFileSync(file, JSON.stringify({ ...config, defaults }, null, 2) + "\n");
 }
 
-/** Asks each question with its suggestion; Enter keeps it, a bad name asks again. */
+/**
+ * Two questions: which agents, and the approvals gate. Everything else is
+ * written with its suggestion into config.json, which the end of the run
+ * points to, so nobody answers what they have no opinion on yet.
+ */
 export async function runSetup(file = defaultsPath()): Promise<OpenDefaults> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    console.log(`Defaults for new rooms, saved to ${file}. Enter keeps the suggestion.\n`);
-    const answers: Partial<Record<keyof OpenDefaults, string>> = {};
-    for (const question of setupQuestions(loadOpenDefaults(file))) {
-      for (;;) {
-        const answer = (await rl.question(`${question.prompt} [${question.suggested}]: `)).trim();
-        answers[question.key] = answer || question.suggested;
-        try {
-          defaultsFromAnswers({ [question.key]: answers[question.key] });
-          break;
-        } catch (error) {
-          console.log(`  ${error instanceof Error ? error.message : error}`);
-        }
+    const questions = setupQuestions(loadOpenDefaults(file));
+    const answers = Object.fromEntries(questions.map((q) => [q.key, q.suggested])) as Partial<Record<keyof OpenDefaults, string>>;
+    const agents = questions.find((q) => q.key === "invite")!;
+    for (;;) {
+      const answer = (await rl.question(`${agents.prompt} [${agents.suggested}]: `)).trim();
+      answers.invite = answer || agents.suggested;
+      try {
+        defaultsFromAnswers({ invite: answers.invite });
+        break;
+      } catch (error) {
+        console.log(`  ${error instanceof Error ? error.message : error}`);
       }
     }
     const defaults = defaultsFromAnswers(answers);
     saveDefaults(defaults, file);
-    console.log(`\nsaved. Change it any time with: ai-room setup\n`);
+
+    const gate = (await rl.question(
+      "\nInstall the approvals gate? In a room, agents then work without asking, and only what cannot be undone\n" +
+        "(database writes, cloud changes, pushes to main) waits for your /allow. [Y/n]: "
+    )).trim().toLowerCase();
+    if (!gate.startsWith("n")) {
+      const { installGate } = await import("./gate.js");
+      for (const line of installGate()) console.log(`  ${line}`);
+    }
+
+    console.log(`\nsaved to ${file}:`);
+    console.log(`  invite      ${(defaults.invite ?? []).join(", ") || "(none)"}   agents a new room starts with`);
+    console.log(`  lead        ${defaults.lead === false ? "none" : (defaults.lead ?? []).join(", ")}   who talks to you, in order of preference`);
+    console.log(`  tools       ${(defaults.tools ?? []).join(", ") || "(none)"}   tools every room is told about`);
+    console.log(`  convention  ${defaults.convention ?? "(none)"}   how agents write (caveman, ponytail, rigorous)`);
+    console.log(`  mouse       ${defaults.mouse === false ? "off" : "on"}   mouse in the workspace`);
+    console.log("Edit the file to change any of them; ai-room setup asks again.\n");
     return defaults;
   } finally {
     rl.close();

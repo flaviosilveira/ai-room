@@ -802,6 +802,21 @@ switch (cmd) {
   case "hooks":
     hooks(process.argv.includes("--json"));
     break;
+  case "gate": {
+    const { gateStatus, installGate, policyPath, uninstallGate } = await import("./gate.js");
+    const action = arg ?? "status";
+    if (action === "install") for (const line of installGate()) console.log(line);
+    else if (action === "uninstall") for (const line of uninstallGate()) console.log(line);
+    else {
+      for (const { harness, file, installed } of gateStatus()) console.log(`${harness.padEnd(7)} ${installed ? "installed" : "not installed"}  ${file}`);
+      console.log(`policy  ${policyPath()}`);
+      console.log("\nIn a room, the gate lets agents work and files what cannot be undone for /allow.");
+      console.log("ai-room gate install | uninstall");
+      break;
+    }
+    console.log("\nReopen your rooms for it to take effect. Codex asks once to trust the hook.");
+    break;
+  }
   case "usage": {
     const { renderUsage, roomUsage } = await import("./usage.js");
     const daysAt = process.argv.indexOf("--days");
@@ -874,7 +889,7 @@ switch (cmd) {
       break;
     }
     console.error(
-      "usage: ai-room <serve|setup|usage [room] [--days N]|web [--tunnel|--stop|--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
+      "usage: ai-room <serve|setup|gate [install|uninstall|status]|usage [room] [--days N]|web [--tunnel|--stop|--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );

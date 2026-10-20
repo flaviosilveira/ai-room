@@ -1,0 +1,22 @@
+{
+  "_comment": "Command prefixes the ai-room gate checks in a room. ask: stopped and filed for the human (/allow in the console or the web view). deny: always refused. allow: let through without asking when the harness still prompts. '*' matches any words. Copy to ~/.ai-room/policy.json to make it yours (ai-room gate install does).",
+  "allow": [
+    "git status", "git diff", "git log", "git show", "git branch", "git fetch",
+    "ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "pwd", "which"
+  ],
+  "ask": [
+    "git push --force", "git push -f", "git push * --force", "git push * -f", "git push --force-with-lease",
+    "git reset --hard", "git clean",
+    "sudo",
+    "mysql", "psql", "mongosh",
+    "terraform apply", "terraform destroy",
+    "kubectl apply", "kubectl delete",
+    "aws * create-*", "aws * delete-*", "aws * update-*", "aws * put-*", "aws * terminate-*",
+    "aws * modify-*", "aws * remove-*", "aws * start-*", "aws * stop-*", "aws * run-*",
+    "aws s3 rm", "aws s3 mv", "aws s3 sync", "aws s3 cp",
+    "az * create", "az * delete", "az * update", "az * set", "az * deploy", "az * start", "az * stop", "az * restart",
+    "gcloud * create", "gcloud * delete", "gcloud * update", "gcloud * deploy",
+    "gh pr merge", "npm publish", "pnpm publish"
+  ],
+  "deny": ["rm -rf /", "rm -rf ~", "rm -rf ~/"]
+}

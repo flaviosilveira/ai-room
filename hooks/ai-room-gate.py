@@ -35,16 +35,7 @@ HOME = os.path.expanduser("~")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Used when ~/.ai-room/policy.json does not exist.
-DEFAULT_POLICY = {
-    "allow": [],
-    "ask": [
-        "git push --force", "git push -f", "git push * --force", "git push * -f",
-        "git reset --hard", "git clean", "rm -rf", "sudo",
-        "terraform apply", "terraform destroy", "kubectl apply", "kubectl delete",
-        "aws * delete-*", "aws * terminate-*", "aws s3 rm", "gh pr merge", "db-rw",
-    ],
-    "deny": ["rm -rf /", "rm -rf ~", "rm -rf ~/"],
-}
+DEFAULT_POLICY_PATH = os.path.join(HERE, "default-policy.json")
 
 PROTECTED = [
     os.path.join(HOME, ".ai-room"), "~/.ai-room", HERE,
@@ -80,7 +71,7 @@ def load_policy():
     try:
         policy = json.load(open(POLICY_PATH))
     except (OSError, ValueError):
-        policy = DEFAULT_POLICY
+        policy = json.load(open(DEFAULT_POLICY_PATH))
     return {key: [re_prefix(p) for p in policy.get(key, [])] for key in ("allow", "ask", "deny")}
 
 

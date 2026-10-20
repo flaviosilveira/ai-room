@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `ai-room gate install | uninstall | status` installs the approvals gate in
+  Claude Code, Codex and agy on any machine, with a default policy written to
+  `~/.ai-room/policy.json` to edit; it no longer needs a separate tool. The
+  default lives in `hooks/default-policy.json`.
+- `ai-room setup` asks two things: which agents, and whether to install the
+  gate. The rest goes into `config.json` with its suggestion, and setup shows
+  each key and what it does. The README documents both files.
 - Knowledge bases: one per company or project, in `~/.ai-room/knowledge.sqlite`
   apart from the rooms. A room is bound with `--kb <name>`, or its lead asks
   the human which one; agents read it with `room_knowledge` and propose
