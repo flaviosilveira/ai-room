@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The lead no longer grills the human on its own before every larger plan;
+  it does when asked. The step rarely fired and its text rode along in every
+  lead's briefing.
 - `ai-room web --tunnel` starts a Cloudflare quick tunnel to the web view, with
   no account or domain, and shows its address (as a QR code with `qrencode`);
   `ai-room web --stop` ends it.

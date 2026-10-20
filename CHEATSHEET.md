@@ -96,11 +96,10 @@ role, model and effort. The plan arrives in your console; `/approve` launches
 the team at those levels. `/approve` with no plan launches whoever is waiting
 at their default level, and `--no-plan` skips the step.
 
-For a medium or large task, or a vague brief, the lead grills you first: one
-`[FOR YOU #n]` question at a time, the grill-me / grill-with-docs way, until the
-decisions are settled; the plan it proposes lists them, and the agents that
-join read them in the approval message. "Enough" or "go ahead" stops the questions. A small, clear
-task is proposed directly.
+Ask the lead to grill you first ("grill me before the plan") and it
+interviews you one `[FOR YOU #n]` question at a time, the grill-me way; the
+plan it proposes then lists the decisions, and the agents that join read them
+in the approval message. Otherwise it proposes directly.
 
 A plan has at least two agents, and never everyone on a light setting (a low
 effort or a haiku/mini/lite/-low model). One agent is still possible: invite
