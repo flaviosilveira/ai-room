@@ -7,6 +7,7 @@ import express from "express";
 import type { Express, NextFunction, Request, Response } from "express";
 import { decideApproval, pendingApprovals } from "./approvals.js";
 import { approvePlan } from "./cast.js";
+import { decideKnowledge, knowledgeProposal, pendingKnowledge, readKnowledge } from "./knowledge.js";
 import { detectMultiplexer, sessionExists, workspaceName } from "./session.js";
 import { mentionedAgents, roomCharter, roomExists, roomHistory, roomSend, roomWho } from "./store.js";
 import { fileURLToPath } from "node:url";
@@ -217,6 +218,25 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
     const result = approvePlan(db, room);
     if (result.ok) wake(room);
     res.status(result.ok ? 200 : 400).json(result);
+  });
+
+  app.get("/api/rooms/:room/knowledge", (req, res) => {
+    const room = known(req, res);
+    if (!room) return;
+    const base = readKnowledge(db, room, "human");
+    res.json({ ok: true, ...base, pending: base.project ? pendingKnowledge(db, base.project) : [] });
+  });
+
+  app.post("/api/knowledge/:id", express.json(), (req, res) => {
+    const id = Number(req.params.id);
+    const room = knowledgeProposal(db, id)?.room;
+    const decided = decideKnowledge(db, id, req.body?.approve === true);
+    if (!decided) {
+      res.status(400).json({ ok: false, error: `no pending update #k${id}` });
+      return;
+    }
+    if (room) wake(room);
+    res.json({ ok: true, proposal: decided });
   });
 
   app.get("/api/rooms/:room/reports", (req, res) => {

@@ -74,6 +74,11 @@ export const CONVENTION_PRESETS: Record<string, string> = {
     "human (production, secrets, data leaving, pushes to main) only the human can answer: the",
     "lead says in one line whether it would approve, and the team keeps working on everything",
     "that does not depend on it, so the human finds the rest done.",
+    "Knowledge: on joining, read the room's knowledge base with room_knowledge. If the room",
+    "has none, ask the human once which company or project it belongs to — listing the bases",
+    "that exist — or whether it needs none, and bind it with room_knowledge. When a task",
+    "teaches something durable about the business, a rule, the deploy or the stack, propose it",
+    "with room_knowledge_propose (the section's whole new text); the human approves it.",
     "If the lead leaves, the room says who takes over.",
   ].join(" "),
 

@@ -144,6 +144,7 @@
     <button type="button" role="tab" data-tab="chat" aria-selected="true">Conversa</button>
     <button type="button" role="tab" data-tab="asks" aria-selected="false">Pedidos<span class="count" id="ask-count" hidden></span></button>
     <button type="button" role="tab" data-tab="reports" aria-selected="false">Relatórios</button>
+    <button type="button" role="tab" data-tab="kb" aria-selected="false">Base<span class="count" id="kb-count" hidden></span></button>
   </div>
   <div class="pane" id="pane-chat"><div class="pane-inner">
     <div class="agents" id="agents"></div>
@@ -152,6 +153,7 @@
   </div></div>
   <div class="pane" id="pane-asks" hidden><div class="pane-inner" id="asks"></div></div>
   <div class="pane" id="pane-reports" hidden><div class="pane-inner" id="reports"></div></div>
+  <div class="pane" id="pane-kb" hidden><div class="pane-inner" id="kb"></div></div>
   <div class="composer" id="composer">
     <form id="say">
       <textarea id="message" rows="1" placeholder="Mensagem para a sala" aria-label="Mensagem"></textarea>
@@ -339,13 +341,56 @@
     }
   });
 
+  async function loadKnowledge() {
+    const base = await api(`/api/rooms/${encodeURIComponent(current)}/knowledge`);
+    $("kb-count").hidden = !base.pending.length;
+    $("kb-count").textContent = base.pending.length;
+    if (!base.project) {
+      $("kb").innerHTML = `<div class="empty">Esta sala ainda não tem base de conhecimento.${base.projects.length ? ` Existentes: ${base.projects.map(esc).join(", ")}.` : ""} O lead pergunta qual usar.</div>`;
+      return;
+    }
+    const pending = base.pending
+      .map((p) => `
+        <div class="card">
+          <div class="row"><b>#k${p.id} ${esc(p.section)}</b><span class="when">${esc(p.proposedBy)}${p.reason ? ` · ${esc(p.reason)}` : ""}</span></div>
+          <div class="doc">${md(p.body)}</div>
+          <div class="row">
+            <button class="primary" type="button" data-kb-approve="${p.id}">Aprovar</button>
+            <button class="danger" type="button" data-kb-reject="${p.id}">Recusar</button>
+          </div>
+        </div>`)
+      .join("");
+    const sections = base.sections
+      .map((s) => `<div class="card"><b>${esc(s.section)}</b><div class="doc">${md(s.body)}</div><span class="when">${esc(s.updatedBy || "")} · ${ago(s.updatedAt)}</span></div>`)
+      .join("");
+    $("kb").innerHTML =
+      `<div class="section-title">${esc(base.project)}</div>` +
+      (pending ? `<div class="section-title">Esperando você</div>${pending}` : "") +
+      (sections || `<div class="empty">Nenhuma seção ainda.</div>`);
+  }
+
+  $("kb").addEventListener("click", async (event) => {
+    const target = event.target.closest("button");
+    const id = target?.dataset.kbApprove || target?.dataset.kbReject;
+    if (!id) return;
+    try {
+      await api(`/api/knowledge/${id}`, { method: "POST", body: JSON.stringify({ approve: Boolean(target.dataset.kbApprove) }) });
+      toast(target.dataset.kbApprove ? `#k${id} aprovado` : `#k${id} recusado`);
+      await loadKnowledge();
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+
   function selectTab(tab) {
     for (const button of document.querySelectorAll(".tabs button")) button.setAttribute("aria-selected", String(button.dataset.tab === tab));
     $("pane-chat").hidden = tab !== "chat";
     $("pane-asks").hidden = tab !== "asks";
     $("pane-reports").hidden = tab !== "reports";
+    $("pane-kb").hidden = tab !== "kb";
     $("composer").hidden = tab !== "chat";
     if (tab === "reports") loadReports().catch((e) => toast(e.message));
+    if (tab === "kb") loadKnowledge().catch((e) => toast(e.message));
   }
   document.querySelector(".tabs").addEventListener("click", (event) => {
     const tab = event.target.closest("[data-tab]")?.dataset.tab;
@@ -365,6 +410,7 @@
     $("room-name").textContent = room;
     show("room");
     selectTab("chat");
+    loadKnowledge().catch(() => undefined);
     source?.close();
     source = new EventSource(`/api/rooms/${encodeURIComponent(room)}/events`);
     source.addEventListener("message", (event) => {

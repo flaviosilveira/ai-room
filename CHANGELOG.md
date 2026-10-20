@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Knowledge bases: one per company or project, in `~/.ai-room/knowledge.sqlite`
+  apart from the rooms. A room is bound with `--kb <name>`, or its lead asks
+  the human which one; agents read it with `room_knowledge` and propose
+  sections with `room_knowledge_propose`, which land only when the human
+  approves them (`/kb` in the console, the Base tab on the web).
 - `ai-room usage [room]` and the console's `/usage` show the tokens each agent
   of a room spent, read from Claude Code's and Codex's own session logs, and
   how much of Codex's plan window it used. agy keeps no usage on disk.

@@ -58,6 +58,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--lead agy` · `--no-lead` | Picks the agent who talks to you · none (see below) |
 | `--model codex=gpt-5.5` | One instance's model, in its CLI's own names (`agy models` lists agy's) |
 | `--effort codex=medium,agy=low` | One instance's reasoning effort: `low`, `medium`, `high`, `max` |
+| `--kb acme` | The knowledge base this room reads and adds to (see below) |
 | `--no-plan` | Launches the whole team at once, without waiting for the lead's plan |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
 | `--no-files` | No files tab |
@@ -257,6 +258,23 @@ Limits: 10MB per file, 5 per message. Agents only receive the metadata and open
 the file with `room_attachment` when they need it.
 
 ---
+
+## Knowledge bases
+
+A knowledge base per company or project — the business, its rules, the deploy,
+the stack — that every room bound to it starts from. Bind a room with
+`--kb <name>` at `open`, or let the lead ask you which one when the room has
+none. When a task teaches something lasting, an agent proposes the section's
+new text; it lands only when you approve it.
+
+| In the console | Does |
+|---|---|
+| `/kb` | The room's base, its sections and the updates waiting for you |
+| `/kb <n>` · `/kb approve <n>` · `/kb reject <n>` | Reads, approves or rejects update #k<n> |
+| `/kb use <name>` | Binds the room to a base, new or existing (`none` unbinds) |
+
+The bases live in `~/.ai-room/knowledge.sqlite`, apart from the rooms' messages,
+and the web view shows them in its **Base** tab.
 
 ## The web view, from the phone
 

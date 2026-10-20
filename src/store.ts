@@ -993,6 +993,7 @@ interface CharterRow {
   roster: string | null;
   proposal: string | null;
   cwd: string | null;
+  knowledge: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -1004,7 +1005,7 @@ export function roomCharter(
   const row = db
     .prepare(
       `SELECT room, brief, conventions, convention_preset as conventionPreset,
-              tools, roster, proposal, cwd, created_at as createdAt, updated_at as updatedAt
+              tools, roster, proposal, cwd, knowledge, created_at as createdAt, updated_at as updatedAt
        FROM room_profiles WHERE room = ?`
     )
     .get(room) as CharterRow | undefined;
@@ -1049,6 +1050,7 @@ export function roomSetCharter(
     roster?: RosterEntry[];
     proposal?: Proposal | null;
     cwd?: string;
+    knowledge?: string | null;
   }
 ): RoomCharter {
   ensureRoom(db, params.room, false, "Call room_join first to create it.");
@@ -1077,11 +1079,12 @@ export function roomSetCharter(
   const brief = params.brief !== undefined ? params.brief : existing?.brief ?? null;
   const proposal = params.proposal !== undefined ? params.proposal : existing?.proposal ?? null;
   const cwd = params.cwd ?? existing?.cwd ?? null;
+  const knowledge = params.knowledge !== undefined ? params.knowledge : existing?.knowledge ?? null;
 
   db.prepare(
     `INSERT INTO room_profiles
-       (room, brief, conventions, convention_preset, tools, roster, proposal, cwd, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (room, brief, conventions, convention_preset, tools, roster, proposal, cwd, knowledge, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(room) DO UPDATE SET
        brief = excluded.brief,
        conventions = excluded.conventions,
@@ -1090,6 +1093,7 @@ export function roomSetCharter(
        roster = excluded.roster,
        proposal = excluded.proposal,
        cwd = excluded.cwd,
+       knowledge = excluded.knowledge,
        updated_at = excluded.updated_at`
   ).run(
     params.room,
@@ -1100,6 +1104,7 @@ export function roomSetCharter(
     JSON.stringify(roster),
     proposal ? JSON.stringify(proposal) : null,
     cwd,
+    knowledge,
     existing?.createdAt ?? now,
     now
   );

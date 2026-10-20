@@ -168,6 +168,8 @@ export interface RoomCharter {
   proposal: Proposal | null;
   /** Where the room was opened: its agents work there and its reports land there. */
   cwd: string | null;
+  /** The knowledge base this room reads and adds to, by project name. */
+  knowledge: string | null;
   createdAt: number;
   updatedAt: number;
 }

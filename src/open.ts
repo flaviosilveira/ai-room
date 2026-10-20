@@ -14,6 +14,8 @@ export interface OpenFlags {
   roles: Map<string, string>;
   models: Map<string, string>;
   efforts: Map<string, Effort>;
+  /** The knowledge base this room reads and adds to. */
+  knowledge?: string;
   /** A new team starts with its lead alone, who sizes the task and proposes the rest. */
   plan: boolean;
   /** Who talks to the human: an agent, false for nobody, undefined to pick one. */
@@ -92,6 +94,7 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--effort") {
       for (const [agent, effort] of pairs()) flags.efforts.set(agent, parseEffort(effort));
     } else if (arg === "--no-plan") flags.plan = false;
+    else if (arg === "--kb") flags.knowledge = value();
     else if (arg === "--reuse") flags.reuse = true;
     else if (arg === "--dry-run") flags.dryRun = true;
     else if (arg === "--detached") flags.detached = true;
@@ -220,6 +223,7 @@ export interface CharterPatch {
   conventionPreset?: string | null;
   tools?: string[];
   roster?: RosterEntry[];
+  knowledge?: string;
 }
 
 /**
@@ -232,6 +236,7 @@ export function charterPatch(room: string, flags: OpenFlags): CharterPatch {
   if (flags.brief !== undefined) patch.brief = flags.brief;
   if (flags.convention !== undefined) patch.conventionPreset = flags.convention;
   if (flags.tools.length) patch.tools = flags.tools;
+  if (flags.knowledge) patch.knowledge = flags.knowledge;
   if (flags.invite.length) {
     patch.roster = flags.invite.map((agent) => ({
       agent,

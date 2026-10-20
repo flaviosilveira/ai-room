@@ -27,6 +27,8 @@ export const TOOL_CATALOG: ToolSummary[] = [
   { name: "room_charter", summary: "Read a room's charter.", mutates: false },
   { name: "room_attachment", summary: "Open one attachment of a room message: metadata, path, text, or the image itself.", mutates: false },
   { name: "room_set_status", summary: "Publish observable agent state.", mutates: true },
+  { name: "room_knowledge", summary: "Read the room's knowledge base (business, rules, deploy, stack); the lead binds the room to one.", mutates: true },
+  { name: "room_knowledge_propose", summary: "Propose a section of the room's knowledge base for the human to approve.", mutates: true },
   { name: "room_allow", summary: "Lead only: answer a teammate's request the gate filed for the lead; production and secrets stay the human's.", mutates: true },
   { name: "room_propose", summary: "Lead only: propose the team for the task (roles, models, efforts) for the human to approve.", mutates: true },
   { name: "room_history", summary: "Read message history, newest first by default.", mutates: false },

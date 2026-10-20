@@ -273,6 +273,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   console.log(`brief: ${charter.brief ?? "(none)"}`);
   console.log(`convention: ${charter.conventionPreset ?? "(none)"}`);
   console.log(`tools: ${charter.tools.map((t) => t.name).join(", ") || "(none)"}`);
+  console.log(`knowledge: ${charter.knowledge ?? "(none yet; the lead asks, or --kb <name>)"}`);
   console.log(`roster: ${charter.roster.map((r) => r.role ? `${r.agent} (${r.role})` : r.agent).join(", ") || "(none)"}`);
 
   for (const tool of missingTools(charter.tools.map((t) => t.name))) {

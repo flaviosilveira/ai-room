@@ -197,6 +197,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
   ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
   ${C.bold}/show${C.reset}              list what is pasted and attached in the draft
+  ${C.bold}/kb${C.reset}                the room's knowledge base and updates waiting; /kb <n>, /kb approve|reject <n>, /kb use <name>
   ${C.bold}/usage [days]${C.reset}      tokens each agent of this room spent (Claude, Codex; plan window for Codex)
   ${C.bold}/clear${C.reset}             clear the screen (the room's history and the draft stay)
   ${C.bold}/reload${C.reset}            restart this console with the ai-room now on disk
@@ -214,7 +215,7 @@ alone; start it with @codex (or @codex @agy) for someone else, @all for everyone
  */
 export const CONSOLE_COMMANDS = [
   "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "approve", "allow", "deny", "skills", "reload",
-  "detach", "close", "paste", "file", "clear", "usage", "help", "quit",
+  "detach", "close", "paste", "file", "clear", "usage", "kb", "help", "quit",
 ];
 
 /**
@@ -971,6 +972,48 @@ export async function runConsole(
         case "file":
           if (!rest.length) emit(rl, `${C.warn}uso: /file <caminho>${C.reset}`);
           else attachFile(text.slice(text.indexOf(" ") + 1).trim());
+          break;
+        case "kb":
+          void Promise.all([import("./knowledge.js"), import("./db/index.js"), import("./store.js")]).then(([kb, dbModule, store]) => {
+            const db = dbModule.openDb();
+            try {
+              const project = store.roomCharter(db, room)?.knowledge;
+              const [action, idText] = rest;
+              const id = Number((idText ?? action ?? "").replace(/^#?k?/i, ""));
+              if ((action === "approve" || action === "reject") && Number.isInteger(id)) {
+                const decided = kb.decideKnowledge(db, id, action === "approve");
+                emit(rl, decided ? `${C.dim}#k${id} ${decided.status}: ${decided.project} › ${decided.section}${C.reset}` : `${C.warn}no pending update #k${id}${C.reset}`);
+                if (decided) wakeRoom();
+                return;
+              }
+              if (action === "use" && idText) {
+                kb.readKnowledge(db, room, "human", idText === "none" ? null : idText);
+                emit(rl, `${C.dim}this room now uses the knowledge base "${idText}"${C.reset}`);
+                return;
+              }
+              if (Number.isInteger(id) && id > 0) {
+                const proposal = kb.knowledgeProposal(db, id);
+                emit(rl, proposal ? `${C.bold}#k${id} ${proposal.project} › ${proposal.section}${C.reset} ${C.dim}(${proposal.proposedBy}, ${proposal.status})${C.reset}\n${proposal.body}` : `${C.warn}no update #k${id}${C.reset}`);
+                return;
+              }
+              if (!project) {
+                const projects = kb.knowledgeProjects(db).map((p) => p.project);
+                emit(rl, `${C.dim}this room has no knowledge base${projects.length ? ` (existing: ${projects.join(", ")})` : ""}. /kb use <name> to choose one.${C.reset}`);
+                return;
+              }
+              const sections = kb.knowledgeSections(db, project);
+              const pending = kb.pendingKnowledge(db, project);
+              emit(
+                rl,
+                `${C.bold}${project}${C.reset} ${C.dim}— ${sections.length} section(s): ${sections.map((s) => s.section).join(", ") || "none yet"}${C.reset}` +
+                  (pending.length
+                    ? `\n${C.dim}waiting for you:${C.reset}\n${pending.map((p) => `  #k${p.id} ${p.section} (${p.proposedBy})${p.reason ? ` ${C.dim}${p.reason}${C.reset}` : ""}`).join("\n")}\n${C.dim}/kb <n> to read, /kb approve <n>, /kb reject <n>${C.reset}`
+                    : "")
+              );
+            } finally {
+              db.close();
+            }
+          });
           break;
         case "usage":
           void import("./usage.js").then(({ renderUsage, roomUsage }) =>

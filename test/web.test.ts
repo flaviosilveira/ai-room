@@ -113,3 +113,34 @@ describe("quick tunnel", () => {
     }
   });
 });
+
+describe("web view: knowledge", () => {
+  it("shows the room's base and lets the human decide on updates", async () => {
+    const { readKnowledge, proposeKnowledge, knowledgeSections } = await import("../src/knowledge.js");
+    const db = openDb(":memory:");
+    roomJoin(db, { room: "k", agent: "human" });
+    roomJoin(db, { room: "k", agent: "claude", role: "lead" });
+    readKnowledge(db, "k", "claude", "acme");
+    const proposal = proposeKnowledge(db, { room: "k", agent: "claude", section: "Stack", body: "Node and SQLite." });
+    let server!: Server;
+    await new Promise<void>((resolve) => {
+      server = createWebApp(db, { token: "t", serverPort: 1 }).listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    try {
+      const view = (await (await fetch(`${base}/api/rooms/k/knowledge`, { headers: { Authorization: "Bearer t" } })).json()) as { project: string; pending: unknown[] };
+      expect(view).toMatchObject({ project: "acme", pending: [{ id: proposal.id }] });
+      const decided = await fetch(`${base}/api/knowledge/${proposal.id}`, {
+        method: "POST",
+        headers: { Authorization: "Bearer t", "X-AI-Room": "1", "Content-Type": "application/json" },
+        body: JSON.stringify({ approve: true }),
+      });
+      expect(decided.status).toBe(200);
+      expect(knowledgeSections(db, "acme")[0].body).toBe("Node and SQLite.");
+    } finally {
+      server.close();
+      db.close();
+    }
+  });
+});

@@ -25,6 +25,7 @@ import {
 } from "./store.js";
 import { proposePlan } from "./cast.js";
 import { decideApproval } from "./approvals.js";
+import { proposeKnowledge, readKnowledge } from "./knowledge.js";
 import { EFFORTS } from "./types.js";
 import { WAKE_KINDS, WakeService, parseWakeSpec } from "./wake.js";
 import {
@@ -425,6 +426,53 @@ export function createAiRoomServer(
         wakeService.wakeRoom(db, room);
       }
       return { content: [{ type: "text", text: JSON.stringify(result) }], isError: !result.ok };
+    }
+  );
+
+  server.registerTool(
+    "room_knowledge",
+    {
+      description:
+        "Read the knowledge base this room belongs to: the company or project's business, rules, deploy and stack, by section. " +
+        "Call it when you join. When the room has none yet, the answer lists the existing bases: the lead asks the human once which one " +
+        "this room belongs to (or a new name, or none) and calls this again with `project` to bind it.",
+      inputSchema: {
+        room: z.string(),
+        agent: z.string(),
+        project: z.string().max(60).optional().describe("Lead only: bind the room to this base (an existing one or a new name)."),
+      },
+    },
+    async ({ room, agent, project }) => {
+      try {
+        const result = readKnowledge(db, room, agent, project);
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (error) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "room_knowledge_propose",
+    {
+      description:
+        "Propose adding to or correcting one section of the room's knowledge base: something durable the task taught you about the " +
+        "business, a rule, the deploy or the stack, not the task itself. Send the section's whole new text; the human approves it.",
+      inputSchema: {
+        room: z.string(),
+        agent: z.string(),
+        section: z.string().max(80).describe('e.g. "Deploy", "Payables rules", "Stack".'),
+        text: z.string().max(20_000).describe("The section's full new text, in Markdown."),
+        reason: z.string().max(300).optional(),
+      },
+    },
+    async ({ room, agent, section, text, reason }) => {
+      try {
+        const proposal = proposeKnowledge(db, { room, agent, section, body: text, reason });
+        return { content: [{ type: "text", text: JSON.stringify({ ok: true, id: proposal.id, status: "pending the human's approval" }) }] };
+      } catch (error) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) }], isError: true };
+      }
     }
   );
 

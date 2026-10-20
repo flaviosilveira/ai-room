@@ -20,7 +20,44 @@ export function openDb(dbPath: string = defaultDbPath()): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
+  attachKnowledge(db, dbPath);
   return db;
+}
+
+/**
+ * The knowledge bases live in a file of their own, attached as the `kb`
+ * schema: what a company or project is, kept apart from the rooms' talk so it
+ * can be read, backed up or moved on its own.
+ */
+export function knowledgePath(dbPath: string): string {
+  if (process.env.AI_ROOM_KB_PATH) return process.env.AI_ROOM_KB_PATH;
+  return dbPath === ":memory:" ? ":memory:" : path.join(path.dirname(dbPath), "knowledge.sqlite");
+}
+
+function attachKnowledge(db: Database.Database, dbPath: string): void {
+  db.prepare("ATTACH DATABASE ? AS kb").run(knowledgePath(dbPath));
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kb.sections (
+      project TEXT NOT NULL,
+      section TEXT NOT NULL,
+      body TEXT NOT NULL,
+      updated_by TEXT,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (project, section)
+    );
+    CREATE TABLE IF NOT EXISTS kb.proposals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      section TEXT NOT NULL,
+      body TEXT NOT NULL,
+      reason TEXT,
+      proposed_by TEXT NOT NULL,
+      room TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER
+    );
+  `);
 }
 
 function migrate(db: Database.Database): void {
@@ -115,6 +152,7 @@ function migrate(db: Database.Database): void {
   ensureColumn(db, "messages", "recipients", "TEXT");
   ensureColumn(db, "room_profiles", "proposal", "TEXT");
   ensureColumn(db, "room_profiles", "cwd", "TEXT");
+  ensureColumn(db, "room_profiles", "knowledge", "TEXT");
   ensureColumn(db, "approvals", "tier", "TEXT NOT NULL DEFAULT 'human'");
   ensureColumn(db, "approvals", "decided_by", "TEXT");
   // Identity and wake-up target. `harness` separates which CLI runs an instance
