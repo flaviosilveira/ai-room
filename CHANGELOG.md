@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `ai-room usage [room]` and the console's `/usage` show the tokens each agent
+  of a room spent, read from Claude Code's and Codex's own session logs, and
+  how much of Codex's plan window it used. agy keeps no usage on disk.
 - The lead no longer grills the human on its own before every larger plan;
   it does when asked. The step rarely fired and its text rode along in every
   lead's briefing.

@@ -801,6 +801,15 @@ switch (cmd) {
   case "hooks":
     hooks(process.argv.includes("--json"));
     break;
+  case "usage": {
+    const { renderUsage, roomUsage } = await import("./usage.js");
+    const daysAt = process.argv.indexOf("--days");
+    const days = daysAt > 0 ? Number(process.argv[daysAt + 1]) || 7 : 7;
+    const room = arg && !arg.startsWith("--") ? arg : undefined;
+    console.log(`tokens spent by agents ai-room launched, last ${days} day(s); cache reads cost a fraction of input\n`);
+    console.log(renderUsage(roomUsage({ room, days })));
+    break;
+  }
   case "web": {
     const { startTunnel, stopTunnel, tunnelStatus, webToken, webTokenPath, WEB_PORT } = await import("./web.js");
     if (process.argv.includes("--stop")) {
@@ -864,7 +873,7 @@ switch (cmd) {
       break;
     }
     console.error(
-      "usage: ai-room <serve|setup|web [--tunnel|--stop|--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
+      "usage: ai-room <serve|setup|usage [room] [--days N]|web [--tunnel|--stop|--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );

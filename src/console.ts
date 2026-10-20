@@ -197,6 +197,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
   ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
   ${C.bold}/show${C.reset}              list what is pasted and attached in the draft
+  ${C.bold}/usage [days]${C.reset}      tokens each agent of this room spent (Claude, Codex; plan window for Codex)
   ${C.bold}/clear${C.reset}             clear the screen (the room's history and the draft stay)
   ${C.bold}/reload${C.reset}            restart this console with the ai-room now on disk
   ${C.bold}/help${C.reset}              this help
@@ -213,7 +214,7 @@ alone; start it with @codex (or @codex @agy) for someone else, @all for everyone
  */
 export const CONSOLE_COMMANDS = [
   "attach", "agents", "all", "who", "panes", "hide", "show", "remove", "add", "approve", "allow", "deny", "skills", "reload",
-  "detach", "close", "paste", "file", "clear", "help", "quit",
+  "detach", "close", "paste", "file", "clear", "usage", "help", "quit",
 ];
 
 /**
@@ -970,6 +971,11 @@ export async function runConsole(
         case "file":
           if (!rest.length) emit(rl, `${C.warn}uso: /file <caminho>${C.reset}`);
           else attachFile(text.slice(text.indexOf(" ") + 1).trim());
+          break;
+        case "usage":
+          void import("./usage.js").then(({ renderUsage, roomUsage }) =>
+            emit(rl, `${C.dim}last ${Number(rest[0]) || 7} day(s); cache reads cost a fraction of input${C.reset}\n${renderUsage(roomUsage({ room, days: Number(rest[0]) || 7 }))}`)
+          );
           break;
         case "clear":
           // The screen and the pane's scrollback; the room's history and the draft stay.

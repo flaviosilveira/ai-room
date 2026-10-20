@@ -217,6 +217,7 @@ the room is told so the others pick up its part.
 | paste several lines | Becomes a single message |
 | `/show` | Lists what is pasted and attached in the draft; Backspace after a token removes it |
 | `/clear` | Clears the screen; the room's history and the draft stay |
+| `/usage [days]` | Tokens each agent of the room spent, from Claude's and Codex's own logs; for Codex, how much of its plan window it used. `ai-room usage [room] [--days N]` from the shell |
 | `/all` | With a lead: toggles between only the lead and every agent |
 | `/who` | Agent status (it is also always on the monitor's top border) |
 | `/attach <agent>` | Goes to the agent's pane |
