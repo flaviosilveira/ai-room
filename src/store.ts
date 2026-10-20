@@ -992,6 +992,7 @@ interface CharterRow {
   tools: string | null;
   roster: string | null;
   proposal: string | null;
+  cwd: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -1003,7 +1004,7 @@ export function roomCharter(
   const row = db
     .prepare(
       `SELECT room, brief, conventions, convention_preset as conventionPreset,
-              tools, roster, proposal, created_at as createdAt, updated_at as updatedAt
+              tools, roster, proposal, cwd, created_at as createdAt, updated_at as updatedAt
        FROM room_profiles WHERE room = ?`
     )
     .get(room) as CharterRow | undefined;
@@ -1047,6 +1048,7 @@ export function roomSetCharter(
     tools?: (string | ToolDeclaration)[];
     roster?: RosterEntry[];
     proposal?: Proposal | null;
+    cwd?: string;
   }
 ): RoomCharter {
   ensureRoom(db, params.room, false, "Call room_join first to create it.");
@@ -1074,11 +1076,12 @@ export function roomSetCharter(
   const roster = params.roster !== undefined ? params.roster : existing?.roster ?? [];
   const brief = params.brief !== undefined ? params.brief : existing?.brief ?? null;
   const proposal = params.proposal !== undefined ? params.proposal : existing?.proposal ?? null;
+  const cwd = params.cwd ?? existing?.cwd ?? null;
 
   db.prepare(
     `INSERT INTO room_profiles
-       (room, brief, conventions, convention_preset, tools, roster, proposal, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (room, brief, conventions, convention_preset, tools, roster, proposal, cwd, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(room) DO UPDATE SET
        brief = excluded.brief,
        conventions = excluded.conventions,
@@ -1086,6 +1089,7 @@ export function roomSetCharter(
        tools = excluded.tools,
        roster = excluded.roster,
        proposal = excluded.proposal,
+       cwd = excluded.cwd,
        updated_at = excluded.updated_at`
   ).run(
     params.room,
@@ -1095,6 +1099,7 @@ export function roomSetCharter(
     JSON.stringify(tools),
     JSON.stringify(roster),
     proposal ? JSON.stringify(proposal) : null,
+    cwd,
     existing?.createdAt ?? now,
     now
   );

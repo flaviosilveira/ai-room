@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>ai-room</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f5f3;
+    --surface: #ffffff;
+    --ink: #1b211d;
+    --muted: #5f6b64;
+    --line: #dde2de;
+    --accent: #17803d;
+    --accent-ink: #ffffff;
+    --accent-soft: #e2f1e7;
+    --warn: #9a5b00;
+    --warn-soft: #fbefd9;
+    --danger: #b3261e;
+    --danger-soft: #fbe5e3;
+    --code: #eef1ee;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #111513; --surface: #1a201c; --ink: #e5ebe7; --muted: #95a39b; --line: #2b342e;
+      --accent: #4cc26f; --accent-ink: #0b130e; --accent-soft: #1d3326; --warn: #f0b35a; --warn-soft: #33281a;
+      --danger: #f2867e; --danger-soft: #3a1f1d; --code: #0d110f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, pre { font-family: var(--mono); font-size: 13px; }
+  [hidden] { display: none !important; }
+
+  .bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+    background: var(--accent); color: var(--accent-ink);
+  }
+  .bar h1 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar button { background: none; border: 0; color: inherit; font-size: 15px; padding: 4px 6px; }
+
+  main { max-width: 760px; margin: 0 auto; padding: 0 16px 24px; }
+
+  .login { max-width: 360px; margin: 18vh auto 0; padding: 0 16px; display: grid; gap: 12px; }
+  .login h1 { margin: 0; font-size: 22px; }
+  .login input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .login .error { color: var(--danger); font-size: 14px; min-height: 1em; }
+
+  .primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 600; }
+  .ghost { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+  .danger { background: var(--danger-soft); color: var(--danger); border: 1px solid transparent; border-radius: 8px; padding: 8px 12px; font-weight: 600; }
+
+  .rooms { display: grid; gap: 10px; padding-top: 14px; }
+  .room-card { display: grid; gap: 6px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; text-align: left; }
+  .room-card .top { display: flex; align-items: baseline; gap: 8px; }
+  .room-card b { font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .when { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .brief { color: var(--muted); font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--code); color: var(--muted); }
+  .chip.working { background: var(--accent-soft); color: var(--accent); }
+  .chip.blocked, .chip.approval_required { background: var(--warn-soft); color: var(--warn); }
+  .chip.badge { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+  .chip.off { opacity: .6; }
+  .section-title { margin: 18px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+  .room { display: flex; flex-direction: column; height: 100%; }
+  .tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--bg); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
+  .tabs button { background: none; border: 0; padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--muted); }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  .tabs .count { margin-left: 4px; font-size: 12px; padding: 0 6px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
+  .pane { flex: 1; overflow-y: auto; }
+  .pane-inner { max-width: 760px; margin: 0 auto; padding: 12px 16px 16px; display: grid; gap: 10px; }
+  .agents { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .msg { display: grid; gap: 2px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .msg.human { background: var(--accent-soft); border-color: transparent; }
+  .msg.system { background: var(--warn-soft); border-color: transparent; }
+  .msg .who { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+  .msg .who b { font-weight: 600; }
+  .msg .who .to { color: var(--muted); }
+  .msg .body { overflow-wrap: anywhere; }
+  .msg .body p { margin: .3em 0; }
+  .msg .body pre { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; }
+  .msg .body table { border-collapse: collapse; display: block; overflow-x: auto; }
+  .msg .body th, .msg .body td { border: 1px solid var(--line); padding: 4px 8px; }
+  .toggle { justify-self: start; font-size: 13px; color: var(--muted); background: none; border: 0; text-decoration: underline; padding: 0; }
+
+  .composer { border-top: 1px solid var(--line); background: var(--bg); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+  .composer textarea { flex: 1; resize: none; min-height: 42px; max-height: 40vh; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .hint { max-width: 760px; margin: 4px auto 0; font-size: 12px; color: var(--muted); }
+
+  .card { display: grid; gap: 8px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .card .action { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .card .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tier { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .tier.human { background: var(--danger-soft); color: var(--danger); }
+  .tier.lead { background: var(--code); color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 28px 0; }
+
+  .report { text-align: left; display: flex; gap: 8px; align-items: baseline; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .report b { flex: 1; font-weight: 500; overflow-wrap: anywhere; }
+  .doc { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-wrap: anywhere; }
+  .doc pre { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; }
+  .doc table { border-collapse: collapse; display: block; overflow-x: auto; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 4px 8px; }
+  .toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 10; }
+</style>
+</head>
+<body>
+
+<div id="login" class="login" hidden>
+  <h1>ai-room</h1>
+  <p>Cole o token que o comando <code>ai-room web</code> mostra.</p>
+  <form method="post" action="/login" style="display:grid;gap:10px">
+    <input id="token" name="token" type="password" autocomplete="current-password" placeholder="token" required>
+    <button class="primary" type="submit">Entrar</button>
+  </form>
+  <div class="error">__LOGIN_ERROR__</div>
+</div>
+
+<div id="rooms-view" hidden>
+  <div class="bar"><h1>ai-room</h1><button type="button" id="refresh" aria-label="Atualizar">↻</button></div>
+  <main><div id="rooms" class="rooms"></div></main>
+</div>
+
+<div id="room-view" class="room" hidden>
+  <div class="bar"><button type="button" id="back" aria-label="Voltar">←</button><h1 id="room-name"></h1></div>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="chat" aria-selected="true">Conversa</button>
+    <button type="button" role="tab" data-tab="asks" aria-selected="false">Pedidos<span class="count" id="ask-count" hidden></span></button>
+    <button type="button" role="tab" data-tab="reports" aria-selected="false">Relatórios</button>
+  </div>
+  <div class="pane" id="pane-chat"><div class="pane-inner">
+    <div class="agents" id="agents"></div>
+    <button type="button" class="toggle" id="show-all">Mostrar todas as mensagens</button>
+    <div id="feed" style="display:grid;gap:8px"></div>
+  </div></div>
+  <div class="pane" id="pane-asks" hidden><div class="pane-inner" id="asks"></div></div>
+  <div class="pane" id="pane-reports" hidden><div class="pane-inner" id="reports"></div></div>
+  <div class="composer" id="composer">
+    <form id="say">
+      <textarea id="message" rows="1" placeholder="Mensagem para a sala" aria-label="Mensagem"></textarea>
+      <button class="primary" type="submit">Enviar</button>
+    </form>
+    <div class="hint">Vai para o lead. <code>@codex …</code> fala com um agent, <code>@all …</code> com todos.</div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const md = (text) =>
+    window.marked && window.DOMPurify ? DOMPurify.sanitize(marked.parse(String(text), { breaks: true })) : `<p>${esc(text).replace(/\n/g, "<br>")}</p>`;
+  const ago = (ms) => {
+    if (!ms) return "";
+    const s = Math.round((Date.now() - ms) / 1000);
+    if (s < 60) return "agora";
+    if (s < 3600) return `${Math.round(s / 60)} min`;
+    if (s < 86400) return `${Math.round(s / 3600)} h`;
+    return `${Math.round(s / 86400)} d`;
+  };
+  const clock = (ms) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  const toast = (text) => {
+    const el = $("toast");
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => (el.hidden = true), 2600);
+  };
+
+  async function api(url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: { "X-AI-Room": "1", ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) },
+    });
+    if (response.status === 401) {
+      show("login");
+      throw new Error("token required");
+    }
+    const body = response.headers.get("content-type")?.includes("json") ? await response.json() : await response.text();
+    if (!response.ok) throw new Error(body?.error || body?.detail || response.statusText);
+    return body;
+  }
+
+  function show(view) {
+    $("login").hidden = view !== "login";
+    $("rooms-view").hidden = view !== "rooms";
+    $("room-view").hidden = view !== "room";
+  }
+
+  // ---- rooms ---------------------------------------------------------------
+  async function loadRooms() {
+    const { rooms } = await api("/api/rooms");
+    const card = (r) => `
+      <button type="button" class="room-card" data-room="${esc(r.room)}">
+        <div class="top"><b>${esc(r.room)}</b><span class="when">${ago(r.lastAt)}</span></div>
+        ${r.brief ? `<div class="brief">${esc(r.brief)}</div>` : ""}
+        <div class="chips">
+          ${r.pending ? `<span class="chip badge">${r.pending} pedido(s)</span>` : ""}
+          ${r.plan ? `<span class="chip badge">plano para aprovar</span>` : ""}
+          ${r.agents.map((a) => `<span class="chip ${esc(a.status)}">${esc(a.agent)} · ${esc(a.status)}</span>`).join("")}
+        </div>
+      </button>`;
+    const live = rooms.filter((r) => r.live);
+    const rest = rooms.filter((r) => !r.live);
+    $("rooms").innerHTML =
+      (live.length ? `<div class="section-title">Abertas</div>${live.map(card).join("")}` : "") +
+      (rest.length ? `<div class="section-title">Anteriores</div>${rest.map(card).join("")}` : "") ||
+      `<div class="empty">Nenhuma sala ainda.</div>`;
+  }
+
+  $("rooms").addEventListener("click", (event) => {
+    const room = event.target.closest("[data-room]")?.dataset.room;
+    if (room) location.hash = `#/room/${encodeURIComponent(room)}`;
+  });
+  $("refresh").addEventListener("click", () => loadRooms().catch((e) => toast(e.message)));
+
+  // ---- one room ------------------------------------------------------------
+  let source = null;
+  let current = null;
+  let messages = [];
+  let state = { participants: [], approvals: [], proposal: null };
+  let showAll = false;
+
+  const leads = () =>
+    new Set(state.participants.filter((p) => p.active && String(p.role || "").split(/,\s*/).includes("lead")).map((p) => p.agent));
+
+  function visible(m) {
+    if (showAll) return true;
+    if (m.origin === "human") return true;
+    if (m.origin === "system") return !m.to || m.to.includes("human");
+    const lead = leads();
+    if (!lead.size) return true;
+    return lead.has(m.agent) && (!m.to || m.to.includes("human"));
+  }
+
+  function renderFeed() {
+    const pane = $("pane-chat");
+    const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
+    const shown = messages.filter(visible);
+    $("feed").innerHTML = shown.length
+      ? shown.map((m) => `
+        <div class="msg ${m.origin === "human" ? "human" : m.origin === "system" ? "system" : ""}">
+          <div class="who"><b>${esc(m.agent)}</b>${m.to ? `<span class="to">→ ${esc(m.to.join(", "))}</span>` : ""}<span class="when">${clock(m.createdAt)}</span></div>
+          <div class="body">${md(m.content)}</div>
+        </div>`).join("")
+      : `<div class="empty">Nada por aqui ainda.</div>`;
+    if (atBottom) pane.scrollTop = pane.scrollHeight;
+  }
+
+  function renderState() {
+    $("agents").innerHTML = state.participants
+      .map((p) => `<span class="chip ${p.active ? esc(p.status) : "off"}">${esc(p.agent)}${p.role ? ` (${esc(p.role)})` : ""} · ${esc(p.status)}</span>`)
+      .join("");
+    const count = state.approvals.length + (state.proposal ? 1 : 0);
+    $("ask-count").hidden = !count;
+    $("ask-count").textContent = count;
+
+    const plan = state.proposal
+      ? `<div class="card">
+          <b>Plano de ${esc(state.proposal.by)}: ${esc(state.proposal.size)}</b>
+          ${state.proposal.reason ? `<div>${esc(state.proposal.reason)}</div>` : ""}
+          ${state.proposal.plan ? `<div class="doc">${md(state.proposal.plan)}</div>` : ""}
+          <div>${state.proposal.agents.map((a) => `<div>• <b>${esc(a.agent)}</b>${a.role ? ` (${esc(a.role)})` : ""}: ${esc([a.model, a.effort].filter(Boolean).join(" ") || "nível padrão")}</div>`).join("")}</div>
+          <div class="row"><button class="primary" type="button" data-plan>Aprovar plano</button></div>
+        </div>`
+      : "";
+    const asks = state.approvals
+      .map((a) => `
+        <div class="card">
+          <div class="row"><b>#${a.id} ${esc(a.agent)}</b><span class="tier ${a.tier}">${a.tier === "human" ? "só você" : "o lead também pode responder"}</span></div>
+          <div class="action">${esc(a.action)}</div>
+          ${a.reason ? `<div class="when">${esc(a.reason)}</div>` : ""}
+          <div class="row">
+            <button class="primary" type="button" data-allow="${a.id}">Permitir uma vez</button>
+            <button class="danger" type="button" data-deny="${a.id}">Negar</button>
+          </div>
+        </div>`)
+      .join("");
+    $("asks").innerHTML = plan + asks || `<div class="empty">Nada esperando por você.</div>`;
+  }
+
+  $("asks").addEventListener("click", async (event) => {
+    const target = event.target.closest("button");
+    if (!target) return;
+    try {
+      if (target.dataset.plan !== undefined) {
+        const result = await api(`/api/rooms/${encodeURIComponent(current)}/plan`, { method: "POST" });
+        toast(result.detail || "Plano aprovado");
+      } else if (target.dataset.allow || target.dataset.deny) {
+        const id = target.dataset.allow || target.dataset.deny;
+        await api(`/api/rooms/${encodeURIComponent(current)}/approvals/${id}`, {
+          method: "POST",
+          body: JSON.stringify({ allow: Boolean(target.dataset.allow) }),
+        });
+        toast(target.dataset.allow ? `#${id} permitido uma vez` : `#${id} negado`);
+      }
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+
+  async function loadReports() {
+    const { files } = await api(`/api/rooms/${encodeURIComponent(current)}/reports`);
+    $("reports").innerHTML = files.length
+      ? files.map((f) => `<button type="button" class="report" data-report="${esc(f.name)}"><b>${esc(f.name)}</b><span class="when">${ago(f.modifiedAt)}</span></button>`).join("")
+      : `<div class="empty">Nenhum relatório nesta sala.</div>`;
+  }
+
+  $("reports").addEventListener("click", async (event) => {
+    const name = event.target.closest("[data-report]")?.dataset.report;
+    if (name === undefined) return;
+    try {
+      const text = await api(`/api/rooms/${encodeURIComponent(current)}/reports/${encodeURIComponent(name)}`);
+      const body = /\.(md|markdown|txt)$/i.test(name) ? md(text) : `<pre>${esc(text)}</pre>`;
+      $("reports").innerHTML = `<button type="button" class="toggle" id="reports-back">← Relatórios</button><div class="doc">${body}</div>`;
+      $("reports-back").addEventListener("click", () => loadReports().catch((e) => toast(e.message)));
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+
+  function selectTab(tab) {
+    for (const button of document.querySelectorAll(".tabs button")) button.setAttribute("aria-selected", String(button.dataset.tab === tab));
+    $("pane-chat").hidden = tab !== "chat";
+    $("pane-asks").hidden = tab !== "asks";
+    $("pane-reports").hidden = tab !== "reports";
+    $("composer").hidden = tab !== "chat";
+    if (tab === "reports") loadReports().catch((e) => toast(e.message));
+  }
+  document.querySelector(".tabs").addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-tab]")?.dataset.tab;
+    if (tab) selectTab(tab);
+  });
+
+  $("show-all").addEventListener("click", () => {
+    showAll = !showAll;
+    $("show-all").textContent = showAll ? "Mostrar só o lead" : "Mostrar todas as mensagens";
+    renderFeed();
+  });
+
+  function openRoom(room) {
+    current = room;
+    messages = [];
+    state = { participants: [], approvals: [], proposal: null };
+    $("room-name").textContent = room;
+    show("room");
+    selectTab("chat");
+    source?.close();
+    source = new EventSource(`/api/rooms/${encodeURIComponent(room)}/events`);
+    source.addEventListener("message", (event) => {
+      messages.push(JSON.parse(event.data));
+      renderFeed();
+    });
+    source.addEventListener("state", (event) => {
+      state = JSON.parse(event.data);
+      renderState();
+      renderFeed();
+    });
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) toast("Conexão perdida; recarregue a página.");
+    };
+  }
+
+  $("back").addEventListener("click", () => (location.hash = "#/"));
+
+  const textarea = $("message");
+  textarea.addEventListener("input", () => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  });
+  textarea.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && matchMedia("(pointer: fine)").matches) {
+      event.preventDefault();
+      $("say").requestSubmit();
+    }
+  });
+  $("say").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = textarea.value.trim();
+    if (!message) return;
+    try {
+      await api(`/api/rooms/${encodeURIComponent(current)}/say`, { method: "POST", body: JSON.stringify({ message }) });
+      textarea.value = "";
+      textarea.style.height = "auto";
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+
+  // ---- routing -------------------------------------------------------------
+  async function route() {
+    const room = /^#\/room\/(.+)$/.exec(location.hash)?.[1];
+    if (room) return openRoom(decodeURIComponent(room));
+    source?.close();
+    source = null;
+    current = null;
+    try {
+      await loadRooms();
+      show("rooms");
+    } catch {
+      /* the login view is already up */
+    }
+  }
+  window.addEventListener("hashchange", route);
+  if (document.querySelector(".login .error").textContent.trim()) show("login");
+  else route();
+  setInterval(() => {
+    if (!$("rooms-view").hidden) loadRooms().catch(() => undefined);
+  }, 15000);
+})();
+</script>
+</body>
+</html>

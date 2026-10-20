@@ -114,6 +114,7 @@ function migrate(db: Database.Database): void {
   // JSON array of addressees; NULL is the whole room.
   ensureColumn(db, "messages", "recipients", "TEXT");
   ensureColumn(db, "room_profiles", "proposal", "TEXT");
+  ensureColumn(db, "room_profiles", "cwd", "TEXT");
   ensureColumn(db, "approvals", "tier", "TEXT NOT NULL DEFAULT 'human'");
   ensureColumn(db, "approvals", "decided_by", "TEXT");
   // Identity and wake-up target. `harness` separates which CLI runs an instance

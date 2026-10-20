@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The web view: `ai-room serve` also serves the rooms on their own port
+  (127.0.0.1:49376), for a phone through a Cloudflare Tunnel. Open rooms and
+  their agents, the lead's feed (or every message), sending as the human, the
+  requests to allow or deny, the lead's plan to approve, and the reports in
+  `.ai-room/for-human/`. Every request needs the token from `ai-room web`, and
+  every write a header no cross-site form can send. The MCP endpoint stays on
+  its own port, never to be tunnelled. Rooms now remember the folder they
+  were opened in, so agents added from anywhere start there.
 - Free mode in rooms: with the gate in its hooks, Claude joins a room with its
   own prompts skipped, like agy. The gate lets everything through except what
   cannot be undone, which waits for the human: the ask list (database writes,

@@ -70,6 +70,11 @@ async function serve(): Promise<void> {
     console.log(`ai-room listening on http://127.0.0.1:${p}/mcp`);
     console.log(`db: ${defaultDbPath()}`);
   });
+  // The web view gets a port of its own: the only one a tunnel may expose.
+  const { createWebApp, WEB_PORT } = await import("./web.js");
+  createWebApp(db, { serverPort: p }).listen(WEB_PORT, "127.0.0.1", () => {
+    console.log(`web view on http://127.0.0.1:${WEB_PORT} (ai-room web for the token)`);
+  });
 }
 
 async function status(asJson = false): Promise<void> {
@@ -260,7 +265,7 @@ async function open(room: string, argv: string[]): Promise<void> {
     }
   }
 
-  let charter = roomSetCharter(db, charterPatch(room, flags));
+  let charter = roomSetCharter(db, { ...charterPatch(room, flags), cwd: process.cwd() });
   const held = holdForPlan(charter.roster, flags, verdict.kind === "new");
   if (held !== charter.roster) charter = roomSetCharter(db, { room, roster: held });
 
@@ -796,6 +801,21 @@ switch (cmd) {
   case "hooks":
     hooks(process.argv.includes("--json"));
     break;
+  case "web": {
+    const { webToken, webTokenPath, WEB_PORT } = await import("./web.js");
+    const token = webToken(process.argv.includes("--rotate"));
+    console.log(`web view: http://127.0.0.1:${WEB_PORT}`);
+    console.log(`token:    ${token}`);
+    console.log(`          (in ${webTokenPath()}; ai-room web --rotate makes a new one and signs everyone out)`);
+    console.log("");
+    console.log("From outside home, through a Cloudflare Tunnel that exposes this port only:");
+    console.log(`  quick, no account:  cloudflared tunnel --url http://127.0.0.1:${WEB_PORT}`);
+    console.log("                      (a random https://….trycloudflare.com address; the token is the only lock)");
+    console.log("  lasting, with login: a named tunnel on a domain in your Cloudflare account,");
+    console.log(`                      ingress to http://127.0.0.1:${WEB_PORT}, behind a Cloudflare Access policy for your e-mail.`);
+    console.log("Never point a tunnel at port " + port() + ": that is the agents' MCP endpoint, with no login.");
+    break;
+  }
   case "setup": {
     const { runSetup } = await import("./setup.js");
     await runSetup();
@@ -817,7 +837,7 @@ switch (cmd) {
       break;
     }
     console.error(
-      "usage: ai-room <serve|setup|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
+      "usage: ai-room <serve|setup|web [--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );

@@ -166,6 +166,8 @@ export interface RoomCharter {
   tools: ToolDeclaration[];
   roster: RosterEntry[];
   proposal: Proposal | null;
+  /** Where the room was opened: its agents work there and its reports land there. */
+  cwd: string | null;
   createdAt: number;
   updatedAt: number;
 }

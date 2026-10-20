@@ -139,7 +139,12 @@ export function addAgent(
   roomSetCharter(db, { room, roster: [...roster.filter((e) => e.agent !== agent), entry] });
 
   if (!live) return { ok: true, agent, detail: `${agent} added to the roster; it starts with: ai-room attach ${room}` };
-  const { plan } = openWorkspace(room, [agent], { monitor: false, files: false, profiles: { [agent]: launchProfile(entry) } });
+  const { plan } = openWorkspace(room, [agent], {
+    monitor: false,
+    files: false,
+    profiles: { [agent]: launchProfile(entry) },
+    cwd: roomCharter(db, room)?.cwd ?? undefined,
+  });
   if (plan.missing.length) return { ok: false, detail: `${LAUNCHERS[harness].bin} is not on PATH` };
   return { ok: true, agent, detail: `${agent} launched in a new pane` };
 }
@@ -247,7 +252,7 @@ export function approvePlan(db: Database.Database, room: string): { ok: boolean;
   if (!joining.length) return { ok: true, detail: "plan approved; everyone in it is already running" };
   if (!live) return { ok: true, detail: `plan approved; ${joining.join(", ")} start with: ai-room attach ${room}` };
   const profiles = Object.fromEntries(roster.map((entry) => [entry.agent, launchProfile(entry)]));
-  const { plan } = openWorkspace(room, joining, { monitor: false, files: false, profiles });
+  const { plan } = openWorkspace(room, joining, { monitor: false, files: false, profiles, cwd: charter.cwd ?? undefined });
   const missing = plan.missing.length ? `; not on PATH: ${plan.missing.join(", ")}` : "";
   return { ok: true, detail: `plan approved; launched ${plan.agents.join(", ") || "nobody"}${missing}` };
 }
