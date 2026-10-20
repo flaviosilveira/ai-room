@@ -256,3 +256,75 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
 
   return app;
 }
+
+/**
+ * A Cloudflare quick tunnel to the web view: no account and no domain, an
+ * https://….trycloudflare.com address that lasts as long as the process does.
+ * The token stays the only lock, which is why only the web view's port is
+ * ever handed to it.
+ */
+const TUNNEL_URL = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+
+function tunnelFile(): string {
+  return path.join(path.dirname(webTokenPath()), "tunnel.json");
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function tunnelStatus(): { url: string; pid: number } | null {
+  try {
+    const saved = JSON.parse(fs.readFileSync(tunnelFile(), "utf8")) as { url: string; pid: number };
+    return alive(saved.pid) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function startTunnel(bin = "cloudflared", waitMs = 30_000): Promise<{ url: string; pid: number }> {
+  const running = tunnelStatus();
+  if (running) return running;
+  const log = path.join(path.dirname(webTokenPath()), "logs", "tunnel.log");
+  fs.mkdirSync(path.dirname(log), { recursive: true });
+  fs.writeFileSync(log, "");
+  const out = fs.openSync(log, "a");
+  const { spawn } = await import("node:child_process");
+  const child = spawn(bin, ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${WEB_PORT}`], {
+    detached: true,
+    stdio: ["ignore", out, out],
+  });
+  fs.closeSync(out);
+  const failed = new Promise<never>((_, reject) => child.once("error", (error) => reject(error)));
+  child.unref();
+  const found = (async () => {
+    for (const deadline = Date.now() + waitMs; Date.now() < deadline; ) {
+      const url = TUNNEL_URL.exec(fs.readFileSync(log, "utf8"))?.[0];
+      if (url) return url;
+      if (child.exitCode !== null) throw new Error(`cloudflared exited; see ${log}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    throw new Error(`no tunnel address after ${waitMs / 1000}s; see ${log}`);
+  })();
+  const url = await Promise.race([found, failed]);
+  const saved = { url, pid: child.pid! };
+  fs.writeFileSync(tunnelFile(), JSON.stringify(saved));
+  return saved;
+}
+
+export function stopTunnel(): boolean {
+  const running = tunnelStatus();
+  try {
+    fs.rmSync(tunnelFile(), { force: true });
+  } catch {
+    /* nothing saved */
+  }
+  if (!running) return false;
+  process.kill(running.pid, "SIGTERM");
+  return true;
+}

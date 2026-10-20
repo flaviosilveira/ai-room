@@ -258,6 +258,24 @@ the file with `room_attachment` when they need it.
 
 ---
 
+## The web view, from the phone
+
+`ai-room serve` also serves the rooms at `http://127.0.0.1:49376`: open rooms,
+the lead's feed, sending as the human, requests to allow or deny, the plan to
+approve and the reports. It asks for the token `ai-room web` prints.
+
+| Command | Does |
+|---|---|
+| `ai-room web` | Shows the address, the token, and the tunnel's address if one runs |
+| `ai-room web --tunnel` | Starts a Cloudflare quick tunnel (needs `cloudflared`; no account, no domain) and shows its `https://….trycloudflare.com` address, as a QR code with `qrencode` |
+| `ai-room web --stop` | Ends the tunnel |
+| `ai-room web --rotate` | Makes a new token and signs every browser out |
+
+Sign in on the phone before leaving: it stays signed in while the address
+lives. A restart of the tunnel (a reboot, `--stop`) brings a new address, and
+the Mac has to stay awake meanwhile. Only the web view's port is ever
+tunnelled; the agents' MCP port has no login.
+
 ## 6. Managing rooms
 
 | Command | Does |

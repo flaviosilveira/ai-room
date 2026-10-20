@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `ai-room web --tunnel` starts a Cloudflare quick tunnel to the web view, with
+  no account or domain, and shows its address (as a QR code with `qrencode`);
+  `ai-room web --stop` ends it.
 - The web view: `ai-room serve` also serves the rooms on their own port
   (127.0.0.1:49376), for a phone through a Cloudflare Tunnel. Open rooms and
   their agents, the lead's feed (or every message), sending as the human, the

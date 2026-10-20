@@ -802,18 +802,45 @@ switch (cmd) {
     hooks(process.argv.includes("--json"));
     break;
   case "web": {
-    const { webToken, webTokenPath, WEB_PORT } = await import("./web.js");
+    const { startTunnel, stopTunnel, tunnelStatus, webToken, webTokenPath, WEB_PORT } = await import("./web.js");
+    if (process.argv.includes("--stop")) {
+      console.log(stopTunnel() ? "tunnel stopped" : "no tunnel running");
+      break;
+    }
     const token = webToken(process.argv.includes("--rotate"));
     console.log(`web view: http://127.0.0.1:${WEB_PORT}`);
     console.log(`token:    ${token}`);
-    console.log(`          (in ${webTokenPath()}; ai-room web --rotate makes a new one and signs everyone out)`);
-    console.log("");
-    console.log("From outside home, through a Cloudflare Tunnel that exposes this port only:");
-    console.log(`  quick, no account:  cloudflared tunnel --url http://127.0.0.1:${WEB_PORT}`);
-    console.log("                      (a random https://….trycloudflare.com address; the token is the only lock)");
-    console.log("  lasting, with login: a named tunnel on a domain in your Cloudflare account,");
-    console.log(`                      ingress to http://127.0.0.1:${WEB_PORT}, behind a Cloudflare Access policy for your e-mail.`);
-    console.log("Never point a tunnel at port " + port() + ": that is the agents' MCP endpoint, with no login.");
+    console.log(`          (in ${webTokenPath()}; --rotate makes a new one and signs everyone out)`);
+    let tunnel = tunnelStatus();
+    if (process.argv.includes("--tunnel") && !tunnel) {
+      const { onPath } = await import("./invite.js");
+      if (!onPath("cloudflared")) {
+        console.error("\ncloudflared is not installed: brew install cloudflared (macOS) or see");
+        console.error("https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/");
+        process.exitCode = 1;
+        break;
+      }
+      console.log("\nstarting a Cloudflare quick tunnel…");
+      try {
+        tunnel = await startTunnel();
+      } catch (error) {
+        console.error(`tunnel failed: ${error instanceof Error ? error.message : error}`);
+        process.exitCode = 1;
+        break;
+      }
+    }
+    if (tunnel) {
+      console.log(`\nfrom anywhere: ${tunnel.url}`);
+      console.log("open it on the phone now and sign in with the token; it stays signed in while this address lives.");
+      console.log("the address changes when the tunnel restarts (ai-room web --stop, a reboot); keep the Mac awake meanwhile.");
+      const { spawnSync } = await import("node:child_process");
+      const qr = spawnSync("qrencode", ["-t", "ANSIUTF8", tunnel.url], { encoding: "utf8" });
+      if (qr.status === 0) console.log(`\n${qr.stdout}`);
+      else console.log("(brew install qrencode to get a QR code here)");
+    } else {
+      console.log(`\nfrom anywhere: ai-room web --tunnel (needs cloudflared), ai-room web --stop to end it.`);
+      console.log(`never tunnel port ${port()}: that is the agents' MCP endpoint, with no login.`);
+    }
     break;
   }
   case "setup": {
@@ -837,7 +864,7 @@ switch (cmd) {
       break;
     }
     console.error(
-      "usage: ai-room <serve|setup|web [--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
+      "usage: ai-room <serve|setup|web [--tunnel|--stop|--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
         "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );

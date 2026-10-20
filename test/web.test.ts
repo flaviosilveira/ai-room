@@ -90,3 +90,26 @@ describe("web view", () => {
     expect((await fetch(`${base}/api/rooms/nope/reports`, { headers: auth })).status).toBe(404);
   });
 });
+
+describe("quick tunnel", () => {
+  it("starts once, reports the address, and stops", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "airoom-tunnel-"));
+    const fake = path.join(home, "cloudflared");
+    fs.writeFileSync(fake, '#!/bin/sh\necho "INF |  https://quiet-river-1234.trycloudflare.com  |" >&2\nexec sleep 30\n', { mode: 0o755 });
+    const previous = process.env.AI_ROOM_HOME;
+    process.env.AI_ROOM_HOME = home;
+    try {
+      const { startTunnel, stopTunnel, tunnelStatus } = await import("../src/web.js");
+      const started = await startTunnel(fake, 5000);
+      expect(started.url).toBe("https://quiet-river-1234.trycloudflare.com");
+      expect((await startTunnel(fake, 5000)).pid).toBe(started.pid);
+      expect(tunnelStatus()?.url).toBe(started.url);
+      expect(stopTunnel()).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(tunnelStatus()).toBeNull();
+    } finally {
+      process.env.AI_ROOM_HOME = previous;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
