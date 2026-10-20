@@ -263,8 +263,9 @@ the file with `room_attachment` when they need it.
 
 A knowledge base per company or project — the business, its rules, the deploy,
 the stack — that every room bound to it starts from. Bind a room with
-`--kb <name>` at `open`, or let the lead ask you which one when the room has
-none. When a task teaches something lasting, an agent proposes the section's
+`--kb <name>` at `open`, or leave it unbound: when the lead finds something
+worth keeping, it asks you whether it goes in an existing base, a new one it
+suggests, or nowhere. When a task teaches something lasting, an agent proposes the section's
 new text; it lands only when you approve it.
 
 | In the console | Does |

@@ -434,8 +434,8 @@ export function createAiRoomServer(
     {
       description:
         "Read the knowledge base this room belongs to: the company or project's business, rules, deploy and stack, by section. " +
-        "Call it when you join. When the room has none yet, the answer lists the existing bases: the lead asks the human once which one " +
-        "this room belongs to (or a new name, or none) and calls this again with `project` to bind it.",
+        "Call it when you join. A room with no base yet lists the existing ones: when there is something worth keeping, the lead asks " +
+        "the human whether it goes in one of them, a new one, or nowhere, and calls this again with `project` to bind it.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),

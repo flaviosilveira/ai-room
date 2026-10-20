@@ -65,9 +65,9 @@ export function readKnowledge(
       sections: [],
       projects,
       note:
-        "This room has no knowledge base. Ask the human once which company or project it belongs to" +
-        (projects.length ? ` (existing: ${projects.join(", ")})` : "") +
-        ", a new name, or none; then call room_knowledge with that project.",
+        "This room has no knowledge base yet. When you find something worth keeping, ask the human whether it goes in" +
+        (projects.length ? ` one of these (${projects.join(", ")}),` : "") +
+        " a new base you suggest a name for, or nowhere; then call room_knowledge with that project.",
     };
   }
   return { project, sections: knowledgeSections(db, project), projects };

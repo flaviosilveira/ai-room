@@ -29,7 +29,7 @@ describe("knowledge base", () => {
   it("tells a room with no base to ask the human, and lets only the lead or the human choose", () => {
     const first = readKnowledge(db, "r", "claude");
     expect(first.project).toBeNull();
-    expect(first.note).toMatch(/Ask the human once/);
+    expect(first.note).toMatch(/ask the human whether it goes in/);
     expect(() => readKnowledge(db, "r", "codex", "acme")).toThrow(/only the lead or the human/);
     expect(() => readKnowledge(db, "r", "claude", "../x")).toThrow(/letters, digits/);
     expect(readKnowledge(db, "r", "claude", "acme").project).toBe("acme");
