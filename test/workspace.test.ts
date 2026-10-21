@@ -252,9 +252,19 @@ describe("charter is written before any agent starts", () => {
   });
 });
 
-describe("status on the monitor's border", () => {
-  it("shows it next to the pane name, only when there is one", () => {
-    expect(tmuxConfig("ai-room")).toContain("#{?@airoom_status, | #{@airoom_status},}");
+describe("the live line above tmux's bar", () => {
+  it("puts the agents' live line on top and tmux's own bar under it", () => {
+    const config = tmuxConfig("ai-room", null, "#[align=left]DEFAULT");
+    expect(config).toContain("set -g status 2");
+    expect(config).toContain('set -g status-format[0] "#[fill=colour236,bg=colour236,fg=colour250] #{@airoom_live}"');
+    expect(config).toContain("set -g status-format[1] '#[align=left]DEFAULT'");
+    expect(config).not.toContain("@airoom_status");
+  });
+
+  it("keeps the single bar when tmux's own format cannot be read", () => {
+    const config = tmuxConfig("ai-room", null, null);
+    expect(config).toContain("set -g status on");
+    expect(config).not.toContain("status-format[");
   });
 });
 

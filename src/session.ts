@@ -128,7 +128,28 @@ export function selfCommand(): string {
  */
 const both = (key: string, command: string) => [`bind-key ${key} ${command}`, `bind-key C-${key.toLowerCase()} ${command}`];
 
-export function tmuxConfig(self: string = selfCommand(), clipboard: string | null = clipboardCommand()): string {
+/**
+ * tmux's own status format on this machine, read from a throwaway server so it
+ * matches the installed version. The live line goes above it; null keeps the
+ * single bar.
+ */
+let pristineStatus: string | null | undefined;
+export function tmuxDefaultStatusFormat(): string | null {
+  if (pristineStatus !== undefined) return pristineStatus;
+  const bin = tmuxBin();
+  if (!bin) return (pristineStatus = null);
+  const probe = `airoom-probe-${process.pid}`;
+  const read = run(bin, ["-f", "/dev/null", "-L", probe, "start-server", ";", "show-options", "-gv", "status-format[0]"]);
+  run(bin, ["-L", probe, "kill-server"]);
+  pristineStatus = read.ok && read.out && !/['\n]/.test(read.out) ? read.out : null;
+  return pristineStatus;
+}
+
+export function tmuxConfig(
+  self: string = selfCommand(),
+  clipboard: string | null = clipboardCommand(),
+  statusFormat: string | null = tmuxDefaultStatusFormat()
+): string {
   const copy = clipboard
     ? ["copy-mode", "copy-mode-vi"].flatMap((table) =>
         ["MouseDragEnd1Pane", "y", "Enter"].map((key) => `bind-key -T ${table} ${key} send-keys -X copy-pipe-and-cancel "${clipboard}"`)
@@ -139,9 +160,16 @@ export function tmuxConfig(self: string = selfCommand(), clipboard: string | nul
     "source-file -q ~/.tmux.conf",
     "source-file -q ~/.config/tmux/tmux.conf",
     "set -g pane-border-status top",
-    // The monitor's border carries the agents' status, so it never scrolls the chat.
-    `set -g pane-border-format " #{?${PANE_TAG},#{${PANE_TAG}},#{pane_title}}#{?${STATUS_TAG}, | #{${STATUS_TAG}},} "`,
-    "set -g status on",
+    `set -g pane-border-format " #{?${PANE_TAG},#{${PANE_TAG}},#{pane_title}} "`,
+    // A line of its own above tmux's bar for what each agent's pane shows right
+    // now, visible even with a pane zoomed. The console keeps it current.
+    ...(statusFormat
+      ? [
+          "set -g status 2",
+          `set -g status-format[0] "#[fill=colour236,bg=colour236,fg=colour250] #{${LIVE_TAG}}"`,
+          `set -g status-format[1] '${statusFormat}'`,
+        ]
+      : ["set -g status on"]),
     "set -g status-left-length 60",
     `set -g status-left "#[bold] ai-room #{?${ROOM_TAG},#{${ROOM_TAG}},#S} #[default]"`,
     "set -g status-right-length 100",
@@ -338,6 +366,8 @@ export interface WorkspaceResult {
 export const PANE_TAG = "@airoom_agent";
 /** The room a workspace belongs to, for the status line; session names carry a digest. */
 export const ROOM_TAG = "@airoom_room";
+/** Session option holding the live line of what each agent's pane shows. */
+export const LIVE_TAG = "@airoom_live";
 /** The window a pane belongs in when it is shown. */
 export const HOME_TAG = "@airoom_home";
 /** The status line the monitor shows on its own pane border. */

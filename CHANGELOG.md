@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A live line above tmux's bar shows what each agent's pane shows right now,
+  read from the harness's own indicator rather than its declared status:
+  `✻ claude Perambulating 11m`, `⏸ codex asking`, `· agy idle`, and
+  `⚠ claude-2 still 7m` for an agent that says it is working while its pane has
+  not moved. It stays in sight with the `human` pane zoomed. The monitor's
+  border no longer carries the declared statuses.
 - `/kb all` approves every knowledge update waiting in the room's base, and
   `/kb reject all` turns them all down.
 - `ai-room gate install | uninstall | status` installs the approvals gate in

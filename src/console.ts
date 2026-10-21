@@ -16,6 +16,7 @@ import {
   mux,
   paneStates,
   reloadTmuxConfig,
+  LIVE_TAG,
   STATUS_TAG,
   sessionExists,
   sessionName,
@@ -24,6 +25,7 @@ import {
   workspaceName,
 } from "./session.js";
 import { closeRoom, harnessFor } from "./invite.js";
+import { LiveTracker, renderLive } from "./live.js";
 import { STATUS_STALE_MS } from "./wait.js";
 import {
   DISABLE_BRACKETED_PASTE,
@@ -678,6 +680,36 @@ export async function runConsole(
   // With a lead the human hears one voice; teammates' messages stay in the
   // room, and /all brings them back here.
   let leads = new Set<string>();
+  let declared = new Map<string, string>();
+
+  // What each agent's pane shows right now goes to the bar above tmux's own, so
+  // it is in sight with this pane zoomed. The declared status can be stale; the
+  // harness's own spinner or prompt is not.
+  if (statusPane) {
+    const tracker = new LiveTracker();
+    let lastLine = "";
+    const refreshLive = () => {
+      try {
+        if (!sessionExists(driver!, workspace)) return;
+        const agents = paneStates(driver!, workspace)
+          .filter((p) => !["monitor", "files", "editor"].includes(p.agent))
+          .map((p) => {
+            const text = mux(driver!, ["capture-pane", "-p", "-J", "-t", p.paneId, "-S", "-25"]).out;
+            return { agent: p.agent, reading: tracker.observe(p.paneId, text), declared: declared.get(p.agent) };
+          });
+        const line = renderLive(agents);
+        if (line !== lastLine) {
+          lastLine = line;
+          mux(driver!, ["set-option", "-t", workspace, LIVE_TAG, line]);
+        }
+      } catch {
+        /* the workspace may be closing */
+      }
+    };
+    refreshLive();
+    const liveTimer = setInterval(refreshLive, 2000);
+    liveTimer.unref();
+  }
   let showAll = false;
   const controller = new AbortController();
 
@@ -727,10 +759,8 @@ export async function runConsole(
         } else if (event === "status") {
           const participants = payload as ParticipantView[];
           leads = new Set(participants.filter((p) => p.active && p.role?.split(/,\s*/).includes("lead")).map((p) => p.agent));
-          if (statusPane) {
-            const parts = statusParts(participants);
-            mux(driver!, ["set-option", "-p", "-t", statusPane, STATUS_TAG, parts.length ? toTmuxStyle(parts.join("  ")) : "#[dim]room is empty"]);
-          } else emit(rl, renderStatus(participants));
+          declared = new Map(participants.map((p) => [p.agent, p.status]));
+          if (!statusPane) emit(rl, renderStatus(participants));
           const stuck = needsAttention(participants);
           const fingerprint = stuck.map((p) => `${p.agent}:${p.status}`).join(",");
           if (fingerprint && fingerprint !== alerted) {
