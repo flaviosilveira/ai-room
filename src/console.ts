@@ -197,7 +197,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
   ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
   ${C.bold}/show${C.reset}              list what is pasted and attached in the draft
-  ${C.bold}/kb${C.reset}                the room's knowledge base and updates waiting; /kb <n>, /kb approve|reject <n>, /kb use <name>
+  ${C.bold}/kb${C.reset}                the room's knowledge base and updates waiting; /kb <n>, /kb approve|reject <n>, /kb all, /kb reject all, /kb use <name>
   ${C.bold}/usage [days]${C.reset}      tokens each agent of this room spent (Claude, Codex; plan window for Codex)
   ${C.bold}/clear${C.reset}             clear the screen (the room's history and the draft stay)
   ${C.bold}/reload${C.reset}            restart this console with the ai-room now on disk
@@ -979,6 +979,20 @@ export async function runConsole(
             try {
               const project = store.roomCharter(db, room)?.knowledge;
               const [action, idText] = rest;
+              // "/kb all" approves every pending update of this room's base, "/kb reject all" turns them all down.
+              const everything = action === "all" || idText === "all";
+              if (everything && project) {
+                const approve = action !== "reject";
+                const decided = kb.pendingKnowledge(db, project).map((p) => kb.decideKnowledge(db, p.id, approve)).filter(Boolean);
+                emit(
+                  rl,
+                  decided.length
+                    ? `${C.dim}${approve ? "approved" : "rejected"} ${decided.length} update(s): ${decided.map((d) => `#k${d!.id} ${d!.section}`).join(", ")}${C.reset}`
+                    : `${C.dim}nothing waiting in "${project}".${C.reset}`
+                );
+                if (decided.length) wakeRoom();
+                return;
+              }
               const id = Number((idText ?? action ?? "").replace(/^#?k?/i, ""));
               if ((action === "approve" || action === "reject") && Number.isInteger(id)) {
                 const decided = kb.decideKnowledge(db, id, action === "approve");
@@ -1007,7 +1021,7 @@ export async function runConsole(
                 rl,
                 `${C.bold}${project}${C.reset} ${C.dim}— ${sections.length} section(s): ${sections.map((s) => s.section).join(", ") || "none yet"}${C.reset}` +
                   (pending.length
-                    ? `\n${C.dim}waiting for you:${C.reset}\n${pending.map((p) => `  #k${p.id} ${p.section} (${p.proposedBy})${p.reason ? ` ${C.dim}${p.reason}${C.reset}` : ""}`).join("\n")}\n${C.dim}/kb <n> to read, /kb approve <n>, /kb reject <n>${C.reset}`
+                    ? `\n${C.dim}waiting for you:${C.reset}\n${pending.map((p) => `  #k${p.id} ${p.section} (${p.proposedBy})${p.reason ? ` ${C.dim}${p.reason}${C.reset}` : ""}`).join("\n")}\n${C.dim}/kb <n> to read, /kb approve <n>, /kb reject <n>, /kb all to approve them all${C.reset}`
                     : "")
               );
             } finally {

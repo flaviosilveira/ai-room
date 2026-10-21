@@ -84,7 +84,8 @@ const preToolUse = (tool = "Bash") => ({
   tool_input: {},
 });
 
-describe("unread boundary hook", () => {
+// Each case spawns Python for the hook; under a full parallel run that outgrows the default 5s.
+describe("unread boundary hook", { timeout: 30_000 }, () => {
   let db: Database.Database;
   let child: ChildProcess;
   let port: number;

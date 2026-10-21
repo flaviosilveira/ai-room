@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `/kb all` approves every knowledge update waiting in the room's base, and
+  `/kb reject all` turns them all down.
 - `ai-room gate install | uninstall | status` installs the approvals gate in
   Claude Code, Codex and agy on any machine, with a default policy written to
   `~/.ai-room/policy.json` to edit; it no longer needs a separate tool. The

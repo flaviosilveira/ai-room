@@ -30,7 +30,8 @@ async function startServer(dbPath: string): Promise<{ child: ChildProcess; port:
 const GATE = path.join(process.cwd(), "hooks", "ai-room-gate.py");
 const hasPython = spawnSync("python3", ["--version"]).status === 0;
 
-describe.skipIf(!hasPython)("ai-room gate", () => {
+// Each case spawns Python for the hook; under a full parallel run that outgrows the default 5s.
+describe.skipIf(!hasPython)("ai-room gate", { timeout: 30_000 }, () => {
   let dir: string;
   let dbPath: string;
   let server: { child: ChildProcess; port: number };

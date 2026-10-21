@@ -272,6 +272,7 @@ new text; it lands only when you approve it.
 |---|---|
 | `/kb` | The room's base, its sections and the updates waiting for you |
 | `/kb <n>` · `/kb approve <n>` · `/kb reject <n>` | Reads, approves or rejects update #k<n> |
+| `/kb all` · `/kb reject all` | Approves · rejects every update waiting in the room's base |
 | `/kb use <name>` | Binds the room to a base, new or existing (`none` unbinds) |
 
 The bases live in `~/.ai-room/knowledge.sqlite`, apart from the rooms' messages,
