@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `ai-room search <text>` finds text in every room's messages, oldest first,
+  one line per hit (`<room>  <agent>  #<id>  <date>  <snippet>`), with
+  `--room`, `--agent`, `--first`, `--limit` and `--json`. The match is literal,
+  so `%` and `_` are plain characters. `ai-room messages <room>` takes
+  `--limit N` and `--all`; it still shows the newest 100 by default.
 - A live line above tmux's bar shows what each agent's pane shows right now,
   read from the harness's own indicator rather than its declared status:
   `✻ claude Perambulating 11m`, `⏸ codex asking`, `· agy idle`, and

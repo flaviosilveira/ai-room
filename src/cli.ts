@@ -150,13 +150,60 @@ function rooms(argv: string[]): void {
   console.log(JSON.stringify(rows, null, 2));
 }
 
-function messages(room: string): void {
-  if (!room) {
-    console.error("usage: ai-room messages <room>");
+/** The value after `flag` on the command line, or undefined. */
+function flagValue(argv: string[], flag: string): string | undefined {
+  const at = argv.indexOf(flag);
+  return at >= 0 ? argv[at + 1] : undefined;
+}
+
+/** A positive whole number for `--limit`, or an exit with the usage. */
+function limitFlag(argv: string[], usage: string): number | undefined {
+  const raw = flagValue(argv, "--limit");
+  if (raw === undefined) return undefined;
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit < 1) {
+    console.error(`--limit takes a whole number above 0\n${usage}`);
     process.exit(1);
   }
+  return limit;
+}
+
+const MESSAGES_USAGE = "usage: ai-room messages <room> [--limit N | --all]";
+
+function messages(room: string, argv: string[]): void {
+  if (!room || room.startsWith("--")) {
+    console.error(MESSAGES_USAGE);
+    process.exit(1);
+  }
+  // The newest N, in order; --all is the whole room. SQLite reads LIMIT -1 as no limit.
+  const limit = argv.includes("--all") ? -1 : limitFlag(argv, MESSAGES_USAGE) ?? 100;
   const db = openDb();
-  console.log(JSON.stringify(roomHistory(db, { room, limit: 100 }), null, 2));
+  console.log(JSON.stringify(roomHistory(db, { room, limit }), null, 2));
+}
+
+const SEARCH_USAGE = "usage: ai-room search <text> [--room <room>] [--agent <agent>] [--first] [--limit N] [--json]";
+
+/**
+ * Finds text in every room's history, oldest first: which room and which agent
+ * said something, e.g. who opened a pull request. Read-only.
+ */
+async function search(argv: string[]): Promise<void> {
+  const valued = new Set(["--room", "--agent", "--limit"]);
+  const text = argv.find((word, i) => !word.startsWith("--") && !valued.has(argv[i - 1] ?? ""));
+  if (!text) {
+    console.error(SEARCH_USAGE);
+    process.exit(1);
+  }
+  const first = argv.includes("--first");
+  const limit = first ? 1 : limitFlag(argv, SEARCH_USAGE);
+  const { searchMessages } = await import("./store.js");
+  const { searchLine } = await import("./search.js");
+  const db = openDb();
+  const { messages: found, total } = searchMessages(db, { text, room: flagValue(argv, "--room"), agent: flagValue(argv, "--agent"), limit });
+  if (argv.includes("--json")) console.log(JSON.stringify(found, null, 2));
+  else for (const message of found) console.log(searchLine(message, text));
+  if (!found.length) console.error(`no message contains "${text}"`);
+  else if (!first && total > found.length) console.error(`${total - found.length} more; raise --limit to see them`);
 }
 
 function who(room: string): void {
@@ -697,7 +744,10 @@ switch (cmd) {
     rooms(process.argv.slice(3));
     break;
   case "messages":
-    messages(arg);
+    messages(arg, process.argv.slice(4));
+    break;
+  case "search":
+    await search(process.argv.slice(3));
     break;
   case "who":
     who(arg);
@@ -891,7 +941,7 @@ switch (cmd) {
     console.error(
       "usage: ai-room <serve|setup|gate [install|uninstall|status]|usage [room] [--days N]|web [--tunnel|--stop|--rotate]|doctor [--json]|service <install|status|start|stop|restart|logs|uninstall>|status [--json]|tools [--json]|hooks [--json]|" +
         "console <room>|open <room> [flags]|attach <room>|add <room> <agent> [--role r] [--yes]|remove <room> <agent>|close <room>|delete <room>... [--yes]|agents <room>|pane <room> <agent> [show|hide|toggle]|" +
-        "rooms [query] [--names]|messages <room>|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
+        "rooms [query] [--names]|messages <room> [--limit N|--all]|search <text> [--room R] [--agent A] [--first] [--limit N] [--json]|who <room>|storage [--json]|compact|attachments prune [--older-than 30d]>"
     );
     process.exit(1);
 }

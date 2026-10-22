@@ -303,7 +303,8 @@ tunnelled; the agents' MCP port has no login.
 | `ai-room rooms [query]` | Lists rooms (JSON, with activity and participants) |
 | `ai-room rooms --names` | Names only, one per line (`\| wc -l` counts them) |
 | `ai-room who <room>` | Participants and status |
-| `ai-room messages <room>` | History |
+| `ai-room messages <room> [--limit N \| --all]` | History as JSON: the newest 100, the newest N, or all of it |
+| `ai-room search <text> [--room R] [--agent A] [--first] [--limit N] [--json]` | Finds text in every room's messages, oldest first: `<room>  <agent>  #<id>  <date>  <snippet>`. `--first` for who said it first (who opened PR #3126); the match is literal and ignores ASCII case |
 | `ai-room pane <room> <pane> [show\|hide\|toggle]` | Shows/hides a pane from the shell |
 | `ai-room remove <room> <agent>` | Takes one agent out (e.g. it hit its usage limit); the rest keep working |
 | `ai-room add <room> <agent> [--role <role>]` | Brings an agent in, or back, with its own pane |

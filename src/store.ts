@@ -425,6 +425,36 @@ export function roomHistory(
   return withAttachments(db, rows);
 }
 
+/**
+ * Messages across every room (or one) whose content contains `text`, oldest
+ * first. The match is literal and case-insensitive: instr() over lower(), not
+ * LIKE, so "%" and "_" are ordinary characters. lower() folds ASCII letters only.
+ */
+export function searchMessages(
+  db: Database.Database,
+  params: { text: string; room?: string; agent?: string; limit?: number }
+): { messages: MessageInfo[]; total: number } {
+  const clauses = ["instr(lower(content), lower(?)) > 0"];
+  const args: unknown[] = [params.text];
+  if (params.room !== undefined) {
+    clauses.push("room = ?");
+    args.push(params.room);
+  }
+  if (params.agent !== undefined) {
+    clauses.push("agent = ?");
+    args.push(params.agent);
+  }
+  const where = clauses.join(" AND ");
+  const total = (db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE ${where}`).get(...args) as { n: number }).n;
+  const rows = db
+    .prepare(
+      `SELECT id, room, agent, origin, content, created_at as createdAt, recipients
+       FROM messages WHERE ${where} ORDER BY id ASC LIMIT ?`
+    )
+    .all(...args, params.limit ?? -1) as MessageInfo[];
+  return { messages: withAttachments(db, rows), total };
+}
+
 /* ----------------------------------------------------------- attachments */
 
 interface AttachmentRow {
