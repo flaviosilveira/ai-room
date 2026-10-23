@@ -4,7 +4,7 @@ import path from "node:path";
 import { hookStatus } from "./hooks.js";
 import { LAUNCHERS, filesCommand, onPath } from "./invite.js";
 import { TOOL_CHECKS, toolInstalled } from "./presets.js";
-import { detectMultiplexer } from "./session.js";
+import { detectMultiplexer, clipboardCommand } from "./session.js";
 
 /**
  * One read-only look at everything ai-room depends on, with the command that
@@ -112,6 +112,14 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     level: browser ? "ok" : "warn",
     detail: browser ? browser[0] : "no file browser",
     fix: browser ? undefined : "brew install yazi",
+  });
+  const copyTo = clipboardCommand();
+  add({
+    section: "workspace",
+    name: "copy from panes",
+    level: copyTo ? "ok" : "warn",
+    detail: copyTo ? `selection goes to \`${copyTo}\`` : "relies on the terminal supporting OSC 52",
+    fix: copyTo ? undefined : "install wl-clipboard (Wayland) or xclip (X11)",
   });
   const clipboard =
     process.platform === "darwin" ? onPath("osascript") : onPath("wl-paste") || onPath("xclip");

@@ -153,6 +153,8 @@ describe("mouse is on by default and copying still works", () => {
     );
     expect(clipboardCommand("linux", {}, (b) => b === "xclip")).toBe("xclip -selection clipboard -in");
     expect(clipboardCommand("linux", {}, () => false)).toBeNull();
+    expect(clipboardCommand("linux", { WSL_DISTRO_NAME: "Ubuntu", WAYLAND_DISPLAY: "wayland-0" }, () => true)).toBe("iconv -f utf-8 -t utf-16le | clip.exe");
+    expect(clipboardCommand("linux", { WSL_DISTRO_NAME: "Ubuntu" }, (b) => b === "clip.exe")).toBe("clip.exe");
   });
 });
 

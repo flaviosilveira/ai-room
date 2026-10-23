@@ -523,6 +523,9 @@ export function clipboardCommand(
   has: (bin: string) => boolean = onPath
 ): string | null {
   if (platform === "darwin") return has("pbcopy") ? "pbcopy" : null;
+  // WSLg also sets WAYLAND_DISPLAY, but its wl-copy does not reliably reach the Windows clipboard.
+  // clip.exe reads the legacy code page unless given UTF-16.
+  if ((env.WSL_DISTRO_NAME || env.WSL_INTEROP) && has("clip.exe")) return has("iconv") ? "iconv -f utf-8 -t utf-16le | clip.exe" : "clip.exe";
   if (env.WAYLAND_DISPLAY && has("wl-copy")) return "wl-copy";
   if (has("xclip")) return "xclip -selection clipboard -in";
   if (has("xsel")) return "xsel --clipboard --input";

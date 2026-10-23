@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Copying from a pane under WSL reaches the Windows clipboard, through
+  `clip.exe` (as UTF-16, so accents survive) instead of WSLg's `wl-copy`.
+  `ai-room doctor` shows where a pane selection goes.
 - `ai-room open` no longer creates a room whose name is a slip of an existing
   one: stray punctuation at the ends (`refund-review,`) or a name that differs
   only in case or separators (`Refund_Review`). It offers the existing room in
