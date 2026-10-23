@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - Copying from a pane under WSL reaches the Windows clipboard, through
   `clip.exe` (as UTF-16, so accents survive) instead of WSLg's `wl-copy`.
