@@ -201,6 +201,11 @@ clipboard. Without the mouse: `Ctrl-b [`, move to the start, `Space`, move to
 the end, `Enter`. For the terminal's own selection across panes, turn the mouse
 off with `Ctrl-b M`.
 
+On Windows (WSL), a copy reaches the Windows clipboard through `clip.exe`.
+With the mouse on, a right-click goes to tmux instead of pasting: paste with
+`Ctrl+Shift+V` in Windows Terminal, and hold `Shift` while dragging to use the
+terminal's own selection.
+
 Pasting in `human>`: `Ctrl+V` pastes anything (text, a screenshot, a copied
 file); `Cmd+V` only text, because the terminal itself cannot paste an image.
 
