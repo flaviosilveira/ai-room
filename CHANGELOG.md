@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The macOS service no longer runs as a background process. macOS throttled
+  its CPU and disk, so a restart took over a minute to answer and every MCP
+  call and wake was slower than it had to be. `ai-room service install`
+  rewrites the agent and restarts it.
+
 ## 0.8.0
 
 - Copying from a pane under WSL reaches the Windows clipboard, through

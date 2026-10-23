@@ -20,6 +20,7 @@ describe("user service files", () => {
     expect(plist).toContain(`<string>${LAUNCH_LABEL}</string>`);
     expect(plist).toContain(`<string>${spec.node}</string>`);
     expect(plist).toContain("<string>serve</string>");
+    expect(plist).not.toContain("<string>Background</string>");
     expect(plist).toContain("/Users/me/.asdf/installs/nodejs/24.15.0/bin:/opt/homebrew/bin");
   });
 

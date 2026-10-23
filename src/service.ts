@@ -68,7 +68,6 @@ export function launchAgentPlist(spec: ServiceSpec): string {
   <key>ThrottleInterval</key><integer>10</integer>
   <key>StandardOutPath</key><string>${xml(path.join(spec.logDir, "ai-room.out.log"))}</string>
   <key>StandardErrorPath</key><string>${xml(path.join(spec.logDir, "ai-room.err.log"))}</string>
-  <key>ProcessType</key><string>Background</string>
 </dict>
 </plist>
 `;
