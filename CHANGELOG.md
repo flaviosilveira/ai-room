@@ -4,7 +4,7 @@
 
 - Pasting an image in `human>` works under WSL: the console reads the Windows
   clipboard through `powershell.exe` (a screenshot, a file copied in Explorer,
-  or text), instead of WSLg's, which never holds it. `Alt+V` pastes too, since
+  or text), instead of WSLg's, which does not reliably get it. `Alt+V` pastes too, since
   Windows Terminal keeps `Ctrl+V` for its own text-only paste.
 
 ## 0.8.1
