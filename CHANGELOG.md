@@ -1,11 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.8.1
 
 - The macOS service no longer runs as a background process. macOS throttled
   its CPU and disk, so a restart took over a minute to answer and every MCP
   call and wake was slower than it had to be. `ai-room service install`
   rewrites the agent and restarts it.
+- `ai-room service install` no longer leaves the service down when it
+  replaces the LaunchAgent: loading it again is retried while launchd lets go
+  of the old one.
 
 ## 0.8.0
 
