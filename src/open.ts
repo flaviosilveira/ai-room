@@ -14,6 +14,8 @@ export interface OpenFlags {
   roles: Map<string, string>;
   models: Map<string, string>;
   efforts: Map<string, Effort>;
+  /** Create the room even when its name is close to an existing one. */
+  forceNew?: boolean;
   /** The knowledge base this room reads and adds to. */
   knowledge?: string;
   /** A new team starts with its lead alone, who sizes the task and proposes the rest. */
@@ -103,11 +105,29 @@ export function parseOpenFlags(argv: string[]): OpenFlags {
     else if (arg === "--lead") flags.lead = value();
     else if (arg === "--no-lead") flags.lead = false;
     else if (arg === "--no-defaults") flags.defaults = false;
+    else if (arg === "--new") flags.forceNew = true;
     else if (arg === "--mouse") flags.mouse = true;
     else if (arg === "--no-mouse") flags.mouse = false;
     else throw new Error(`Unknown flag "${arg}"`);
   }
   return flags;
+}
+
+/**
+ * A new room's name that looks like a slip of the keyboard: a comma, colon or
+ * quote typed with it, or a space around it. `open` would otherwise create a
+ * second, empty room next to the one meant.
+ */
+export function roomNameSlip(name: string): string | null {
+  const clean = name.trim().replace(/^[,;:.!?'"`]+|[,;:.!?'"`]+$/g, "").trim();
+  return clean && clean !== name ? clean : null;
+}
+
+/** An existing room this new name only differs from in case, punctuation or spacing. */
+export function nearRoom(name: string, existing: string[]): string | null {
+  const key = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const wanted = key(name);
+  return (wanted && existing.find((room) => room !== name && key(room) === wanted)) || null;
 }
 
 export function parseEffort(value: string): Effort {

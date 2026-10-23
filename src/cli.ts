@@ -41,6 +41,8 @@ import { missingTools } from "./presets.js";
 import { attachmentRoot, formatBytes } from "./attachments.js";
 import {
   agentsToLaunch,
+  nearRoom,
+  roomNameSlip,
   holdForPlan,
   charterPatch,
   assignLead,
@@ -253,6 +255,23 @@ async function open(room: string, argv: string[]): Promise<void> {
     await offerSetup();
   }
   const defaults = loadOpenDefaults();
+  if (!roomExists(db, room) && !argv.includes("--new")) {
+    const slip = roomNameSlip(room);
+    const near = nearRoom(slip ?? room, roomList(db, { limit: -1 }).map((r) => r.name)) ?? (slip && roomExists(db, slip) ? slip : null);
+    if (slip || near) {
+      const meant = near ?? slip!;
+      const exists = roomExists(db, meant);
+      console.error(`there is no room "${room}"${exists ? `; did you mean "${meant}"?` : `; "${meant}" looks like what you meant.`}`);
+      if (exists && process.stdin.isTTY && process.stdout.isTTY) {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = (await rl.question(`Open "${meant}" instead? [Y/n] `)).trim().toLowerCase();
+        rl.close();
+        if (!answer.startsWith("n")) return open(meant, argv);
+      }
+      console.error(`nothing was created. To create "${room}" anyway: ai-room open ${JSON.stringify(room)} --new …`);
+      process.exit(2);
+    }
+  }
   const existed = roomExists(db, room);
   let flags = withDefaults(parseOpenFlags(argv), defaults, !existed);
   // An explicit cast for a room that already has one is a replacement: the

@@ -61,6 +61,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--kb acme` | The knowledge base this room reads and adds to (see below) |
 | `--no-plan` | Launches the whole team at once, without waiting for the lead's plan |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
+| `--new` | Creates the room even when its name looks like a typo of an existing one (`refund-review,`, `Refund_Review`) |
 | `--no-files` | No files tab |
 | `--no-mouse` | Starts with the mouse off (it is on by default) |
 | `--reuse` | Reuses a room that already holds another task's history |

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ai-room open` no longer creates a room whose name is a slip of an existing
+  one: stray punctuation at the ends (`refund-review,`) or a name that differs
+  only in case or separators (`Refund_Review`). It offers the existing room in
+  a terminal and exits otherwise; `--new` creates the name as typed.
 - `ai-room search <text>` finds text in every room's messages, oldest first,
   one line per hit (`<room>  <agent>  #<id>  <date>  <snippet>`), with
   `--room`, `--agent`, `--first`, `--limit` and `--json`. The match is literal,
