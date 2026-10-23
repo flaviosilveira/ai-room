@@ -184,9 +184,14 @@ export async function service(action: string | undefined, port: number): Promise
         const changed = writeIfChanged(file, launchAgentPlist(spec));
         if (changed) {
           run("launchctl", ["bootout", target]);
-          run("launchctl", ["bootstrap", domain(), file])
-            ? ok(`LaunchAgent installed and started (${file})`)
-            : fail("launchctl bootstrap failed");
+          // bootout returns before launchd has let go of the job, and bootstrapping
+          // then fails with "Input/output error" and leaves the service down.
+          let loaded = false;
+          for (let attempt = 0; attempt < 20 && !loaded; attempt += 1) {
+            loaded = run("launchctl", ["bootstrap", domain(), file]);
+            if (!loaded) await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          loaded ? ok(`LaunchAgent installed and started (${file})`) : fail("launchctl bootstrap failed");
         } else {
           ok("LaunchAgent already up to date");
           if (!run("launchctl", ["print", target])) run("launchctl", ["bootstrap", domain(), file]);
