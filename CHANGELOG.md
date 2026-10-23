@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.2
 
 - Pasting an image in `human>` works under WSL: the console reads the Windows
   clipboard through `powershell.exe` (a screenshot, a file copied in Explorer,
