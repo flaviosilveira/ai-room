@@ -204,7 +204,9 @@ off with `Ctrl-b M`.
 On Windows (WSL), a copy reaches the Windows clipboard through `clip.exe`.
 With the mouse on, a right-click goes to tmux instead of pasting: paste with
 `Ctrl+Shift+V` in Windows Terminal, and hold `Shift` while dragging to use the
-terminal's own selection.
+terminal's own selection. To paste an image in `human>`, use `Alt+V` or
+`/paste`: Windows Terminal keeps `Ctrl+V` for its own paste, which carries no
+image. The image is read from the Windows clipboard.
 
 Pasting in `human>`: `Ctrl+V` pastes anything (text, a screenshot, a copied
 file); `Cmd+V` only text, because the terminal itself cannot paste an image.
@@ -256,7 +258,7 @@ whole. Enter sends the line as one message, each paste expanded in its place.
 
 | Command | Does |
 |---|---|
-| `Ctrl+V` or `/paste` | Pastes the clipboard: a screenshot or a copied file is attached, text goes in as a token |
+| `Ctrl+V`, `Alt+V` or `/paste` | Pastes the clipboard: a screenshot or a copied file is attached, text goes in as a token |
 | `/file <path>` | Attaches a file (png, jpeg, gif, webp, pdf, text) |
 | drag a file in | Attaches it too |
 

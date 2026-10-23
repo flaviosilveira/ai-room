@@ -18,7 +18,7 @@ export type ClipboardResult =
 type Run = (bin: string, args: string[]) => { status: number | null; stdout: Buffer };
 
 const runBinary: Run = (bin, args) => {
-  const result = spawnSync(bin, args, { maxBuffer: MAX_ATTACHMENT_BYTES + 1024 });
+  const result = spawnSync(bin, args, { maxBuffer: MAX_ATTACHMENT_BYTES * 2 });
   return { status: result.error ? null : result.status, stdout: result.stdout ?? Buffer.alloc(0) };
 };
 
@@ -100,13 +100,42 @@ function readLinux(run: Run, env: NodeJS.ProcessEnv, has: (bin: string) => boole
   return { kind: "image", bytes: data.stdout, name: stampName(type.split("/")[1].replace("jpeg", "jpg")) };
 }
 
+// Everything goes back as base64 on one line: PowerShell's stdout is text in
+// the console code page, which would mangle both image bytes and accents.
+const WINDOWS_CLIPBOARD = [
+  "Add-Type -AssemblyName System.Windows.Forms,System.Drawing",
+  "$c = [System.Windows.Forms.Clipboard]",
+  "if ($c::ContainsFileDropList()) { 'file:' + $c::GetFileDropList()[0]; exit }",
+  "if ($c::ContainsImage()) { $m = New-Object IO.MemoryStream; $c::GetImage().Save($m, [System.Drawing.Imaging.ImageFormat]::Png); 'image:' + [Convert]::ToBase64String($m.ToArray()); exit }",
+  "if ($c::ContainsText()) { 'text:' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($c::GetText())) }",
+].join("\n");
+
+/** Under WSL the clipboard that holds the screenshot is Windows', not WSLg's. */
+function readWindows(run: Run): ClipboardResult {
+  const encoded = Buffer.from(WINDOWS_CLIPBOARD, "utf16le").toString("base64");
+  const result = run("powershell.exe", ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", encoded]);
+  if (result.status !== 0) return { kind: "none", reason: "could not read the Windows clipboard" };
+  const answer = result.stdout.toString("utf8").trim();
+  const [kind, value] = [answer.slice(0, answer.indexOf(":")), answer.slice(answer.indexOf(":") + 1)];
+  if (kind === "image") return { kind: "image", bytes: Buffer.from(value, "base64"), name: stampName("png") };
+  if (kind === "text") return { kind: "text", text: Buffer.from(value, "base64").toString("utf8") };
+  if (kind === "file") {
+    const linux = run("wslpath", ["-u", value]).stdout.toString("utf8").trim();
+    return linux ? { kind: "file", path: linux } : { kind: "none", reason: `could not reach ${value} from WSL` };
+  }
+  return { kind: "none", reason: "the clipboard is empty" };
+}
+
 export function readClipboard(
   options: { platform?: string; env?: NodeJS.ProcessEnv; run?: Run; has?: (bin: string) => boolean } = {}
 ): ClipboardResult {
   const platform = options.platform ?? process.platform;
   const run = options.run ?? runBinary;
   if (platform === "darwin") return readMac(run);
-  if (platform === "linux") return readLinux(run, options.env ?? process.env, options.has ?? onPath);
+  const env = options.env ?? process.env;
+  const has = options.has ?? onPath;
+  if (platform === "linux" && (env.WSL_DISTRO_NAME || env.WSL_INTEROP) && has("powershell.exe")) return readWindows(run);
+  if (platform === "linux") return readLinux(run, env, has);
   return { kind: "none", reason: `clipboard images are not supported on ${platform}; use /file <path>` };
 }
 

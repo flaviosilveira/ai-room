@@ -102,6 +102,8 @@ function partialSuffix(data: string, marker: string): number {
 
 /** Ctrl+V as the terminal sends it in raw mode. */
 export const CTRL_V = "\u0016";
+/** Alt+V: Windows Terminal keeps Ctrl+V for its own paste, which carries no image. */
+export const ALT_V = "\u001bv";
 
 /**
  * The stream readline reads from. Pastes never reach it: they are announced on
@@ -117,6 +119,7 @@ export function createPasteStream(options: { backspaceWidth?: () => number } = {
   return new Transform({
     transform(chunk, _encoding, done) {
       let { forward, pastes } = filter.feed(chunk.toString("utf8"));
+      forward = forward.split(ALT_V).join(CTRL_V);
       // A token in the line (a paste, an image) goes away whole on one
       // Backspace, the way Claude Code and Codex treat theirs.
       if ((forward === "\x7f" || forward === "\b") && options.backspaceWidth) {

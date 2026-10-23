@@ -278,15 +278,15 @@ describe("console attachments", () => {
     expect(composer.empty).toBe(true);
   });
 
-  it("turns Ctrl+V and an empty paste into a clipboard read", () => {
+  it("turns Ctrl+V, Alt+V and an empty paste into a clipboard read", () => {
     const stream = createPasteStream();
     const events: string[] = [];
     let forwarded = "";
     stream.on("clipboard", () => events.push("clipboard"));
     stream.on("paste", () => events.push("paste"));
     stream.on("data", (chunk) => (forwarded += chunk.toString()));
-    stream.write(`ab\u0016c${PASTE_START}${PASTE_END}`);
-    expect(events).toEqual(["clipboard", "clipboard"]);
+    stream.write(`ab\u0016c\u001bv${PASTE_START}${PASTE_END}`);
+    expect(events).toEqual(["clipboard", "clipboard", "clipboard"]);
     expect(forwarded).toBe("abc");
   });
 
@@ -349,6 +349,27 @@ describe("console attachments", () => {
           : { status: 0, stdout: Buffer.from("ola") },
     });
     expect(result).toEqual({ kind: "text", text: "ola" });
+  });
+
+  it("reads the Windows clipboard under WSL, even with WSLg's Wayland around", () => {
+    const wsl = { WSL_DISTRO_NAME: "Ubuntu", WAYLAND_DISPLAY: "wayland-0" };
+    const reply = (line: string) => () => ({ status: 0, stdout: Buffer.from(`${line}\r\n`) });
+    const has = () => true;
+
+    const image = readClipboard({ platform: "linux", env: wsl, has, run: reply(`image:${PNG_1X1.toString("base64")}`) });
+    expect(image.kind === "image" && image.bytes.equals(PNG_1X1)).toBe(true);
+    expect(readClipboard({ platform: "linux", env: wsl, has, run: reply(`text:${Buffer.from("ação").toString("base64")}`) })).toEqual({
+      kind: "text",
+      text: "ação",
+    });
+    const file = readClipboard({
+      platform: "linux",
+      env: wsl,
+      has,
+      run: (bin) => ({ status: 0, stdout: Buffer.from(bin === "wslpath" ? "/mnt/c/Users/me/shot.png\n" : "file:C:\\Users\\me\\shot.png\r\n") }),
+    });
+    expect(file).toEqual({ kind: "file", path: "/mnt/c/Users/me/shot.png" });
+    expect(readClipboard({ platform: "linux", env: wsl, has, run: reply("") })).toMatchObject({ kind: "none" });
   });
 
   it("says why there is no clipboard over SSH", () => {

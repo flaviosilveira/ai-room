@@ -196,7 +196,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/<skill> @agent text${C.reset}  ask an agent to run a skill (no @: ask the room)
   ${C.bold}/detach${C.reset}            detach from the workspace (agents and room keep running)
   ${C.bold}/close yes${C.reset}         close the room's panes and sessions (history and charter stay)
-  ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V)
+  ${C.bold}/paste${C.reset}             paste the clipboard: image, copied file or text (same as Ctrl+V or Alt+V)
   ${C.bold}/file <path>${C.reset}       attach a file (image, pdf or text)
   ${C.bold}/show${C.reset}              list what is pasted and attached in the draft
   ${C.bold}/kb${C.reset}                the room's knowledge base and updates waiting; /kb <n>, /kb approve|reject <n>, /kb all, /kb reject all, /kb use <name>

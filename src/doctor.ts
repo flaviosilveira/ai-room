@@ -122,7 +122,7 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     fix: copyTo ? undefined : "install wl-clipboard (Wayland) or xclip (X11)",
   });
   const clipboard =
-    process.platform === "darwin" ? onPath("osascript") : onPath("wl-paste") || onPath("xclip");
+    process.platform === "darwin" ? onPath("osascript") : (process.env.WSL_DISTRO_NAME && onPath("powershell.exe")) || onPath("wl-paste") || onPath("xclip");
   add({
     section: "workspace",
     name: "clipboard images",
