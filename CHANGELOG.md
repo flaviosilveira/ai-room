@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `room_knowledge` answers the base's index — each section's name, a one-line
+  summary and its size — instead of every section in full. Agents then read
+  the sections their task touches with `section`, or find them with `query`,
+  so a growing base no longer costs every agent all of it on every join.
+- Each knowledge base has a read-only Markdown copy in
+  `~/.ai-room/kb/<base>/` (an `index.md` and one file per section), rewritten
+  on every approval and when the server starts, to read and study in any
+  editor or as an Obsidian vault.
+- Agents are told to keep business decisions and why they were made in the
+  base, and not to record the task itself.
+
 ## 0.8.2
 
 - Pasting an image in `human>` works under WSL: the console reads the Windows

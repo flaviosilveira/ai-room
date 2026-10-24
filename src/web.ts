@@ -7,7 +7,7 @@ import express from "express";
 import type { Express, NextFunction, Request, Response } from "express";
 import { decideApproval, pendingApprovals } from "./approvals.js";
 import { approvePlan } from "./cast.js";
-import { decideKnowledge, knowledgeProposal, pendingKnowledge, readKnowledge } from "./knowledge.js";
+import { decideKnowledge, knowledgeProposal, knowledgeSections, pendingKnowledge, readKnowledge } from "./knowledge.js";
 import { detectMultiplexer, sessionExists, workspaceName } from "./session.js";
 import { mentionedAgents, roomCharter, roomExists, roomHistory, roomSend, roomWho } from "./store.js";
 import { fileURLToPath } from "node:url";
@@ -224,7 +224,7 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
     const room = known(req, res);
     if (!room) return;
     const base = readKnowledge(db, room, "human");
-    res.json({ ok: true, ...base, pending: base.project ? pendingKnowledge(db, base.project) : [] });
+    res.json({ ok: true, ...base, sections: base.project ? knowledgeSections(db, base.project) : [], pending: base.project ? pendingKnowledge(db, base.project) : [] });
   });
 
   app.post("/api/knowledge/:id", express.json(), (req, res) => {

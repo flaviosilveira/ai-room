@@ -1,4 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
 import type Database from "better-sqlite3";
+import { knowledgePath } from "./db/index.js";
 import { roomCharter, roomLeads, roomSend, roomSetCharter } from "./store.js";
 
 /**
@@ -11,6 +14,14 @@ export interface KnowledgeSection {
   section: string;
   body: string;
   updatedBy: string | null;
+  updatedAt: number;
+}
+
+/** One line of the index: enough to pick the section worth reading. */
+export interface KnowledgeEntry {
+  section: string;
+  summary: string;
+  chars: number;
   updatedAt: number;
 }
 
@@ -41,17 +52,40 @@ export function knowledgeSections(db: Database.Database, project: string): Knowl
     .all(project) as KnowledgeSection[];
 }
 
+/** The first line of prose, so the index says what a section is about. */
+function summaryOf(body: string): string {
+  const line = body.split("\n").map((l) => l.replace(/^[#>*\-\s]+/, "").trim()).find(Boolean) ?? "";
+  return line.length > 140 ? `${line.slice(0, 139)}…` : line;
+}
+
+export function knowledgeIndex(db: Database.Database, project: string, query?: string): KnowledgeEntry[] {
+  const needle = query?.trim().toLowerCase();
+  return knowledgeSections(db, project)
+    .filter((s) => !needle || s.section.toLowerCase().includes(needle) || s.body.toLowerCase().includes(needle))
+    .map((s) => ({ section: s.section, summary: summaryOf(s.body), chars: s.body.length, updatedAt: s.updatedAt }));
+}
+
 /**
- * What room_knowledge answers: the room's base, or, when it has none yet, the
- * bases there are so the lead can ask the human which one this room belongs to.
- * Naming one binds the room to it; only the lead or the human may.
+ * What room_knowledge answers: the index of the room's base, one section when
+ * named, or the sections that mention `query`. Reading the index first keeps a
+ * growing base from costing every agent all of it on every join. A room with
+ * no base lists the bases there are, so the lead can ask the human which one
+ * this room belongs to. Naming one binds the room to it; only the lead or the
+ * human may.
  */
 export function readKnowledge(
   db: Database.Database,
   room: string,
   agent: string,
-  bind?: string | null
-): { project: string | null; sections: KnowledgeSection[]; projects: string[]; note?: string } {
+  bind?: string | null,
+  read: { section?: string; query?: string } = {}
+): {
+  project: string | null;
+  index?: KnowledgeEntry[];
+  section?: KnowledgeSection;
+  projects: string[];
+  note?: string;
+} {
   if (bind !== undefined) {
     if (agent !== "human" && !roomLeads(db, room).has(agent)) throw new Error("only the lead or the human chooses the room's knowledge base");
     if (bind !== null && !NAME.test(bind)) throw new Error("a base is named with letters, digits, dot, dash or underscore");
@@ -62,7 +96,6 @@ export function readKnowledge(
   if (!project) {
     return {
       project,
-      sections: [],
       projects,
       note:
         "This room has no knowledge base yet. When you find something worth keeping, ask the human whether it goes in" +
@@ -70,7 +103,21 @@ export function readKnowledge(
         " a new base you suggest a name for, or nowhere; then call room_knowledge with that project.",
     };
   }
-  return { project, sections: knowledgeSections(db, project), projects };
+  if (read.section) {
+    const wanted = read.section.trim().toLowerCase();
+    const found = knowledgeSections(db, project).find((s) => s.section.toLowerCase() === wanted);
+    if (found) return { project, section: found, projects };
+    return { project, index: knowledgeIndex(db, project), projects, note: `No section "${read.section}"; the index lists the ones there are.` };
+  }
+  const index = knowledgeIndex(db, project, read.query);
+  return {
+    project,
+    index,
+    projects,
+    note: read.query
+      ? `${index.length} section(s) mention "${read.query}". Read one with room_knowledge({ section }).`
+      : "This is the index. Read the sections your task touches with room_knowledge({ section }), or find one with { query }.",
+  };
 }
 
 export function proposeKnowledge(
@@ -118,6 +165,7 @@ export function decideKnowledge(db: Database.Database, id: number, approve: bool
       ).run(proposal.project, proposal.section, proposal.body, proposal.proposedBy, now);
     }
   })();
+  if (approve) mirrorKnowledge(db, proposal.project);
   if (proposal.room) {
     roomSend(db, {
       room: proposal.room,
@@ -130,4 +178,49 @@ export function decideKnowledge(db: Database.Database, id: number, approve: bool
     });
   }
   return { ...proposal, status: approve ? "approved" : "rejected" };
+}
+
+const unsafe = /[\\/:*?"<>|\x00-\x1f]/g;
+const fileName = (section: string) => `${section.replace(unsafe, "-").trim() || "section"}.md`;
+const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** Where the Markdown copy lives: beside knowledge.sqlite, or nowhere for an in-memory database. */
+export function knowledgeMirrorDir(db: Database.Database): string | null {
+  return db.name === ":memory:" ? null : path.join(path.dirname(knowledgePath(db.name)), "kb");
+}
+
+/**
+ * A read-only Markdown copy of a base, for the human to read and study in any
+ * editor or an Obsidian vault: an index plus one file per section, rewritten
+ * whole on every approval so a renamed section leaves nothing stale behind.
+ * The database stays the source; an edit made in the copy is overwritten.
+ */
+export function mirrorKnowledge(db: Database.Database, project: string, root = knowledgeMirrorDir(db)): void {
+  if (!root || !NAME.test(project)) return;
+  try {
+    const dir = path.join(root, project);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const file of fs.readdirSync(dir)) if (file.endsWith(".md")) fs.rmSync(path.join(dir, file));
+    const sections = knowledgeSections(db, project);
+    for (const s of sections) {
+      fs.writeFileSync(path.join(dir, fileName(s.section)), `# ${s.section}\n\n${s.body.trim()}\n\n---\n_${s.updatedBy ?? "unknown"}, ${day(s.updatedAt)}_\n`);
+    }
+    const index = [
+      `# ${project}`,
+      "",
+      "> A copy of the ai-room knowledge base, rewritten on every approved update. Edits here are overwritten:",
+      "> change a section by proposing it in a room (`room_knowledge_propose`) and approving it with `/kb approve`.",
+      "",
+      ...sections.map((s) => `- [${s.section}](${encodeURI(fileName(s.section))}): ${summaryOf(s.body)}`),
+      "",
+    ];
+    fs.writeFileSync(path.join(dir, "index.md"), index.join("\n"));
+  } catch {
+    // The copy is a convenience; a failure to write it never blocks an approval.
+  }
+}
+
+/** Brings every base's copy up to date, for a server that starts with bases approved elsewhere. */
+export function mirrorAllKnowledge(db: Database.Database, root = knowledgeMirrorDir(db)): void {
+  for (const { project } of knowledgeProjects(db)) mirrorKnowledge(db, project, root);
 }

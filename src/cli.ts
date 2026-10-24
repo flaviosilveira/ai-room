@@ -67,6 +67,8 @@ async function serve(): Promise<void> {
   const { createHttpApp } = await import("./http.js");
   const db = openDb();
   const app = createHttpApp(db);
+  const { mirrorAllKnowledge } = await import("./knowledge.js");
+  mirrorAllKnowledge(db);
   const p = port();
   app.listen(p, "127.0.0.1", () => {
     console.log(`ai-room listening on http://127.0.0.1:${p}/mcp`);

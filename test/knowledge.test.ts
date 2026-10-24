@@ -26,6 +26,22 @@ describe("knowledge base", () => {
     expect(fs.existsSync(path.join(dir, "knowledge.sqlite"))).toBe(true);
   });
 
+  it("keeps a Markdown copy of each base beside it, rewritten on every approval", () => {
+    readKnowledge(db, "r", "human", "acme");
+    const approve = (section: string, body: string) =>
+      decideKnowledge(db, proposeKnowledge(db, { room: "r", agent: "codex", section, body }).id, true);
+    approve("Deploy / CI", "## How\nMain deploys through the pipeline.");
+    approve("Tenants e negócio", "Each tenant is a school.");
+    const base = path.join(dir, "kb", "acme");
+    expect(fs.readdirSync(base).sort()).toEqual(["Deploy - CI.md", "Tenants e negócio.md", "index.md"]);
+    expect(fs.readFileSync(path.join(base, "Deploy - CI.md"), "utf8")).toMatch(/^# Deploy \/ CI\n\n## How\nMain deploys/);
+    expect(fs.readFileSync(path.join(base, "index.md"), "utf8")).toContain("- [Tenants e negócio](Tenants%20e%20neg%C3%B3cio.md): Each tenant is a school.");
+
+    fs.writeFileSync(path.join(base, "Old name.md"), "stale");
+    approve("Deploy / CI", "Deploys by tag.");
+    expect(fs.existsSync(path.join(base, "Old name.md"))).toBe(false);
+  });
+
   it("tells a room with no base to ask the human, and lets only the lead or the human choose", () => {
     const first = readKnowledge(db, "r", "claude");
     expect(first.project).toBeNull();
@@ -52,6 +68,10 @@ describe("knowledge base", () => {
     decideKnowledge(db, wrong.id, false);
     expect(knowledgeSections(db, "acme")[0].body).toBe("Main deploys through the pipeline.");
     expect(knowledgeProjects(db)).toMatchObject([{ project: "acme", sections: 1 }]);
-    expect(readKnowledge(db, "r", "codex").sections).toHaveLength(1);
+    expect(readKnowledge(db, "r", "codex").index).toMatchObject([{ section: "Deploy", summary: "Main deploys through the pipeline." }]);
+    expect(readKnowledge(db, "r", "codex", undefined, { section: "deploy" }).section?.body).toBe("Main deploys through the pipeline.");
+    expect(readKnowledge(db, "r", "codex", undefined, { query: "PIPELINE" }).index).toHaveLength(1);
+    expect(readKnowledge(db, "r", "codex", undefined, { query: "kubernetes" }).index).toEqual([]);
+    expect(readKnowledge(db, "r", "codex", undefined, { section: "Billing" })).toMatchObject({ index: [{ section: "Deploy" }] });
   });
 });

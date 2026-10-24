@@ -433,18 +433,22 @@ export function createAiRoomServer(
     "room_knowledge",
     {
       description:
-        "Read the knowledge base this room belongs to: the company or project's business, rules, deploy and stack, by section. " +
-        "Call it when you join. A room with no base yet lists the existing ones: when there is something worth keeping, the lead asks " +
-        "the human whether it goes in one of them, a new one, or nowhere, and calls this again with `project` to bind it.",
+        "Read the knowledge base this room belongs to: the company or project's business, rules, decisions and why, deploy and stack. " +
+        "Call it when you join: it answers the index (each section's name, a one-line summary and its size). Then read only the " +
+        "sections your task touches with `section`, or find them with `query`. A room with no base yet lists the existing ones: when " +
+        "there is something worth keeping, the lead asks the human whether it goes in one of them, a new one, or nowhere, and calls " +
+        "this again with `project` to bind it.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),
         project: z.string().max(60).optional().describe("Lead only: bind the room to this base (an existing one or a new name)."),
+        section: z.string().max(80).optional().describe("Read this one section in full, by its name in the index."),
+        query: z.string().max(200).optional().describe("List the sections that mention this text."),
       },
     },
-    async ({ room, agent, project }) => {
+    async ({ room, agent, project, section, query }) => {
       try {
-        const result = readKnowledge(db, room, agent, project);
+        const result = readKnowledge(db, room, agent, project, { section, query });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (error) {
         return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) }], isError: true };
@@ -457,7 +461,8 @@ export function createAiRoomServer(
     {
       description:
         "Propose adding to or correcting one section of the room's knowledge base: something durable the task taught you about the " +
-        "business, a rule, the deploy or the stack, not the task itself. Send the section's whole new text; the human approves it.",
+        "business, a rule, a decision and why it was made, the deploy or the stack, not a record of the task itself. Send the " +
+        "section's whole new text (read the current one with room_knowledge({ section }) first); the human approves it.",
       inputSchema: {
         room: z.string(),
         agent: z.string(),

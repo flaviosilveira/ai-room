@@ -269,8 +269,10 @@ the file with `room_attachment` when they need it.
 
 ## Knowledge bases
 
-A knowledge base per company or project — the business, its rules, the deploy,
-the stack — that every room bound to it starts from. Bind a room with
+A knowledge base per company or project — the business, its rules, the
+decisions and why they were made, the deploy, the stack — that every room bound
+to it starts from. Agents read its index on joining and then only the sections
+their task touches, so a large base does not cost every agent all of it. Bind a room with
 `--kb <name>` at `open`, or leave it unbound: when the lead finds something
 worth keeping, it asks you whether it goes in an existing base, a new one it
 suggests, or nowhere. When a task teaches something lasting, an agent proposes the section's
@@ -284,7 +286,11 @@ new text; it lands only when you approve it.
 | `/kb use <name>` | Binds the room to a base, new or existing (`none` unbinds) |
 
 The bases live in `~/.ai-room/knowledge.sqlite`, apart from the rooms' messages,
-and the web view shows them in its **Base** tab.
+and the web view shows them in its **Base** tab. To read and study them, each
+base also has a Markdown copy in `~/.ai-room/kb/<base>/` — an `index.md` and one
+file per section — rewritten on every approval and when the server starts. Open
+`~/.ai-room/kb` in any editor or as an Obsidian vault. It is read-only: an edit
+there is overwritten; change a section through a proposal and `/kb approve`.
 
 ## The web view, from the phone
 
