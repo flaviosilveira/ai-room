@@ -54,7 +54,9 @@ export function knowledgeSections(db: Database.Database, project: string): Knowl
 
 /** The first line of prose, so the index says what a section is about. */
 function summaryOf(body: string): string {
-  const line = body.split("\n").map((l) => l.replace(/^[#>*\-\s]+/, "").trim()).find(Boolean) ?? "";
+  const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+  const prose = lines.find((l) => !l.startsWith("#")) ?? lines[0] ?? "";
+  const line = prose.replace(/^[>*\-\s]+/, "").replace(/\*\*/g, "").trim();
   return line.length > 140 ? `${line.slice(0, 139)}…` : line;
 }
 
