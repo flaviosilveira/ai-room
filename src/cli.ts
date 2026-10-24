@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline/promises";
@@ -67,8 +68,10 @@ async function serve(): Promise<void> {
   const { createHttpApp } = await import("./http.js");
   const db = openDb();
   const app = createHttpApp(db);
-  const { mirrorAllKnowledge } = await import("./knowledge.js");
+  const { mirrorAllKnowledge, syncRoomLinks } = await import("./knowledge.js");
   mirrorAllKnowledge(db);
+  syncRoomLinks(db);
+  setInterval(() => syncRoomLinks(db), 30_000).unref();
   const p = port();
   app.listen(p, "127.0.0.1", () => {
     console.log(`ai-room listening on http://127.0.0.1:${p}/mcp`);
@@ -241,6 +244,20 @@ async function confirmReuse(room: string, messages: number): Promise<boolean> {
   }
 }
 
+function ignoreReportsInGit(cwd: string): void {
+  const found = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd, encoding: "utf8" });
+  if (found.status !== 0 || !found.stdout.trim()) return;
+  const exclude = path.resolve(cwd, found.stdout.trim());
+  try {
+    const current = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf8") : "";
+    if (current.split("\n").some((line) => line.trim() === ".ai-room/")) return;
+    fs.mkdirSync(path.dirname(exclude), { recursive: true });
+    fs.appendFileSync(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}.ai-room/\n`);
+  } catch {
+    /* an unignored report shows in git status; nothing is lost */
+  }
+}
+
 async function open(room: string, argv: string[]): Promise<void> {
   if (!room || room.startsWith("-")) {
     console.error("Missing room name: pass a name after 'ai-room open', before any flags.");
@@ -322,16 +339,10 @@ async function open(room: string, argv: string[]): Promise<void> {
     if (left.length) console.log(`left the room: ${left.join(", ")}`);
   }
 
-  // Reports the lead writes for the human land here; they are never for a commit.
-  if ((flags.convention ?? "").split(",").includes("lead")) {
-    try {
-      fs.mkdirSync(path.join(process.cwd(), ".ai-room", "for-human"), { recursive: true });
-      const ignore = path.join(process.cwd(), ".ai-room", ".gitignore");
-      if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, "*\n");
-    } catch {
-      /* the lead can still put its reports in messages */
-    }
-  }
+  // Reports the lead writes for the human land in .ai-room/; they are never for
+  // a commit. The repository's own exclude list keeps them out of git without
+  // creating a folder in a project that never gets a report.
+  if ((flags.convention ?? "").split(",").includes("lead")) ignoreReportsInGit(process.cwd());
 
   let charter = roomSetCharter(db, { ...charterPatch(room, flags), cwd: process.cwd() });
   const held = holdForPlan(charter.roster, flags, verdict.kind === "new");
@@ -561,7 +572,7 @@ async function deleteRooms(argv: string[]): Promise<void> {
     const expected = names.length === 1 ? names[0] : `delete ${names.length}`;
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const answer = await rl.question(
-      `Delete ${names.length === 1 ? "this room" : `these ${names.length} rooms`}, with charter and attachments? This cannot be undone.\n` +
+      `Delete ${names.length === 1 ? "this room" : `these ${names.length} rooms`}, with charter, attachments and reports? This cannot be undone.\n` +
         `Type "${expected}" to confirm: `
     );
     rl.close();
@@ -570,8 +581,10 @@ async function deleteRooms(argv: string[]): Promise<void> {
       process.exit(2);
     }
   }
+  const { knowledgeMirrorDir, removeRoomReports } = await import("./knowledge.js");
   for (const room of names) {
     for (const { session } of closeRoom(room)) console.log(`closed ${session}.`);
+    removeRoomReports(roomCharter(db, room)?.cwd, room, knowledgeMirrorDir(db));
     const deleted = roomDelete(db, room)!;
     console.log(`deleted room "${room}": ${deleted.messages} message(s), ${deleted.attachments} attachment(s).`);
   }

@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
-import { decideKnowledge, knowledgeProjects, knowledgeSections, pendingKnowledge, proposeKnowledge, readKnowledge } from "../src/knowledge.js";
-import { roomHistory, roomJoin } from "../src/store.js";
+import { decideKnowledge, knowledgeMirrorDir, knowledgeProjects, knowledgeSections, pendingKnowledge, proposeKnowledge, readKnowledge, removeRoomReports, roomReportsDir, syncRoomLinks } from "../src/knowledge.js";
+import { roomHistory, roomJoin, roomSetCharter } from "../src/store.js";
 
 describe("knowledge base", () => {
   let dir: string;
@@ -24,6 +24,25 @@ describe("knowledge base", () => {
 
   it("keeps the bases in a file of their own", () => {
     expect(fs.existsSync(path.join(dir, "knowledge.sqlite"))).toBe(true);
+  });
+
+  it("links a room's reports into the vault once there are any, and drops the link with them", () => {
+    const project = path.join(dir, "project");
+    roomSetCharter(db, { room: "r", cwd: project });
+    const vault = knowledgeMirrorDir(db)!;
+    const link = path.join(vault, "rooms", "r");
+    syncRoomLinks(db);
+    expect(fs.existsSync(link)).toBe(false);
+
+    fs.mkdirSync(roomReportsDir(project, "r"), { recursive: true });
+    fs.writeFileSync(path.join(roomReportsDir(project, "r"), "report.md"), "# Report");
+    syncRoomLinks(db);
+    expect(fs.readFileSync(path.join(link, "report.md"), "utf8")).toBe("# Report");
+
+    removeRoomReports(project, "r", vault);
+    expect(fs.existsSync(roomReportsDir(project, "r"))).toBe(false);
+    expect(fs.existsSync(link)).toBe(false);
+    expect(() => readKnowledge(db, "r", "human", "rooms")).toThrow(/taken/);
   });
 
   it("keeps a Markdown copy of each base beside it, rewritten on every approval", () => {

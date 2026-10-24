@@ -21,8 +21,8 @@ describe("web view", () => {
   beforeAll(async () => {
     db = openDb(":memory:");
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), "airoom-web-"));
-    fs.mkdirSync(path.join(cwd, ".ai-room", "for-human"), { recursive: true });
-    fs.writeFileSync(path.join(cwd, ".ai-room", "for-human", "report.md"), "# Report\n\nAll good.");
+    fs.mkdirSync(path.join(cwd, ".ai-room", "for-human", "r"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".ai-room", "for-human", "r", "report.md"), "# Report\n\nAll good.");
     fs.writeFileSync(path.join(cwd, "secret.txt"), "do not serve");
     roomJoin(db, { room: "r", agent: "human", role: "host" });
     roomJoin(db, { room: "r", agent: "agy" });

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { knowledgePath } from "./db/index.js";
-import { roomCharter, roomLeads, roomSend, roomSetCharter } from "./store.js";
+import { roomCharter, roomLeads, roomList, roomSend, roomSetCharter } from "./store.js";
 
 /**
  * A knowledge base per company or project: the business, its rules, how it
@@ -91,6 +91,7 @@ export function readKnowledge(
   if (bind !== undefined) {
     if (agent !== "human" && !roomLeads(db, room).has(agent)) throw new Error("only the lead or the human chooses the room's knowledge base");
     if (bind !== null && !NAME.test(bind)) throw new Error("a base is named with letters, digits, dot, dash or underscore");
+    if (bind === ROOMS_DIR) throw new Error(`"${ROOMS_DIR}" is taken by the rooms' reports; choose another name`);
     roomSetCharter(db, { room, knowledge: bind });
   }
   const project = roomCharter(db, room)?.knowledge ?? null;
@@ -182,6 +183,9 @@ export function decideKnowledge(db: Database.Database, id: number, approve: bool
   return { ...proposal, status: approve ? "approved" : "rejected" };
 }
 
+/** The vault folder that holds a link to each room's reports, beside the bases. */
+export const ROOMS_DIR = "rooms";
+
 const unsafe = /[\\/:*?"<>|\x00-\x1f]/g;
 const fileName = (section: string) => `${section.replace(unsafe, "-").trim() || "section"}.md`;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -198,7 +202,7 @@ export function knowledgeMirrorDir(db: Database.Database): string | null {
  * The database stays the source; an edit made in the copy is overwritten.
  */
 export function mirrorKnowledge(db: Database.Database, project: string, root = knowledgeMirrorDir(db)): void {
-  if (!root || !NAME.test(project)) return;
+  if (!root || !NAME.test(project) || project === ROOMS_DIR) return;
   try {
     const dir = path.join(root, project);
     fs.mkdirSync(dir, { recursive: true });
@@ -225,4 +229,52 @@ export function mirrorKnowledge(db: Database.Database, project: string, root = k
 /** Brings every base's copy up to date, for a server that starts with bases approved elsewhere. */
 export function mirrorAllKnowledge(db: Database.Database, root = knowledgeMirrorDir(db)): void {
   for (const { project } of knowledgeProjects(db)) mirrorKnowledge(db, project, root);
+}
+
+/**
+ * Where a room's lead writes what is for the human to read: inside the project,
+ * where every agent may write without asking, one folder per room.
+ */
+export function roomReportsDir(cwd: string, room: string): string {
+  return path.join(cwd, ".ai-room", "for-human", room.replace(unsafe, "-"));
+}
+
+/**
+ * Links each room's reports into the vault, beside the bases, so the editor the
+ * human keeps on ~/.ai-room/kb already shows them. A link appears once the room
+ * has written something and goes once its folder or the room is gone. Nothing
+ * is copied: the files stay in the project and are temporary.
+ */
+export function syncRoomLinks(db: Database.Database, root = knowledgeMirrorDir(db)): void {
+  if (!root) return;
+  const dir = path.join(root, ROOMS_DIR);
+  const wanted = new Map<string, string>();
+  for (const { name } of roomList(db, { limit: -1 })) {
+    const cwd = roomCharter(db, name)?.cwd;
+    if (!cwd) continue;
+    const target = roomReportsDir(cwd, name);
+    if (fs.existsSync(target)) wanted.set(path.basename(target), target);
+  }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const link = path.join(dir, entry.name);
+      if (!entry.isSymbolicLink()) continue;
+      if (wanted.get(entry.name) === fs.readlinkSync(link)) wanted.delete(entry.name);
+      else fs.rmSync(link);
+    }
+    for (const [name, target] of wanted) fs.symlinkSync(target, path.join(dir, name), "dir");
+  } catch {
+    // The links are a convenience; the reports are still in the project.
+  }
+}
+
+/** A deleted room takes its reports and their link with it. */
+export function removeRoomReports(cwd: string | null | undefined, room: string, root: string | null): void {
+  try {
+    if (cwd) fs.rmSync(roomReportsDir(cwd, room), { recursive: true, force: true });
+    if (root) fs.rmSync(path.join(root, ROOMS_DIR, path.basename(roomReportsDir("/", room))), { force: true });
+  } catch {
+    /* nothing left to remove */
+  }
 }

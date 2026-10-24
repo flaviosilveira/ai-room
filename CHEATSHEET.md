@@ -85,7 +85,9 @@ addresses you. The others pass what they need from you through it.
 - Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
 - Messages to the team and short updates come in the message itself. A report,
   a summary to keep or share, or anything long arrives as a file in
-  `.ai-room/for-human/` (git-ignored), with one line saying what it is.
+  `.ai-room/for-human/<room>/` (git-ignored), with one line saying what it is.
+  The same files show in `~/.ai-room/kb/rooms/<room>/` (see Knowledge bases).
+  They are temporary: deleting the room deletes them.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
 
@@ -291,6 +293,10 @@ base also has a Markdown copy in `~/.ai-room/kb/<base>/` — an `index.md` and o
 file per section — rewritten on every approval and when the server starts. Open
 `~/.ai-room/kb` in any editor or as an Obsidian vault. It is read-only: an edit
 there is overwritten; change a section through a proposal and `/kb approve`.
+Beside the bases, `~/.ai-room/kb/rooms/<room>` links to each room's reports in
+its project, as soon as the room has written one, so the editor you keep on the
+vault already shows them. They are temporary: the link and the files go when
+the room is deleted. `rooms` cannot be a base's name.
 
 ## The web view, from the phone
 

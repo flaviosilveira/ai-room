@@ -12,6 +12,11 @@
   editor or as an Obsidian vault.
 - Agents are told to keep business decisions and why they were made in the
   base, and not to record the task itself.
+- The lead's reports go to `.ai-room/for-human/<room>/`, one folder per room,
+  and `~/.ai-room/kb/rooms/<room>` links to them, so they show in the editor
+  kept on the knowledge base. Deleting a room deletes its reports. `open` no
+  longer creates an empty `.ai-room/` in every project: the repository's
+  `.git/info/exclude` keeps reports out of git instead.
 
 ## 0.8.2
 
