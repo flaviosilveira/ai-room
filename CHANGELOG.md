@@ -1,20 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Linux and WSL: the service reaches harness CLIs in Linuxbrew and
-  `~/.local/bin`; a systemd install warns when linger is off (the service
-  would stop at logout), and WSL without systemd says how to turn it on.
-- WSL ignores the Windows npm shims on the PATH (`claude`, `codex`), which
-  looked installed but are Windows programs, and a file dragged in from
-  Windows Terminal (`C:\...`) attaches through `wslpath`.
-- `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured wherever ai-room reads or
-  writes a harness's settings, hooks, sessions or skills, and the gate
-  protects them.
-- `ai-room doctor` checks tmux 3.2+ (the pane menu needs it) using the tmux
-  ai-room runs, python3 for the hooks, and suggests no `brew` off macOS.
-- Hook scripts keep LF line endings in a Windows checkout.
-
 ## 0.9.0
 
 - `room_knowledge` answers the base's index — each section's name, a one-line
@@ -47,6 +32,18 @@
   and no summary is told to write the first one once caught up.
 - `ai-room doctor` names the ai-room tools Codex still asks about when its
   tools are approved one by one, with the lines that approve them.
+- Linux and WSL: the service reaches harness CLIs in Linuxbrew and
+  `~/.local/bin`; a systemd install warns when linger is off (the service
+  would stop at logout), and WSL without systemd says how to turn it on.
+- WSL ignores the Windows npm shims on the PATH (`claude`, `codex`), which
+  looked installed but are Windows programs, and a file dragged in from
+  Windows Terminal (`C:\...`) attaches through `wslpath`.
+- `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured wherever ai-room reads or
+  writes a harness's settings, hooks, sessions or skills, and the gate
+  protects them.
+- `ai-room doctor` checks tmux 3.2+ (the pane menu needs it) using the tmux
+  ai-room runs, python3 for the hooks, and suggests no `brew` off macOS.
+- Hook scripts keep LF line endings in a Windows checkout.
 
 ## 0.8.2
 
