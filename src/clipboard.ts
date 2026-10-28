@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { MAX_ATTACHMENT_BYTES } from "./attachments.js";
+import { isWsl, onPath } from "./platform.js";
 
 /**
  * A terminal paste carries text only, so an image never arrives through the
@@ -21,17 +22,6 @@ const runBinary: Run = (bin, args) => {
   const result = spawnSync(bin, args, { maxBuffer: MAX_ATTACHMENT_BYTES * 2 });
   return { status: result.error ? null : result.status, stdout: result.stdout ?? Buffer.alloc(0) };
 };
-
-function onPath(bin: string): boolean {
-  return (process.env.PATH ?? "").split(path.delimiter).some((dir) => {
-    try {
-      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
 
 const stampName = (ext: string) => `clipboard-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`;
 
@@ -144,11 +134,16 @@ export function readClipboard(
  * spaces depending on the terminal. Only a paste that is exactly one existing
  * image or PDF counts; any other text stays text.
  */
-export function pastedFilePath(text: string): string | null {
+export function pastedFilePath(text: string, run: Run = runBinary): string | null {
   let candidate = text.trim();
   if (!candidate || candidate.includes("\n")) return null;
-  if (/^'.*'$/.test(candidate) || /^".*"$/.test(candidate)) candidate = candidate.slice(1, -1);
-  else candidate = candidate.replace(/\\(.)/g, "$1");
+  const quoted = /^'.*'$/.test(candidate) || /^".*"$/.test(candidate);
+  if (quoted) candidate = candidate.slice(1, -1);
+  if (/^[A-Za-z]:\\/.test(candidate)) {
+    // Windows Terminal drops a file into WSL as C:\..., which only wslpath can map.
+    if (!isWsl()) return null;
+    candidate = run("wslpath", ["-u", candidate]).stdout.toString("utf8").trim();
+  } else if (!quoted) candidate = candidate.replace(/\\(.)/g, "$1");
   if (candidate.startsWith("file://")) candidate = decodeURI(candidate.slice("file://".length));
   if (candidate.startsWith("~/")) candidate = path.join(os.homedir(), candidate.slice(2));
   if (!path.isAbsolute(candidate) || !/\.(png|jpe?g|gif|webp|pdf)$/i.test(candidate)) return null;

@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { claudeDir, codexDir } from "./platform.js";
 
 /**
  * Hook wiring is per harness, but the contract is the same one both implement:
@@ -56,8 +56,8 @@ export function hookCommand(script: string): string {
 
 function configPath(harness: Harness): string {
   return harness === "claude"
-    ? path.join(os.homedir(), ".claude", "settings.json")
-    : path.join(os.homedir(), ".codex", "hooks.json");
+    ? path.join(claudeDir(), "settings.json")
+    : path.join(codexDir(), "hooks.json");
 }
 
 function isInstalled(file: string, script: string): boolean {

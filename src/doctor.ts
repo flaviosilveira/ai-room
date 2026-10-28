@@ -6,7 +6,8 @@ import { TOOL_NAMES } from "./catalog.js";
 import { hookStatus } from "./hooks.js";
 import { LAUNCHERS, filesCommand, onPath } from "./invite.js";
 import { TOOL_CHECKS, toolInstalled } from "./presets.js";
-import { detectMultiplexer, clipboardCommand } from "./session.js";
+import { detectMultiplexer, clipboardCommand, tmuxBin } from "./session.js";
+import { claudeDir, claudeJson, codexDir } from "./platform.js";
 
 /**
  * One read-only look at everything ai-room depends on, with the command that
@@ -35,10 +36,10 @@ const read = (file: string) => {
 function mcpChecks(home: string, port: number): Check[] {
   const url = `http://127.0.0.1:${port}/mcp`;
   const configs: { harness: string; file: string; fix: string }[] = [
-    { harness: "claude", file: path.join(home, ".claude.json"), fix: `claude mcp add --transport http ai-room ${url}` },
+    { harness: "claude", file: claudeJson(home), fix: `claude mcp add --transport http ai-room ${url}` },
     {
       harness: "codex",
-      file: path.join(home, ".codex", "config.toml"),
+      file: path.join(codexDir(home), "config.toml"),
       fix: `add to ~/.codex/config.toml: [mcp_servers.ai-room] url = "${url}"`,
     },
     {
@@ -81,12 +82,12 @@ export function codexToolApprovals(config: string): Check | null {
   };
 }
 
-/** Pane sizes in percent (`split-window -l 50%`) arrived in tmux 3.1. */
+/** The pane menu runs `source-file -F`, which arrived in tmux 3.2. */
 export function tmuxTooOld(version: string): boolean {
   const match = /(\d+)\.(\d+)/.exec(version);
   if (!match) return false;
   const [major, minor] = [Number(match[1]), Number(match[2])];
-  return major < 3 || (major === 3 && minor < 1);
+  return major < 3 || (major === 3 && minor < 2);
 }
 
 export async function runChecks(port: number, home = os.homedir()): Promise<Check[]> {
@@ -108,14 +109,15 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     fix: health ? undefined : "ai-room service install",
   });
   const tmux = detectMultiplexer("tmux");
-  const tmuxVersion = tmux ? spawnSync("tmux", ["-V"], { encoding: "utf8" }).stdout?.trim() ?? "" : "";
+  const tmuxPath = tmuxBin();
+  const tmuxVersion = tmuxPath ? spawnSync(tmuxPath, ["-V"], { encoding: "utf8" }).stdout?.trim() ?? "" : "";
   const tmuxOld = tmuxTooOld(tmuxVersion);
   add({
     section: "server",
     name: "tmux",
     level: tmux && !tmuxOld ? "ok" : "warn",
-    detail: !tmux ? "not installed; agents run detached" : tmuxOld ? `${tmuxVersion}: the pane workspace needs tmux 3.1 or later` : "pane workspace available",
-    fix: tmux && !tmuxOld ? undefined : process.platform === "darwin" ? "brew install tmux" : "install tmux 3.1 or later (Ubuntu 22.04+ ships it: sudo apt install tmux)",
+    detail: !tmux ? "not installed; agents run detached" : tmuxOld ? `${tmuxVersion}: the pane workspace needs tmux 3.2 or later` : "pane workspace available",
+    fix: tmux && !tmuxOld ? undefined : process.platform === "darwin" ? "brew install tmux" : "install tmux 3.2 or later (Ubuntu 22.04+ and Debian 12+ ship it: sudo apt install tmux)",
   });
 
   for (const [harness, launcher] of Object.entries(LAUNCHERS)) {
@@ -123,7 +125,7 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     add({ section: "agents", name: harness, level: present ? "ok" : "warn", detail: present ? "on PATH" : "not installed" });
   }
   checks.push(...mcpChecks(home, port));
-  const approvals = codexToolApprovals(read(path.join(home, ".codex", "config.toml")));
+  const approvals = codexToolApprovals(read(path.join(codexDir(home), "config.toml")));
   if (approvals) add(approvals);
   const hooks = hookStatus();
   if (hooks.some((hook) => hook.installed)) {
@@ -177,7 +179,7 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     detail: clipboard ? "available" : "no clipboard tool",
     fix: clipboard ? undefined : "install wl-clipboard (Wayland) or xclip (X11)",
   });
-  const settings = read(path.join(home, ".claude", "settings.json"));
+  const settings = read(path.join(claudeDir(home), "settings.json"));
   const readable = settings.includes(path.join(home, ".ai-room", "attachments")) || settings.includes("~/.ai-room/attachments");
   if (onPath("claude")) {
     add({

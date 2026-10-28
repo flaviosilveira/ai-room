@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { claudeDir, onPath } from "./platform.js";
 import type { ToolDeclaration } from "./types.js";
 
 /**
@@ -180,17 +181,6 @@ export const TOOL_CHECKS: Record<string, ToolCheck> = {
   },
 };
 
-function binOnPath(bin: string): boolean {
-  return (process.env.PATH ?? "").split(path.delimiter).some((dir) => {
-    try {
-      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
-
 export function toolInstalled(
   name: string,
   env: { home?: string; has?: (bin: string) => boolean } = {}
@@ -198,12 +188,12 @@ export function toolInstalled(
   const check = TOOL_CHECKS[name];
   if (!check) return null;
   const home = env.home ?? os.homedir();
-  const has = env.has ?? binOnPath;
+  const has = env.has ?? onPath;
   if (check.bins?.some(has)) return true;
   if (check.paths?.some((rel) => fs.existsSync(path.join(home, rel)))) return true;
   if (check.plugins?.length) {
     try {
-      const installed = fs.readFileSync(path.join(home, ".claude", "plugins", "installed_plugins.json"), "utf8");
+      const installed = fs.readFileSync(path.join(claudeDir(home), "plugins", "installed_plugins.json"), "utf8");
       if (check.plugins.some((plugin) => installed.includes(plugin))) return true;
     } catch {
       /* no plugin list */

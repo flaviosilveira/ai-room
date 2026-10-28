@@ -29,10 +29,11 @@ describe("ai-room doctor", () => {
     expect(codexToolApprovals(all)!.level).toBe("ok");
   });
 
-  it("flags a tmux older than 3.1, the first with pane sizes in percent", () => {
+  it("flags a tmux older than 3.2, the first with source-file -F", () => {
     expect(tmuxTooOld("tmux 3.0a")).toBe(true);
     expect(tmuxTooOld("tmux 2.9")).toBe(true);
-    expect(tmuxTooOld("tmux 3.1c")).toBe(false);
+    expect(tmuxTooOld("tmux 3.1c")).toBe(true);
+    expect(tmuxTooOld("tmux 3.2a")).toBe(false);
     expect(tmuxTooOld("tmux 3.5a")).toBe(false);
     expect(tmuxTooOld("tmux next-3.6")).toBe(false);
     expect(tmuxTooOld("")).toBe(false);

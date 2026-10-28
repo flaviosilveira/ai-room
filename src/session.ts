@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { onPath } from "./platform.js";
 
 /**
  * Terminal multiplexing is a FRONTEND concern: it exists so a human can talk to
@@ -65,18 +66,6 @@ const DRIVERS: Record<Multiplexer, MultiplexerDriver> = {
 };
 
 export const DRIVERS_FOR_TEST = DRIVERS;
-
-function onPath(bin: string): boolean {
-  const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
-  return dirs.some((dir) => {
-    try {
-      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
 
 /**
  * Where tmux actually is.

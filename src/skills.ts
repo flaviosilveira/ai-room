@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { claudeDir, codexDir } from "./platform.js";
 
 /**
  * Skills the human can see from the console: the project's own, the user's,
@@ -61,7 +62,7 @@ function skillFiles(root: string, depth = 3): string[] {
 
 function pluginRoots(home: string): { root: string; origin: string }[] {
   try {
-    const registry = JSON.parse(fs.readFileSync(path.join(home, ".claude", "plugins", "installed_plugins.json"), "utf8")) as {
+    const registry = JSON.parse(fs.readFileSync(path.join(claudeDir(home), "plugins", "installed_plugins.json"), "utf8")) as {
       plugins?: Record<string, { installPath?: string }[]>;
     };
     return Object.entries(registry.plugins ?? {}).flatMap(([id, installs]) =>
@@ -78,7 +79,7 @@ export function discoverSkills(cwd: string = process.cwd(), home: string = os.ho
   const roots: { root: string; source: SkillSource; origin: string }[] = [
     ...[".claude/skills", ".agents/skills", "skills"].map((rel) => ({ root: path.join(cwd, rel), source: "project" as const, origin: rel })),
     ...[".claude/skills", ".agents/skills", ".codex/skills"].map((rel) => ({
-      root: path.join(home, rel),
+      root: rel.startsWith(".claude/") ? path.join(claudeDir(home), "skills") : rel.startsWith(".codex/") ? path.join(codexDir(home), "skills") : path.join(home, rel),
       source: "user" as const,
       origin: `~/${rel}`,
     })),

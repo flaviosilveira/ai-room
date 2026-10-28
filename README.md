@@ -19,7 +19,10 @@ SQLite file in `~/.ai-room`.
 
 ## Install
 
-Requires Node.js 23+, pnpm 10+ and tmux.
+Runs on macOS, Linux and WSL2. Requires Node.js 23+, pnpm 10+, tmux 3.2+ and
+python3 (for the hooks). On Linux the background service uses systemd's user
+instance; under WSL, turn systemd on first (`[boot] systemd=true` in
+`/etc/wsl.conf`, then `wsl --shutdown`). `ai-room doctor` checks all of it.
 
 ```bash
 git clone https://github.com/flaviosilveira/ai-room.git

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { hookCommand, hookPath } from "./hooks.js";
+import { claudeDir, codexDir } from "./platform.js";
 
 /**
  * Installs ai-room's gate as a PreToolUse hook in Claude Code, Codex and agy,
@@ -38,7 +39,7 @@ function targets(home: string): Target[] {
   return [
     {
       harness: "claude",
-      file: path.join(home, ".claude", "settings.json"),
+      file: path.join(claudeDir(home), "settings.json"),
       command: `${wrapper} --harness claude`,
       matcher: "*",
       read: (config) => nested(config).PreToolUse ?? [],
@@ -46,7 +47,7 @@ function targets(home: string): Target[] {
     },
     {
       harness: "codex",
-      file: path.join(home, ".codex", "hooks.json"),
+      file: path.join(codexDir(home), "hooks.json"),
       command: `${wrapper} --harness codex`,
       matcher: "",
       read: (config) => nested(config).PreToolUse ?? [],
@@ -90,7 +91,7 @@ export function gateStatus(home = os.homedir()): { harness: GateHarness; file: s
 
 /** Codex runs hooks only with its hooks feature on. */
 function enableCodexHooks(home: string): boolean {
-  const file = path.join(home, ".codex", "config.toml");
+  const file = path.join(codexDir(home), "config.toml");
   let toml = "";
   try {
     toml = fs.readFileSync(file, "utf8");

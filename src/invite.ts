@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import { claudeJson, codexDir, onPath } from "./platform.js";
 import {
   INSTALL_HINT,
   detectMultiplexer,
@@ -189,17 +190,7 @@ export function agentCommand(room: string, agent: string, launcherName?: string,
   return [launcher.bin, ...launcher.level(profile), ...launcher.args(joinPrompt(room, agent, harness))];
 }
 
-export function onPath(bin: string): boolean {
-  const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
-  return dirs.some((dir) => {
-    try {
-      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
+export { onPath } from "./platform.js";
 
 /**
  * How the monitor pane should invoke ai-room. A globally installed `ai-room` is
@@ -222,7 +213,7 @@ export function monitorCommand(room: string): string[] {
 export function trustFolder(dir: string, harnesses: Set<string>, home = os.homedir()): string[] {
   const real = fs.realpathSync(dir);
   const trusted: string[] = [];
-  const claudeConfig = path.join(home, ".claude.json");
+  const claudeConfig = claudeJson(home);
   if (harnesses.has("claude")) try {
     const config = JSON.parse(fs.readFileSync(claudeConfig, "utf8"));
     const projects = (config.projects ??= {});
@@ -237,7 +228,7 @@ export function trustFolder(dir: string, harnesses: Set<string>, home = os.homed
   } catch {
     /* no Claude Code config yet: its own prompt still asks */
   }
-  const codexConfig = path.join(home, ".codex", "config.toml");
+  const codexConfig = path.join(codexDir(home), "config.toml");
   if (harnesses.has("codex")) try {
     const table = `[projects.${JSON.stringify(real)}]`;
     const current = fs.readFileSync(codexConfig, "utf8");

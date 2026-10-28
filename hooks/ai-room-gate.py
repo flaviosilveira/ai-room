@@ -32,6 +32,8 @@ BASE_URL = f"http://127.0.0.1:{PORT}"
 POLICY_PATH = os.path.expanduser(os.environ.get("AI_ROOM_POLICY", "~/.ai-room/policy.json"))
 LOG_PATH = os.path.expanduser("~/.ai-room/logs/gate.log")
 HOME = os.path.expanduser("~")
+CLAUDE_DIR = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
+CODEX_DIR = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Used when ~/.ai-room/policy.json does not exist.
@@ -40,7 +42,9 @@ DEFAULT_POLICY_PATH = os.path.join(HERE, "default-policy.json")
 PROTECTED = [
     os.path.join(HOME, ".ai-room"), "~/.ai-room", HERE,
     os.path.join(HOME, ".claude", "settings"), os.path.join(HOME, ".claude.json"),
+    os.path.join(CLAUDE_DIR, "settings"), os.path.join(CLAUDE_DIR, ".claude.json"),
     os.path.join(HOME, ".codex", "config.toml"), os.path.join(HOME, ".codex", "hooks.json"),
+    os.path.join(CODEX_DIR, "config.toml"), os.path.join(CODEX_DIR, "hooks.json"),
     os.path.join(HOME, ".gemini", "config"), os.path.join(HOME, ".gemini", "antigravity-cli", "settings.json"),
     "ai-room.sqlite",
     # The console's door: a message posted there is the human's, and reaches panes as such.

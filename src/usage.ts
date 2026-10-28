@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { claudeDir as claudeHome, codexDir as codexHome } from "./platform.js";
 
 /**
  * Tokens each room's agents spent, read from the harnesses' own session logs:
@@ -145,8 +145,8 @@ function codexSession(file: string): AgentUsage | null {
 
 export function roomUsage(options: { room?: string; days?: number; claudeDir?: string; codexDir?: string } = {}): AgentUsage[] {
   const since = Date.now() - (options.days ?? 7) * 86_400_000;
-  const claudeDir = options.claudeDir ?? process.env.AI_ROOM_CLAUDE_PROJECTS ?? path.join(os.homedir(), ".claude", "projects");
-  const codexDir = options.codexDir ?? process.env.AI_ROOM_CODEX_SESSIONS ?? path.join(os.homedir(), ".codex", "sessions");
+  const claudeDir = options.claudeDir ?? process.env.AI_ROOM_CLAUDE_PROJECTS ?? path.join(claudeHome(), "projects");
+  const codexDir = options.codexDir ?? process.env.AI_ROOM_CODEX_SESSIONS ?? path.join(codexHome(), "sessions");
   const totals = new Map<string, AgentUsage>();
   for (const file of recentFiles(claudeDir, since, 2)) {
     const usage = claudeSession(file);
