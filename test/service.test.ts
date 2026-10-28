@@ -38,5 +38,7 @@ describe("user service files", () => {
     const unit = systemdUnit(spec);
     expect(unit).toContain(`ExecStart="${spec.node}" "${spec.cli}" serve`);
     expect(unit).toContain("Restart=on-failure");
+    expect(unit).toContain("/home/linuxbrew/.linuxbrew/bin");
+    expect(unit).toContain(":/Users/me/.local/bin");
   });
 });

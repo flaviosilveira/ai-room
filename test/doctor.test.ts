@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { TOOL_NAMES } from "../src/catalog.js";
-import { codexToolApprovals, renderChecks, runChecks } from "../src/doctor.js";
+import { codexToolApprovals, renderChecks, runChecks, tmuxTooOld } from "../src/doctor.js";
 
 describe("ai-room doctor", () => {
   it("reports an unreachable server as the one real problem, with its fix", async () => {
@@ -27,5 +27,14 @@ describe("ai-room doctor", () => {
     expect(partial.fix).toContain('[mcp_servers.ai-room.tools.room_summary] approval_mode = "approve"');
     const all = TOOL_NAMES.map((name) => `[mcp_servers.ai-room.tools.${name}]\napproval_mode = "approve"`).join("\n");
     expect(codexToolApprovals(all)!.level).toBe("ok");
+  });
+
+  it("flags a tmux older than 3.1, the first with pane sizes in percent", () => {
+    expect(tmuxTooOld("tmux 3.0a")).toBe(true);
+    expect(tmuxTooOld("tmux 2.9")).toBe(true);
+    expect(tmuxTooOld("tmux 3.1c")).toBe(false);
+    expect(tmuxTooOld("tmux 3.5a")).toBe(false);
+    expect(tmuxTooOld("tmux next-3.6")).toBe(false);
+    expect(tmuxTooOld("")).toBe(false);
   });
 });

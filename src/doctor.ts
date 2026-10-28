@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -80,6 +81,14 @@ export function codexToolApprovals(config: string): Check | null {
   };
 }
 
+/** Pane sizes in percent (`split-window -l 50%`) arrived in tmux 3.1. */
+export function tmuxTooOld(version: string): boolean {
+  const match = /(\d+)\.(\d+)/.exec(version);
+  if (!match) return false;
+  const [major, minor] = [Number(match[1]), Number(match[2])];
+  return major < 3 || (major === 3 && minor < 1);
+}
+
 export async function runChecks(port: number, home = os.homedir()): Promise<Check[]> {
   const checks: Check[] = [];
   const add = (check: Check) => checks.push(check);
@@ -98,12 +107,15 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     detail: health ? `answering on port ${port} (${health.version ?? "unknown version"})` : `nothing answering on port ${port}`,
     fix: health ? undefined : "ai-room service install",
   });
+  const tmux = detectMultiplexer("tmux");
+  const tmuxVersion = tmux ? spawnSync("tmux", ["-V"], { encoding: "utf8" }).stdout?.trim() ?? "" : "";
+  const tmuxOld = tmuxTooOld(tmuxVersion);
   add({
     section: "server",
     name: "tmux",
-    level: detectMultiplexer("tmux") ? "ok" : "warn",
-    detail: detectMultiplexer("tmux") ? "pane workspace available" : "not installed; agents run detached",
-    fix: detectMultiplexer("tmux") ? undefined : process.platform === "darwin" ? "brew install tmux" : "sudo apt install tmux",
+    level: tmux && !tmuxOld ? "ok" : "warn",
+    detail: !tmux ? "not installed; agents run detached" : tmuxOld ? `${tmuxVersion}: the pane workspace needs tmux 3.1 or later` : "pane workspace available",
+    fix: tmux && !tmuxOld ? undefined : process.platform === "darwin" ? "brew install tmux" : "install tmux 3.1 or later (Ubuntu 22.04+ ships it: sudo apt install tmux)",
   });
 
   for (const [harness, launcher] of Object.entries(LAUNCHERS)) {
@@ -113,7 +125,19 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
   checks.push(...mcpChecks(home, port));
   const approvals = codexToolApprovals(read(path.join(home, ".codex", "config.toml")));
   if (approvals) add(approvals);
-  for (const hook of hookStatus()) {
+  const hooks = hookStatus();
+  if (hooks.some((hook) => hook.installed)) {
+    const python = process.env.AI_ROOM_PYTHON || "python3";
+    const found = path.isAbsolute(python) ? fs.existsSync(python) : onPath(python);
+    add({
+      section: "agents",
+      name: "python for hooks",
+      level: found ? "ok" : "fail",
+      detail: found ? python : `${python} not found: the hooks let every call through`,
+      fix: found ? undefined : process.platform === "darwin" ? "xcode-select --install" : "sudo apt install python3",
+    });
+  }
+  for (const hook of hooks) {
     add({
       section: "agents",
       name: `${hook.harness} unread hook`,
@@ -134,7 +158,7 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     name: "files tab",
     level: browser ? "ok" : "warn",
     detail: browser ? browser[0] : "no file browser",
-    fix: browser ? undefined : "brew install yazi",
+    fix: browser ? undefined : process.platform === "darwin" ? "brew install yazi" : "install yazi (https://yazi-rs.github.io) or nnn",
   });
   const copyTo = clipboardCommand();
   add({
@@ -145,7 +169,7 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     fix: copyTo ? undefined : "install wl-clipboard (Wayland) or xclip (X11)",
   });
   const clipboard =
-    process.platform === "darwin" ? onPath("osascript") : (process.env.WSL_DISTRO_NAME && onPath("powershell.exe")) || onPath("wl-paste") || onPath("xclip");
+    process.platform === "darwin" ? onPath("osascript") : ((process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) && onPath("powershell.exe")) || onPath("wl-paste") || onPath("xclip");
   add({
     section: "workspace",
     name: "clipboard images",

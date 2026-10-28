@@ -86,7 +86,7 @@ function onPath(bin: string): boolean {
  * tmux at all, and the wake failed with the room none the wiser. PATH first,
  * then the places tmux is normally installed.
  */
-const TMUX_FALLBACKS = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"];
+const TMUX_FALLBACKS = ["/opt/homebrew/bin/tmux", "/home/linuxbrew/.linuxbrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"];
 
 export function tmuxBin(): string | null {
   const override = process.env.AI_ROOM_TMUX;

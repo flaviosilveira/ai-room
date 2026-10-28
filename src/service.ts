@@ -39,9 +39,19 @@ export function serviceSpec(port: number): ServiceSpec {
 const xml = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** tmux is found through its own fallbacks; the PATH only has to reach node. */
-const servicePath = (node: string) =>
-  [path.dirname(node), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
+/** Reaches node and the harness CLIs a wake runs (codex), wherever they were installed. */
+const servicePath = (spec: ServiceSpec) =>
+  [
+    path.dirname(spec.node),
+    "/opt/homebrew/bin",
+    "/home/linuxbrew/.linuxbrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+    path.join(spec.home, ".local", "bin"),
+  ].join(":");
 
 export function launchAgentPlist(spec: ServiceSpec): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -58,7 +68,7 @@ export function launchAgentPlist(spec: ServiceSpec): string {
   <key>WorkingDirectory</key><string>${xml(spec.cwd)}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${xml(servicePath(spec.node))}</string>
+    <key>PATH</key><string>${xml(servicePath(spec))}</string>
     <key>AI_ROOM_PORT</key><string>${spec.port}</string>
     <key>HOME</key><string>${xml(spec.home)}</string>
   </dict>
@@ -84,7 +94,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=${spec.cwd}
-Environment=${unitQuote(`PATH=${servicePath(spec.node)}`)}
+Environment=${unitQuote(`PATH=${servicePath(spec)}`)}
 Environment=AI_ROOM_PORT=${spec.port}
 ExecStart=${unitQuote(spec.node)} ${unitQuote(spec.cli)} serve
 Restart=on-failure
@@ -105,6 +115,12 @@ function platform(): Platform {
     return probe.status === 0 ? "systemd" : "none";
   }
   return "none";
+}
+
+/** Without linger, systemd stops a user's services at logout: an SSH session ending, the last WSL terminal closing. */
+function lingering(): boolean {
+  const shown = spawnSync("loginctl", ["show-user", os.userInfo().username, "--property=Linger"], { encoding: "utf8" });
+  return shown.status !== 0 || shown.stdout.includes("Linger=yes");
 }
 
 const plistPath = () => path.join(os.homedir(), "Library", "LaunchAgents", `${LAUNCH_LABEL}.plist`);
@@ -166,6 +182,9 @@ export async function service(action: string | undefined, port: number): Promise
   }
   if (where === "none") {
     warn(`no service manager here (${process.platform}); run the server yourself: ai-room serve`);
+    if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) {
+      warn("WSL starts systemd only with [boot] systemd=true in /etc/wsl.conf: set it, run wsl --shutdown from Windows, then ai-room service install");
+    }
     if (action === "status") (await answers(port)) ? ok(`port ${port} answering`) : fail(`port ${port} not answering`);
     return;
   }
@@ -248,6 +267,7 @@ export async function service(action: string | undefined, port: number): Promise
       } else ok("systemd unit already up to date");
       systemctl("enable", "--now", SERVICE_NAME) ? ok("service enabled and started") : fail(`could not enable: systemctl --user status ${SERVICE_NAME}`);
       ok(`node pinned: ${spec.node}`);
+      if (!lingering()) warn(`the service stops when you log out; keep it running with: loginctl enable-linger ${os.userInfo().username}`);
       break;
     }
     case "status":
