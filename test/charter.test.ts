@@ -31,6 +31,14 @@ describe("room charter", () => {
 
   afterEach(() => db.close());
 
+  it("gives a room opened under an older preset text the preset's current rules, and keeps hand-written ones", () => {
+    const current = resolveConvention("caveman")!;
+    db.prepare("UPDATE room_profiles SET conventions = ? WHERE room = 'r'").run(`${current.slice(0, 120)} (an older ending)`);
+    expect(roomCharter(db, "r")!.conventions).toBe(current);
+    roomSetCharter(db, { room: "r", conventions: "Write in haiku." });
+    expect(roomCharter(db, "r")!.conventions).toBe("Write in haiku.");
+  });
+
   it("expands a convention preset and a tool preset by name", () => {
     const charter = roomCharter(db, "r")!;
     expect(charter.conventionPreset).toBe("caveman");

@@ -101,6 +101,14 @@ function migrate(db: Database.Database): void {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS room_summaries (
+      room TEXT PRIMARY KEY REFERENCES rooms(name),
+      summary TEXT NOT NULL,
+      through_message_id INTEGER NOT NULL,
+      updated_by TEXT,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id TEXT PRIMARY KEY,
       room TEXT NOT NULL REFERENCES rooms(name),

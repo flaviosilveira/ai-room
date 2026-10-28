@@ -12,6 +12,16 @@
   editor or as an Obsidian vault.
 - Agents are told to keep business decisions and why they were made in the
   base, and not to record the task itself.
+- Rejoining a room no longer means rebuilding it from its history. The lead
+  keeps a one-page summary with the new `room_summary` tool (where the task
+  stands, decisions and why, what is next, open questions); `room_join` hands
+  it to whoever comes back, who then reads only the messages after it. A room
+  without a summary says to read its last 20 messages, and never to page back.
+- `room_history` takes `query`: the messages that mention a text, so an agent
+  finds an old decision without reading the room.
+- A room keeps following its convention preset as the preset changes: text
+  copied from a preset reads as the preset's current version. Hand-written
+  conventions stay as written.
 - The lead's reports go to `.ai-room/for-human/<room>/`, one folder per room,
   and `~/.ai-room/kb/rooms/<room>` links to them, so they show in the editor
   kept on the knowledge base. Deleting a room deletes its reports. `open` no

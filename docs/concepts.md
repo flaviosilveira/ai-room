@@ -654,6 +654,15 @@ ai-room does not bypass client approvals. Each agent must apply its own harness 
 ### `room_join`
 
 Join a workspace. Existing calls remain valid. Optional `createIfMissing=false` prevents accidental creation.
+Joining a room that already has messages returns its `summary` when the lead
+keeps one, with `throughMessageId`: the agent reads the summary and then only
+the messages after that id, instead of the history.
+
+### `room_summary`
+
+Lead only (any agent in a room without a lead): replace the room's summary —
+where the task stands, the decisions and why, what is done and next, the open
+questions — in at most a page. It records the last message it accounts for.
 
 ### `room_leave`
 
@@ -702,7 +711,7 @@ that cannot open a path (or with `inline: true`). Read-only.
 
 ### `room_history`
 
-Read chronological history with optional agent and message-ID filters. Returns the **most recent** `limit` messages (default 50), ordered oldest to newest. Paging forward with `after` returns the oldest matches past that id; `before` returns the newest matches under it.
+Read chronological history with optional agent and message-ID filters. Returns the **most recent** `limit` messages (default 50), ordered oldest to newest. Paging forward with `after` returns the oldest matches past that id; `before` returns the newest matches under it. With `query`, only the messages that mention that text (literal, case-insensitive), oldest first, at most `limit` (default 20): how an agent finds what was decided about something without paging back through the room.
 
 ### `room_who`
 

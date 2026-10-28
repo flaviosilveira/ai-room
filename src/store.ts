@@ -151,6 +151,7 @@ export function roomJoin(
   participant: ParticipantInfo;
   created: boolean;
   briefing: AgentBriefing | null;
+  summary?: RoomSummary;
   nextAction: string;
 } {
   const result = ensureRoom(db, params.room, params.createIfMissing ?? true);
@@ -175,22 +176,73 @@ export function roomJoin(
     params.harness ?? rosterEntry?.harness ?? null
   );
   const briefing = roomBriefing(db, params.room, params.agent);
-  const catchUp = history
-    ? ` This room already has ${history} message(s) already: unless you remember them, read room_history first for what was done and decided, and continue from there instead of starting the brief over.`
+  const summary = roomSummary(db, params.room);
+  const catchUp = !history
+    ? ""
+    : summary
+      ? ` This room already has ${history} message(s). \`summary\` is where it stands, as of message #${summary.throughMessageId}: read it, then only what came after with room_history({ after: ${summary.throughMessageId} }), and continue from there instead of starting the brief over.`
+      : ` This room already has ${history} message(s). Unless you remember them, read the last ${REJOIN_HISTORY} with room_history({ limit: ${REJOIN_HISTORY} }) and continue from there instead of starting the brief over.`;
+  const lookBack = history
+    ? " Do not page back through older history; find something specific with room_history({ query })."
     : "";
   return {
     room: result.room,
     participant,
     created: result.created,
     briefing,
+    ...(summary ? { summary } : {}),
     // Joining is not the job. Without this an agent reads a perfectly good
     // briefing and parks in room_wait, and the room stays silent until a human
     // tells it to start — which is exactly what the charter exists to avoid.
     nextAction:
       (briefing
         ? "Start now: do the work your role in the briefing calls for, and publish what you are doing with room_send. Call room_wait only once you are blocked or waiting on a teammate."
-        : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.") + catchUp,
+        : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.") + catchUp + lookBack,
   };
+}
+
+/** How many recent messages an agent rejoining a room without a summary reads. */
+const REJOIN_HISTORY = 20;
+
+export interface RoomSummary {
+  text: string;
+  /** The last message the summary accounts for; what came after is still to read. */
+  throughMessageId: number;
+  updatedBy: string | null;
+  updatedAt: number;
+}
+
+export function roomSummary(db: Database.Database, room: string): RoomSummary | null {
+  return (
+    (db
+      .prepare(
+        `SELECT summary as text, through_message_id as throughMessageId, updated_by as updatedBy, updated_at as updatedAt
+         FROM room_summaries WHERE room = ?`
+      )
+      .get(room) as RoomSummary | undefined) ?? null
+  );
+}
+
+/**
+ * Where the room stands, kept by its lead, so whoever joins again reads a page
+ * instead of rebuilding the task from hundreds of messages. A room without a
+ * lead lets any of its agents keep it.
+ */
+export function roomSetSummary(db: Database.Database, params: { room: string; agent: string; summary: string }): RoomSummary {
+  ensureRoom(db, params.room, false, "Call room_join first.");
+  const leads = roomLeads(db, params.room);
+  if (params.agent !== "human" && leads.size && !leads.has(params.agent)) {
+    throw new Error("only the lead keeps the room's summary; send what it should add to the lead");
+  }
+  const text = params.summary.trim();
+  if (!text) throw new Error("the summary is empty");
+  const through = (db.prepare("SELECT COALESCE(MAX(id), 0) as id FROM messages WHERE room = ?").get(params.room) as { id: number }).id;
+  db.prepare(
+    `INSERT INTO room_summaries (room, summary, through_message_id, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(room) DO UPDATE SET summary = excluded.summary, through_message_id = excluded.through_message_id,
+       updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(params.room, text, through, params.agent, Date.now());
+  return roomSummary(db, params.room)!;
 }
 
 export function roomSend(
@@ -610,7 +662,7 @@ export function roomDelete(db: Database.Database, room: string): { messages: num
       `DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE room = ?)
           OR attachment_id IN (SELECT id FROM attachments WHERE room = ?)`
     ).run(room, room);
-    for (const table of ["attachments", "messages", "cursors", "participants", "room_profiles"]) {
+    for (const table of ["attachments", "messages", "cursors", "participants", "room_profiles", "room_summaries"]) {
       db.prepare(`DELETE FROM ${table} WHERE room = ?`).run(room);
     }
     db.prepare(`DELETE FROM rooms WHERE name = ?`).run(room);
@@ -1028,6 +1080,23 @@ interface CharterRow {
   updatedAt: number;
 }
 
+/**
+ * A preset's text is copied into the room when it opens, so a room opened
+ * before a convention changed would keep the old rules for good. Text that
+ * still starts as the preset does came from it, and reads as its current
+ * version; text written by hand stays as written.
+ */
+function currentConventions(preset: string | null, stored: string | null): string | null {
+  let current: string | null = null;
+  try {
+    current = resolveConvention(preset);
+  } catch {
+    return stored;
+  }
+  if (!current || !stored) return stored;
+  return stored.slice(0, 80) === current.slice(0, 80) ? current : stored;
+}
+
 export function roomCharter(
   db: Database.Database,
   room: string
@@ -1042,6 +1111,7 @@ export function roomCharter(
   if (!row) return null;
   return {
     ...row,
+    conventions: currentConventions(row.conventionPreset, row.conventions),
     tools: parseJson<ToolDeclaration[]>(row.tools, []),
     roster: parseJson<RosterEntry[]>(row.roster, []),
     proposal: parseJson<Proposal | null>(row.proposal, null),

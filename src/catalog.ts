@@ -31,7 +31,8 @@ export const TOOL_CATALOG: ToolSummary[] = [
   { name: "room_knowledge_propose", summary: "Propose a section of the room's knowledge base for the human to approve.", mutates: true },
   { name: "room_allow", summary: "Lead only: answer a teammate's request the gate filed for the lead; production and secrets stay the human's.", mutates: true },
   { name: "room_propose", summary: "Lead only: propose the team for the task (roles, models, efforts) for the human to approve.", mutates: true },
-  { name: "room_history", summary: "Read message history, newest first by default.", mutates: false },
+  { name: "room_summary", summary: "Lead only: keep the room's summary, what whoever joins again reads instead of the history.", mutates: true },
+  { name: "room_history", summary: "Read message history, newest first by default, or the messages that mention a text.", mutates: false },
   { name: "room_who", summary: "List participants and their last activity.", mutates: false },
   { name: "room_leave", summary: "Mark an agent as having left. The explicit exit from the wait loop.", mutates: true },
 ];

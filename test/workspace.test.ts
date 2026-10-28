@@ -319,7 +319,7 @@ describe("workspace tmux config", () => {
 describe("tool catalog", () => {
   it("lists every tool exactly once", () => {
     expect(new Set(TOOL_NAMES).size).toBe(TOOL_NAMES.length);
-    expect(TOOL_CATALOG).toHaveLength(17);
+    expect(TOOL_CATALOG).toHaveLength(18);
   });
 
   it("marks the read-only tools", () => {

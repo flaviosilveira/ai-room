@@ -21,7 +21,9 @@ import {
   roomList,
   roomSend,
   roomSetStatus,
+  roomSetSummary,
   roomWho,
+  searchMessages,
 } from "./store.js";
 import { proposePlan } from "./cast.js";
 import { decideApproval } from "./approvals.js";
@@ -485,18 +487,46 @@ export function createAiRoomServer(
     "room_history",
     {
       description:
-        "Fetch chronological message history for a room, optionally filtered by agent or message id range.",
+        "Fetch chronological message history for a room, optionally filtered by agent or message id range. With `query`, " +
+        "only the messages that mention that text (case-insensitive, literal), oldest first: the way to find what was " +
+        "decided about something without paging back through the whole room.",
       inputSchema: {
         room: z.string(),
         limit: z.number().int().positive().optional(),
         after: z.number().int().optional(),
         before: z.number().int().optional(),
         agent: z.string().optional(),
+        query: z.string().min(2).max(200).optional(),
       },
     },
-    async ({ room, limit, after, before, agent }) => {
-      const result = roomHistory(db, { room, limit, after, before, agent });
+    async ({ room, limit, after, before, agent, query }) => {
+      const result = query
+        ? searchMessages(db, { text: query, room, agent, limit: limit ?? 20 }).messages
+        : roomHistory(db, { room, limit, after, before, agent });
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.registerTool(
+    "room_summary",
+    {
+      description:
+        "Lead only: replace the room's summary — where the task stands, the decisions and why, what is done, what is next " +
+        "and the open questions — in at most a page of Markdown. Whoever joins the room again reads this instead of its " +
+        "history, so keep it current: after a milestone, a decision, and before you go idle with the state changed.",
+      inputSchema: {
+        room: z.string(),
+        agent: z.string(),
+        summary: z.string().max(8_000),
+      },
+    },
+    async ({ room, agent, summary }) => {
+      try {
+        const result = roomSetSummary(db, { room, agent, summary });
+        return { content: [{ type: "text", text: JSON.stringify({ ok: true, throughMessageId: result.throughMessageId }) }] };
+      } catch (error) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) }], isError: true };
+      }
     }
   );
 

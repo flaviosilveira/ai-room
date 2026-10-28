@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
 import { addAgent, nextInstanceName, removeAgent, replaceCast } from "../src/cast.js";
-import { roomCharter, roomHistory, roomJoin, roomSend, roomSetCharter, roomWho, setWakeTarget } from "../src/store.js";
+import { roomCharter, roomHistory, roomJoin, roomSend, roomSetCharter, roomSetSummary, roomWho, searchMessages, setWakeTarget } from "../src/store.js";
 import { detectMultiplexer, ensureWorkspace, killWorkspace, paneStates, workspaceName } from "../src/session.js";
 
 const tmux = detectMultiplexer("tmux");
@@ -81,8 +81,21 @@ describe("changing the cast of a running room", () => {
   it("tells a joining agent, new or returning, to catch up on what the room already did", () => {
     expect(roomJoin(db, { room, agent: "agy" }).nextAction).not.toMatch(/read room_history/);
     roomSend(db, { room, agent: "codex", message: "we settled on the new marker" });
-    expect(roomJoin(db, { room, agent: "agy" }).nextAction).toMatch(/read room_history first/);
-    expect(roomJoin(db, { room, agent: "claude" }).nextAction).toMatch(/instead of starting the brief over/);
+    expect(roomJoin(db, { room, agent: "agy" }).nextAction).toMatch(/read the last 20 with room_history\(\{ limit: 20 \}\)/);
+    expect(roomJoin(db, { room, agent: "claude" }).nextAction).toMatch(/instead of starting the brief over.*Do not page back/);
+  });
+
+  it("hands a returning agent the lead's summary and only what came after it", () => {
+    roomJoin(db, { room, agent: "claude", role: "lead" });
+    roomSend(db, { room, agent: "codex", message: "we settled on the new marker" });
+    expect(() => roomSetSummary(db, { room, agent: "codex", summary: "x" })).toThrow(/only the lead/);
+    const kept = roomSetSummary(db, { room, agent: "human", summary: "## State\nMarker chosen; tests next." });
+    roomSend(db, { room, agent: "codex", message: "PTAX rate comes from the book's authority" });
+    const back = roomJoin(db, { room, agent: "agy" });
+    expect(back.summary).toMatchObject({ text: "## State\nMarker chosen; tests next.", throughMessageId: kept.throughMessageId });
+    expect(back.nextAction).toContain(`room_history({ after: ${kept.throughMessageId} })`);
+    expect(roomHistory(db, { room, after: kept.throughMessageId }).map((m) => m.content)).toEqual(["PTAX rate comes from the book's authority"]);
+    expect(searchMessages(db, { text: "ptax", room }).messages).toHaveLength(1);
   });
 
   it("refuses what is not an agent", () => {
