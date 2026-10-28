@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
 - `room_knowledge` answers the base's index — each section's name, a one-line
   summary and its size — instead of every section in full. Agents then read
