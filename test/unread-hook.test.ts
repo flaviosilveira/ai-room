@@ -323,12 +323,12 @@ describe("fast path before Python", () => {
       env: {
         ...process.env,
         AI_ROOM_PYTHON: echo,
-        AI_ROOM_ROOM: "OP-3563/auth fix",
+        AI_ROOM_ROOM: "TICKET-7/auth fix",
         AI_ROOM_AGENT: "claude",
       },
     });
     const [room, agent] = fs.readFileSync(marker, "utf8").split("|");
-    expect(room).toBe("OP-3563/auth fix");
+    expect(room).toBe("TICKET-7/auth fix");
     expect(agent).toBe("claude");
   });
 

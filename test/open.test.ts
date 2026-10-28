@@ -10,7 +10,7 @@ import { agentsToLaunch, charterPatch, expandInvite, loadOpenDefaults, parseOpen
 import { DRIVERS_FOR_TEST, attachArgv, canAttach, insideMultiplexer } from "../src/session.js";
 
 describe("open command arguments", () => {
-  it.each([[], ["--brief", "Invoice classification", "--invite", "claude:2,codex,agy"]])(
+  it.each([[], ["--brief", "Refund review", "--invite", "claude:2,codex,agy"]])(
     "reports a missing room name for %j",
     (...args) => {
       const result = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "open", ...args], {

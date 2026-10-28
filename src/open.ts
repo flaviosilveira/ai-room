@@ -303,8 +303,7 @@ export type ReuseVerdict =
  * Reopening a room by name is how you reattach, so it has to stay silent and
  * free. But a room carries a whole task: its history, its cursors and the
  * identities that read them. Dropping a different brief into one that already
- * has a conversation quietly merges two tasks — which is what happened when
- * OP-3406 was opened on top of OP-3604's room, and the agents had to argue
+ * has a conversation quietly merges two tasks, and the agents have to argue
  * their way out of the old history.
  */
 export function reuseVerdict(params: {

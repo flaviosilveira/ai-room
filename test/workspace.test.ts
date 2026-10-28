@@ -57,7 +57,7 @@ describe("workspace naming and isolation", () => {
   });
 
   it("emits tmux-safe names for messy room names", () => {
-    for (const room of ["OP-3563/auth fix", "teste com espaços", "a:b.c/d"]) {
+    for (const room of ["TICKET-7/auth fix", "teste com espaços", "a:b.c/d"]) {
       expect(workspaceName(room)).toMatch(/^[A-Za-z0-9_-]+$/);
     }
   });

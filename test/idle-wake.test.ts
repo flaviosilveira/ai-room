@@ -369,13 +369,13 @@ describe("the monitor reports what it can see", () => {
 
 describe("a room is a task, not just a name", () => {
   it("reattaches silently, and refuses to merge two tasks in silence", () => {
-    const base = { roomExists: true, messages: 12, currentBrief: "OP-3604", reuse: false };
+    const base = { roomExists: true, messages: 12, currentBrief: "TICKET-12", reuse: false };
     expect(reuseVerdict({ ...base, roomExists: false, newBrief: "nova" })).toEqual({ kind: "new" });
     expect(reuseVerdict({ ...base, newBrief: undefined })).toEqual({ kind: "reattach" });
-    expect(reuseVerdict({ ...base, newBrief: "OP-3604" })).toEqual({ kind: "continue" });
+    expect(reuseVerdict({ ...base, newBrief: "TICKET-12" })).toEqual({ kind: "continue" });
     expect(reuseVerdict({ ...base, messages: 0, newBrief: "outra" })).toEqual({ kind: "continue" });
-    expect(reuseVerdict({ ...base, newBrief: "OP-3406", reuse: true })).toEqual({ kind: "continue" });
-    expect(reuseVerdict({ ...base, newBrief: "OP-3406" })).toMatchObject({ kind: "conflict", messages: 12 });
+    expect(reuseVerdict({ ...base, newBrief: "TICKET-21", reuse: true })).toEqual({ kind: "continue" });
+    expect(reuseVerdict({ ...base, newBrief: "TICKET-21" })).toMatchObject({ kind: "conflict", messages: 12 });
   });
 
   it("stops counting what the human has been watching as unread", () => {

@@ -98,12 +98,12 @@ describe("changing the cast of a running room", () => {
     roomSend(db, { room, agent: "codex", message: "we settled on the new marker" });
     expect(() => roomSetSummary(db, { room, agent: "codex", summary: "x" })).toThrow(/only the lead/);
     const kept = roomSetSummary(db, { room, agent: "human", summary: "## State\nMarker chosen; tests next." });
-    roomSend(db, { room, agent: "codex", message: "PTAX rate comes from the book's authority" });
+    roomSend(db, { room, agent: "codex", message: "the exchange rate comes from the ledger" });
     const back = roomJoin(db, { room, agent: "agy" });
     expect(back.summary).toMatchObject({ text: "## State\nMarker chosen; tests next.", throughMessageId: kept.throughMessageId });
     expect(back.nextAction).toContain(`room_history({ after: ${kept.throughMessageId} })`);
-    expect(roomHistory(db, { room, after: kept.throughMessageId }).map((m) => m.content)).toEqual(["PTAX rate comes from the book's authority"]);
-    expect(searchMessages(db, { text: "ptax", room }).messages).toHaveLength(1);
+    expect(roomHistory(db, { room, after: kept.throughMessageId }).map((m) => m.content)).toEqual(["the exchange rate comes from the ledger"]);
+    expect(searchMessages(db, { text: "LEDGER", room }).messages).toHaveLength(1);
   });
 
   it("refuses what is not an agent", () => {
