@@ -87,7 +87,8 @@ addresses you. The others pass what they need from you through it.
   a summary to keep or share, or anything long arrives as a file in
   `.ai-room/for-human/<room>/` (git-ignored), with one line saying what it is.
   The same files show in `~/.ai-room/kb/rooms/<room>/` (see Knowledge bases).
-  They are temporary: deleting the room deletes them.
+  They are temporary: deleting the room deletes them. `summary.md` there is the
+  room's summary, the page an agent reads when it joins again, kept by the lead.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
 

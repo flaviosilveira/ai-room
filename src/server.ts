@@ -27,7 +27,7 @@ import {
 } from "./store.js";
 import { proposePlan } from "./cast.js";
 import { decideApproval } from "./approvals.js";
-import { proposeKnowledge, readKnowledge } from "./knowledge.js";
+import { proposeKnowledge, readKnowledge, writeRoomSummary } from "./knowledge.js";
 import { EFFORTS } from "./types.js";
 import { WAKE_KINDS, WakeService, parseWakeSpec } from "./wake.js";
 import {
@@ -523,6 +523,7 @@ export function createAiRoomServer(
     async ({ room, agent, summary }) => {
       try {
         const result = roomSetSummary(db, { room, agent, summary });
+        writeRoomSummary(roomCharter(db, room)?.cwd, room, result.text);
         return { content: [{ type: "text", text: JSON.stringify({ ok: true, throughMessageId: result.throughMessageId }) }] };
       } catch (error) {
         return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) }], isError: true };

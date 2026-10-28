@@ -182,6 +182,10 @@ export function roomJoin(
     : summary
       ? ` This room already has ${history} message(s). \`summary\` is where it stands, as of message #${summary.throughMessageId}: read it, then only what came after with room_history({ after: ${summary.throughMessageId} }), and continue from there instead of starting the brief over.`
       : ` This room already has ${history} message(s). Unless you remember them, read the last ${REJOIN_HISTORY} with room_history({ limit: ${REJOIN_HISTORY} }) and continue from there instead of starting the brief over.`;
+  const firstSummary =
+    history && !summary && roomLeads(db, params.room).has(params.agent)
+      ? " As the lead, once caught up, write the room's first summary with room_summary so the next one to join reads that instead."
+      : "";
   const lookBack = history
     ? " Do not page back through older history; find something specific with room_history({ query })."
     : "";
@@ -197,7 +201,7 @@ export function roomJoin(
     nextAction:
       (briefing
         ? "Start now: do the work your role in the briefing calls for, and publish what you are doing with room_send. Call room_wait only once you are blocked or waiting on a teammate."
-        : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.") + catchUp + lookBack,
+        : "No charter is set for this room. Ask in room_send what the room is for, then call room_wait.") + catchUp + firstSummary + lookBack,
   };
 }
 

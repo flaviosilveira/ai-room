@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
-import { decideKnowledge, knowledgeMirrorDir, knowledgeProjects, knowledgeSections, pendingKnowledge, proposeKnowledge, readKnowledge, removeRoomReports, roomReportsDir, syncRoomLinks } from "../src/knowledge.js";
+import { decideKnowledge, ignoreReportsInGit, knowledgeMirrorDir, knowledgeProjects, knowledgeSections, pendingKnowledge, proposeKnowledge, readKnowledge, removeRoomReports, roomReportsDir, syncRoomLinks, writeRoomSummary } from "../src/knowledge.js";
 import { roomHistory, roomJoin, roomSetCharter } from "../src/store.js";
 
 describe("knowledge base", () => {
@@ -92,5 +93,24 @@ describe("knowledge base", () => {
     expect(readKnowledge(db, "r", "codex", undefined, { query: "PIPELINE" }).index).toHaveLength(1);
     expect(readKnowledge(db, "r", "codex", undefined, { query: "kubernetes" }).index).toEqual([]);
     expect(readKnowledge(db, "r", "codex", undefined, { section: "Billing" })).toMatchObject({ index: [{ section: "Deploy" }] });
+  });
+
+  it("writes the room's summary where the human reads the reports", () => {
+    const project = path.join(dir, "project");
+    writeRoomSummary(project, "r", "## State\nTests next.");
+    expect(fs.readFileSync(path.join(roomReportsDir(project, "r"), "summary.md"), "utf8")).toBe("# r\n\n## State\nTests next.\n");
+    writeRoomSummary(null, "r", "nowhere");
+  });
+
+  it("keeps the reports out of git once, without touching a versioned file", () => {
+    const repo = path.join(dir, "repo");
+    fs.mkdirSync(repo);
+    spawnSync("git", ["init", "-q"], { cwd: repo });
+    ignoreReportsInGit(repo);
+    ignoreReportsInGit(repo);
+    const exclude = fs.readFileSync(path.join(repo, ".git", "info", "exclude"), "utf8");
+    expect(exclude.split("\n").filter((line) => line === ".ai-room/")).toHaveLength(1);
+    expect(fs.existsSync(path.join(repo, ".gitignore"))).toBe(false);
+    ignoreReportsInGit(dir);
   });
 });

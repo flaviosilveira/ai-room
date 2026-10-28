@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { TOOL_NAMES } from "./catalog.js";
 import { hookStatus } from "./hooks.js";
 import { LAUNCHERS, filesCommand, onPath } from "./invite.js";
 import { TOOL_CHECKS, toolInstalled } from "./presets.js";
@@ -59,6 +60,26 @@ function mcpChecks(home: string, port: number): Check[] {
     });
 }
 
+/**
+ * Codex approves ai-room's tools one by one once the human picks "Always allow",
+ * so a tool added by an upgrade asks again. Only reported for those who approve
+ * per tool; anyone else is asked every time anyway.
+ */
+export function codexToolApprovals(config: string): Check | null {
+  const approved = new Set([...config.matchAll(/^\[mcp_servers\.ai-room\.tools\.([\w-]+)\]/gm)].map((match) => match[1]));
+  if (!approved.size) return null;
+  const missing = TOOL_NAMES.filter((name) => !approved.has(name));
+  return {
+    section: "agents",
+    name: "codex approvals",
+    level: missing.length ? "warn" : "ok",
+    detail: missing.length ? `asks before ${missing.join(", ")}` : "every ai-room tool approved",
+    fix: missing.length
+      ? `add to ~/.codex/config.toml: ${missing.map((name) => `[mcp_servers.ai-room.tools.${name}] approval_mode = "approve"`).join(" ")}`
+      : undefined,
+  };
+}
+
 export async function runChecks(port: number, home = os.homedir()): Promise<Check[]> {
   const checks: Check[] = [];
   const add = (check: Check) => checks.push(check);
@@ -90,6 +111,8 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     add({ section: "agents", name: harness, level: present ? "ok" : "warn", detail: present ? "on PATH" : "not installed" });
   }
   checks.push(...mcpChecks(home, port));
+  const approvals = codexToolApprovals(read(path.join(home, ".codex", "config.toml")));
+  if (approvals) add(approvals);
   for (const hook of hookStatus()) {
     add({
       section: "agents",

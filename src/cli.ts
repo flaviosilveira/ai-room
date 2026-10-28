@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline/promises";
@@ -244,20 +243,6 @@ async function confirmReuse(room: string, messages: number): Promise<boolean> {
   }
 }
 
-function ignoreReportsInGit(cwd: string): void {
-  const found = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd, encoding: "utf8" });
-  if (found.status !== 0 || !found.stdout.trim()) return;
-  const exclude = path.resolve(cwd, found.stdout.trim());
-  try {
-    const current = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf8") : "";
-    if (current.split("\n").some((line) => line.trim() === ".ai-room/")) return;
-    fs.mkdirSync(path.dirname(exclude), { recursive: true });
-    fs.appendFileSync(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}.ai-room/\n`);
-  } catch {
-    /* an unignored report shows in git status; nothing is lost */
-  }
-}
-
 async function open(room: string, argv: string[]): Promise<void> {
   if (!room || room.startsWith("-")) {
     console.error("Missing room name: pass a name after 'ai-room open', before any flags.");
@@ -342,7 +327,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   // Reports the lead writes for the human land in .ai-room/; they are never for
   // a commit. The repository's own exclude list keeps them out of git without
   // creating a folder in a project that never gets a report.
-  if ((flags.convention ?? "").split(",").includes("lead")) ignoreReportsInGit(process.cwd());
+  if ((flags.convention ?? "").split(",").includes("lead")) (await import("./knowledge.js")).ignoreReportsInGit(process.cwd());
 
   let charter = roomSetCharter(db, { ...charterPatch(room, flags), cwd: process.cwd() });
   const held = holdForPlan(charter.roster, flags, verdict.kind === "new");

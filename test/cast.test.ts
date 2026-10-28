@@ -85,6 +85,14 @@ describe("changing the cast of a running room", () => {
     expect(roomJoin(db, { room, agent: "claude" }).nextAction).toMatch(/instead of starting the brief over.*Do not page back/);
   });
 
+  it("asks a lead rejoining a room with history and no summary to write the first one", () => {
+    roomSend(db, { room, agent: "codex", message: "we settled on the new marker" });
+    expect(roomJoin(db, { room, agent: "agy" }).nextAction).not.toMatch(/first summary/);
+    expect(roomJoin(db, { room, agent: "claude", role: "lead" }).nextAction).toMatch(/write the room's first summary with room_summary/);
+    roomSetSummary(db, { room, agent: "claude", summary: "Marker chosen." });
+    expect(roomJoin(db, { room, agent: "claude", role: "lead" }).nextAction).not.toMatch(/first summary/);
+  });
+
   it("hands a returning agent the lead's summary and only what came after it", () => {
     roomJoin(db, { room, agent: "claude", role: "lead" });
     roomSend(db, { room, agent: "codex", message: "we settled on the new marker" });

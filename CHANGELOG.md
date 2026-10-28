@@ -27,6 +27,11 @@
   kept on the knowledge base. Deleting a room deletes its reports. `open` no
   longer creates an empty `.ai-room/` in every project: the repository's
   `.git/info/exclude` keeps reports out of git instead.
+- The room's summary is also written to `summary.md` in its reports folder,
+  for the human to read in the vault. A lead that rejoins a room with history
+  and no summary is told to write the first one once caught up.
+- `ai-room doctor` names the ai-room tools Codex still asks about when its
+  tools are approved one by one, with the lines that approve them.
 
 ## 0.8.2
 

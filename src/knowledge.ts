@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -237,6 +238,33 @@ export function mirrorAllKnowledge(db: Database.Database, root = knowledgeMirror
  */
 export function roomReportsDir(cwd: string, room: string): string {
   return path.join(cwd, ".ai-room", "for-human", room.replace(unsafe, "-"));
+}
+
+/** The room's summary, as the human reads it in the vault beside the reports. */
+export function writeRoomSummary(cwd: string | null | undefined, room: string, summary: string): void {
+  if (!cwd) return;
+  try {
+    const dir = roomReportsDir(cwd, room);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "summary.md"), `# ${room}\n\n${summary}\n`);
+  } catch {
+    /* agents still read it from the room */
+  }
+}
+
+/** Keeps the reports out of git without touching a file the project versions. */
+export function ignoreReportsInGit(cwd: string): void {
+  const found = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd, encoding: "utf8" });
+  if (found.status !== 0 || !found.stdout.trim()) return;
+  const exclude = path.resolve(cwd, found.stdout.trim());
+  try {
+    const current = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf8") : "";
+    if (current.split("\n").some((line) => line.trim() === ".ai-room/")) return;
+    fs.mkdirSync(path.dirname(exclude), { recursive: true });
+    fs.appendFileSync(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}.ai-room/\n`);
+  } catch {
+    /* an unignored report shows in git status; nothing is lost */
+  }
 }
 
 /**
