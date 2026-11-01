@@ -169,6 +169,8 @@ export function tmuxConfig(
     ...both("m", `{ run-shell "${self} _pane-menu '#{session_name}'" ; source-file -F "${path.join(path.dirname(tmuxConfigPath()), "menus")}/#{session_name}.tmux" }`),
     ...both("t", `run-shell -b "${self} _files '#{session_name}' '#{window_name}'"`),
     ...both("z", "resize-pane -Z"),
+    // Not C-a as well: that is many people's prefix.
+    `bind-key a run-shell -b "${self} _ask-open '#{session_name}' '#{client_name}'"`,
     // Lowercase x too: tmux's own x kills just the focused pane, which in a
     // workspace silently stops one agent instead of closing the room.
     ...both("X", `confirm-before -p "Close the room? Its agents stop; history and charter stay. (y/n)" kill-session`),
@@ -268,6 +270,39 @@ export function sessionExists(driver: MultiplexerDriver, session: string): boole
   return liveSessions(driver).includes(session);
 }
 
+/**
+ * A row above the live line while a [FOR YOU] question is open, in sight with
+ * any pane focused or zoomed; the session falls back to the usual two rows once
+ * it is answered.
+ */
+export function showQuestionRow(
+  driver: MultiplexerDriver,
+  session: string,
+  question: string | null,
+  statusFormat: string | null = tmuxDefaultStatusFormat()
+): void {
+  if (!statusFormat) return;
+  if (!question) {
+    mux(driver, ["set-option", "-u", "-t", session, "status-format", ";", "set-option", "-u", "-t", session, "status"]);
+    return;
+  }
+  mux(driver, [
+    "set-option", "-t", session, ASK_TAG, question.replace(/#/g, "##"), ";",
+    "set-option", "-t", session, "status", "3", ";",
+    "set-option", "-t", session, "status-format[0]", `#[fill=colour94,bg=colour94,fg=colour231,bold] ? #{${ASK_TAG}} #[nobold]  #{prefix} a answers`, ";",
+    "set-option", "-t", session, "status-format[1]", `#[fill=colour236,bg=colour236,fg=colour250] #{${LIVE_TAG}}`, ";",
+    "set-option", "-t", session, "status-format[2]", statusFormat,
+  ]);
+}
+
+/** The questions modal, over whatever the human is looking at. */
+export function openAskPopup(driver: MultiplexerDriver, session: string, client?: string, self = selfCommand()): boolean {
+  const target = client || mux(driver, ["list-clients", "-t", session, "-F", "#{client_name}"]).out.split("\n")[0];
+  if (!target) return false;
+  const quoted = `'${session.replace(/'/g, "'\\''")}'`;
+  return mux(driver, ["display-popup", "-c", target, "-w", "80%", "-h", "50%", "-T", " questions for you ", "-E", `${self} _ask ${quoted}`]).ok;
+}
+
 export function mux(
   driver: MultiplexerDriver,
   argv: string[],
@@ -357,6 +392,8 @@ export const PANE_TAG = "@airoom_agent";
 export const ROOM_TAG = "@airoom_room";
 /** Session option holding the live line of what each agent's pane shows. */
 export const LIVE_TAG = "@airoom_live";
+/** Session option holding the question the human has not answered yet. */
+export const ASK_TAG = "@airoom_ask";
 /** The window a pane belongs in when it is shown. */
 export const HOME_TAG = "@airoom_home";
 /** The status line the monitor shows on its own pane border. */

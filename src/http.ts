@@ -12,6 +12,7 @@ import {
   markRead,
   roomHistory,
   mentionedAgents,
+  openQuestions,
   roomSend,
   roomWho,
 } from "./store.js";
@@ -101,6 +102,15 @@ export function createHttpApp(
     } catch (error) {
       res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
     }
+  });
+
+  app.get("/questions", (req, res) => {
+    const room = typeof req.query.room === "string" ? req.query.room : "";
+    if (!room) {
+      res.status(400).json({ ok: false, error: "query parameter 'room' is required" });
+      return;
+    }
+    res.json({ ok: true, questions: openQuestions(db, room) });
   });
 
   // The human channel. `origin` is set here, server-side, so an agent can never

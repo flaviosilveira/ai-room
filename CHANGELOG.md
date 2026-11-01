@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Questions no longer get lost: an open `[FOR YOU #n]` shows in a row above
+  the agents' status line until answered, and a new one opens a modal to
+  answer it in place, one question after another. `prefix a` reopens it.
 - A room's whole team starts at once. Before any change the lead explores,
   the team checks its findings and plan, and the lead brings them to the
   human as one `[FOR YOU]`; the answer is the go. No more waiting on

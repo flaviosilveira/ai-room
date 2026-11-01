@@ -26,6 +26,8 @@ import {
   insideWorkspaceServer,
   liveSessions,
   mux,
+  openAskPopup,
+  ROOM_TAG,
   paneMenuCommand,
   paneMenuFile,
   paneStates,
@@ -698,6 +700,52 @@ function paneMenu(session: string): void {
   fs.writeFileSync(file, states.length ? `${paneMenuCommand(session, states)}\n` : `display-message "no panes"\n`);
 }
 
+/**
+ * The questions modal: the lead's open [FOR YOU] questions one at a time,
+ * answered in place. Enter on an empty line leaves one for later.
+ */
+async function askQuestions(session: string): Promise<void> {
+  const tmux = detectMultiplexer("tmux");
+  const room = tmux && session ? mux(tmux, ["show-options", "-t", session, "-qv", ROOM_TAG]).out : "";
+  if (!room) return;
+  const base = `http://127.0.0.1:${port()}`;
+  const later = new Set<number>();
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    for (;;) {
+      const { questions = [] } = (await (await fetch(`${base}/questions?room=${encodeURIComponent(room)}`)).json()) as {
+        questions?: { n: number; agent: string; text: string }[];
+      };
+      const next = questions.find((q) => !later.has(q.n));
+      if (!next) {
+        if (!later.size) {
+          console.log("no question waiting for you.");
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+        return;
+      }
+      console.clear();
+      console.log(`${next.agent} asks${questions.length > 1 ? ` (${questions.length} open)` : ""}:\n\n${next.text}\n`);
+      const answer = (await rl.question(`#${next.n} (Enter: later) > `)).trim();
+      if (!answer) {
+        later.add(next.n);
+        continue;
+      }
+      const sent = await fetch(`${base}/say`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room, agent: "human", message: `#${next.n} ${answer}` }),
+      });
+      if (!sent.ok) {
+        await rl.question(`not sent (${sent.status}); Enter to close `);
+        return;
+      }
+    }
+  } finally {
+    rl.close();
+  }
+}
+
 function tools(json: boolean): void {
   if (json) {
     console.log(JSON.stringify({ name: "ai-room", version: VERSION, count: TOOL_CATALOG.length, tools: TOOL_CATALOG }, null, 2));
@@ -824,6 +872,14 @@ switch (cmd) {
     break;
   case "_pane-menu":
     paneMenu(arg);
+    break;
+  case "_ask-open": {
+    const tmux = detectMultiplexer("tmux");
+    if (tmux && arg) openAskPopup(tmux, arg, process.argv[4]);
+    break;
+  }
+  case "_ask":
+    await askQuestions(arg);
     break;
   case "doctor": {
     const { renderChecks, runChecks } = await import("./doctor.js");

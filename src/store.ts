@@ -929,6 +929,53 @@ export function touchWake(
   );
 }
 
+export interface OpenQuestion {
+  n: number;
+  messageId: number;
+  agent: string;
+  text: string;
+}
+
+const QUESTION = /\[FOR YOU #(\d+)\]/;
+
+/**
+ * The lead's [FOR YOU #n] questions the human has not answered yet. "#n …"
+ * answers n; a plain message answers the question when it is the only one
+ * open, which is how people reply to a single question anyway.
+ */
+export function openQuestions(db: Database.Database, room: string): OpenQuestion[] {
+  const asked = db
+    .prepare(
+      `SELECT id, agent, content FROM messages
+        WHERE room = ? AND agent != 'human' AND content LIKE '%[FOR YOU #%'
+        ORDER BY id DESC LIMIT 50`
+    )
+    .all(room) as { id: number; agent: string; content: string }[];
+  if (!asked.length) return [];
+  const since = asked[asked.length - 1].id;
+  const replies = db
+    .prepare(`SELECT id, content FROM messages WHERE room = ? AND agent = 'human' AND id > ? ORDER BY id`)
+    .all(room, since) as { id: number; content: string }[];
+  const events = [
+    ...asked.map((m) => ({ id: m.id, ask: m })),
+    ...replies.map((m) => ({ id: m.id, reply: m.content })),
+  ].sort((a, b) => a.id - b.id);
+  const open = new Map<number, OpenQuestion>();
+  for (const event of events) {
+    if ("ask" in event && event.ask) {
+      const n = Number(QUESTION.exec(event.ask.content)![1]);
+      open.set(n, { n, messageId: event.ask.id, agent: event.ask.agent, text: event.ask.content.trim() });
+    } else if ("reply" in event && event.reply !== undefined) {
+      const reply = event.reply.trim();
+      if (reply.startsWith("/")) continue;
+      const answered = /^#(\d+)\b/.exec(reply);
+      if (answered) open.delete(Number(answered[1]));
+      else if (open.size === 1) open.clear();
+    }
+  }
+  return [...open.values()].sort((a, b) => a.n - b.n);
+}
+
 export function roomMessageCount(db: Database.Database, room: string): number {
   const row = db.prepare(`SELECT COUNT(*) as count FROM messages WHERE room = ?`).get(room) as {
     count: number;

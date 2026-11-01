@@ -18,6 +18,8 @@ import {
   reloadTmuxConfig,
   LIVE_TAG,
   STATUS_TAG,
+  openAskPopup,
+  showQuestionRow,
   sessionExists,
   sessionName,
   setPaneVisible,
@@ -709,6 +711,33 @@ export async function runConsole(
     refreshLive();
     const liveTimer = setInterval(refreshLive, 2000);
     liveTimer.unref();
+
+    // An open [FOR YOU] question gets a row of its own above the live line,
+    // and a new one opens the questions modal over whatever is on screen.
+    let questionRow = "";
+    const popped = new Set<number>();
+    const refreshQuestions = async () => {
+      try {
+        const response = await fetch(`${options.baseUrl}/questions?room=${encodeURIComponent(room)}`);
+        const { questions = [] } = (await response.json()) as { questions?: { n: number; messageId: number; text: string }[] };
+        const first = questions[0];
+        const row = first
+          ? `${questions.length > 1 ? `(${questions.length} open) ` : ""}#${first.n} ${first.text.replace(/\[FOR YOU #\d+\]\s*/, "").split("\n")[0].slice(0, 140)}`
+          : "";
+        if (row !== questionRow) {
+          questionRow = row;
+          showQuestionRow(driver!, workspace, row || null);
+        }
+        const fresh = questions.filter((q) => !popped.has(q.messageId));
+        // Only once it is on screen: a question that came while nobody was attached pops up on return.
+        if (fresh.length && openAskPopup(driver!, workspace)) fresh.forEach((q) => popped.add(q.messageId));
+      } catch {
+        /* the server may be restarting */
+      }
+    };
+    void refreshQuestions();
+    const questionTimer = setInterval(() => void refreshQuestions(), 3000);
+    questionTimer.unref();
   }
   let showAll = false;
   const controller = new AbortController();

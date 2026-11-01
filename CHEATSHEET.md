@@ -83,6 +83,11 @@ addresses you. The others pass what they need from you through it.
 - Your plain messages wake the lead alone. `@codex …` (or `@codex @agy …`)
   goes to whoever you name, `@all …` to everyone.
 - Every ask is its own message, numbered: `[FOR YOU #3] ...` — answer `#3 a`.
+- An open question also sits in a row above the agents' status line until you
+  answer it, and a new one opens a questions modal over whatever you are
+  looking at: answer there, and the next one follows; Enter on an empty line
+  leaves it for later. `prefix a` opens it again. A plain message answers the
+  question when only one is open; with more, start with `#n`.
 - Messages to the team and short updates come in the message itself. A report,
   a summary to keep or share, or anything long arrives as a file in
   `.ai-room/for-human/<room>/` (git-ignored), with one line saying what it is.
