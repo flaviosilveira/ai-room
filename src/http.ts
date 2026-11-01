@@ -13,6 +13,7 @@ import {
   roomHistory,
   mentionedAgents,
   openQuestions,
+  roomCharter,
   roomSend,
   roomWho,
 } from "./store.js";
@@ -110,7 +111,7 @@ export function createHttpApp(
       res.status(400).json({ ok: false, error: "query parameter 'room' is required" });
       return;
     }
-    res.json({ ok: true, questions: openQuestions(db, room) });
+    res.json({ ok: true, questions: openQuestions(db, room), knowledge: roomCharter(db, room)?.knowledge ?? null });
   });
 
   // The human channel. `origin` is set here, server-side, so an agent can never

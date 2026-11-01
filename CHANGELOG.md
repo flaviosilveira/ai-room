@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The status bar shows the room's knowledge base next to its name (`kb:acme`).
 - The knowledge base stopped growing because rooms were left unbound and
   nothing reminded the lead. A new room now takes the base of earlier rooms
   in the same project (same folder, a folder above, or another worktree of

@@ -20,6 +20,7 @@ import {
   STATUS_TAG,
   openAskPopup,
   showQuestionRow,
+  KB_TAG,
   sessionExists,
   sessionName,
   setPaneVisible,
@@ -715,11 +716,19 @@ export async function runConsole(
     // An open [FOR YOU] question gets a row of its own above the live line,
     // and a new one opens the questions modal over whatever is on screen.
     let questionRow = "";
+    let knowledgeShown: string | null | undefined;
     const popped = new Set<number>();
     const refreshQuestions = async () => {
       try {
         const response = await fetch(`${options.baseUrl}/questions?room=${encodeURIComponent(room)}`);
-        const { questions = [] } = (await response.json()) as { questions?: { n: number; messageId: number; text: string }[] };
+        const { questions = [], knowledge = null } = (await response.json()) as {
+          questions?: { n: number; messageId: number; text: string }[];
+          knowledge?: string | null;
+        };
+        if (knowledge !== knowledgeShown) {
+          knowledgeShown = knowledge;
+          mux(driver!, knowledge ? ["set-option", "-t", workspace, KB_TAG, knowledge] : ["set-option", "-u", "-t", workspace, KB_TAG]);
+        }
         const first = questions[0];
         const row = first
           ? `${questions.length > 1 ? `(${questions.length} open) ` : ""}#${first.n} ${first.text.replace(/\[FOR YOU #\d+\]\s*/, "").split("\n")[0].slice(0, 140)}`

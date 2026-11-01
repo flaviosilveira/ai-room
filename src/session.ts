@@ -159,8 +159,8 @@ export function tmuxConfig(
           `set -g status-format[1] '${statusFormat}'`,
         ]
       : ["set -g status on"]),
-    "set -g status-left-length 60",
-    `set -g status-left "#[bold] ai-room #{?${ROOM_TAG},#{${ROOM_TAG}},#S} #[default]"`,
+    "set -g status-left-length 90",
+    `set -g status-left "#[bold] ai-room #{?${ROOM_TAG},#{${ROOM_TAG}},#S} #[default]#{?${KB_TAG},kb:#{${KB_TAG}} ,}"`,
     "set -g status-right-length 100",
     `set -g status-right " #{prefix} m panes | #{prefix} t files | #{prefix} M mouse:#{?mouse,on,off} | F12 detach | #{prefix} x close "`,
     // Hidden panes live in windows named "_<agent>"; the tab list leaves them out.
@@ -392,6 +392,8 @@ export const PANE_TAG = "@airoom_agent";
 export const ROOM_TAG = "@airoom_room";
 /** Session option holding the live line of what each agent's pane shows. */
 export const LIVE_TAG = "@airoom_live";
+/** Session option holding the room's knowledge base, for the status line. */
+export const KB_TAG = "@airoom_kb";
 /** Session option holding the question the human has not answered yet. */
 export const ASK_TAG = "@airoom_ask";
 /** The window a pane belongs in when it is shown. */
