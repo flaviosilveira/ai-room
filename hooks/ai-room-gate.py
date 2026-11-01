@@ -242,7 +242,9 @@ def decide(harness, payload, room, agent):
 def answer(harness, decision, reason):
     if harness == "agy":
         print(json.dumps({"decision": decision or "ask", "reason": reason}))
-    elif decision in ("allow", "deny"):
+    # Codex rejects "allow" from a PreToolUse hook ("unsupported permissionDecision");
+    # silence lets the call through to its own reviewer.
+    elif decision == "deny" or (decision == "allow" and harness != "codex"):
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse", "permissionDecision": decision, "permissionDecisionReason": reason}}))
 

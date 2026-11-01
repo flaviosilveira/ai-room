@@ -95,6 +95,12 @@ describe.skipIf(!hasPython)("ai-room gate", { timeout: 30_000 }, () => {
     expect(agy("git push origin main")).toBe("deny");
   });
 
+  it("never answers allow to Codex, which rejects it", () => {
+    const codex = (command: string) => run("codex", "codex", { tool_name: "Bash", tool_input: { command } }, { AI_ROOM_SKIP_PROMPTS: "1" });
+    expect(codex("npm run build")).toBeNull();
+    expect(codex("rm -rf /")?.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+
   it("lets Claude in free mode run anything off the lists", () => {
     expect(claude("npm run build", {})).toBe("allow");
     expect(claude("git push origin main", {})).toBe("deny");
