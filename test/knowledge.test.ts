@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { openDb } from "../src/db/index.js";
-import { decideKnowledge, ignoreReportsInGit, knowledgeMirrorDir, knowledgeProjects, knowledgeSections, pendingKnowledge, proposeKnowledge, readKnowledge, removeRoomReports, roomReportsDir, syncRoomLinks, writeRoomSummary } from "../src/knowledge.js";
+import { decideKnowledge, ignoreReportsInGit, knowledgeForCwd, knowledgeMirrorDir, knowledgeProjects, knowledgeSections, pendingKnowledge, proposeKnowledge, readKnowledge, removeRoomReports, roomReportsDir, syncRoomLinks, writeRoomSummary } from "../src/knowledge.js";
 import { roomHistory, roomJoin, roomSetCharter } from "../src/store.js";
 
 describe("knowledge base", () => {
@@ -112,5 +112,27 @@ describe("knowledge base", () => {
     expect(exclude.split("\n").filter((line) => line === ".ai-room/")).toHaveLength(1);
     expect(fs.existsSync(path.join(repo, ".gitignore"))).toBe(false);
     ignoreReportsInGit(dir);
+  });
+
+  it("hands a new room the base of earlier rooms in the same project, never a sibling's", () => {
+    const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd });
+    const repo = path.join(dir, "acme");
+    fs.mkdirSync(repo);
+    git(repo, "init", "-q");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "x");
+    const worktree = path.join(dir, "acme-feature");
+    git(repo, "worktree", "add", "-q", worktree);
+    fs.mkdirSync(path.join(dir, "other"));
+
+    expect(knowledgeForCwd(db, repo)).toBeNull();
+    roomSetCharter(db, { room: "r", cwd: repo, knowledge: "acme" });
+    expect(knowledgeForCwd(db, repo)).toBe("acme");
+    expect(knowledgeForCwd(db, path.join(repo, "src"))).toBe("acme");
+    expect(knowledgeForCwd(db, dir)).toBeNull();
+    expect(knowledgeForCwd(db, worktree)).toBe("acme");
+    expect(knowledgeForCwd(db, path.join(dir, "other"))).toBeNull();
+    roomSetCharter(db, { room: "r", cwd: os.homedir(), knowledge: "acme" });
+    expect(knowledgeForCwd(db, path.join(dir, "other"))).toBeNull();
+    expect(knowledgeForCwd(db, os.homedir())).toBe("acme");
   });
 });

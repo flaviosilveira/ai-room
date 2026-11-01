@@ -290,10 +290,13 @@ A knowledge base per company or project — the business, its rules, the
 decisions and why they were made, the deploy, the stack — that every room bound
 to it starts from. Agents read its index on joining and then only the sections
 their task touches, so a large base does not cost every agent all of it. Bind a room with
-`--kb <name>` at `open`, or leave it unbound: when the lead finds something
-worth keeping, it asks you whether it goes in an existing base, a new one it
-suggests, or nowhere. When a task teaches something lasting, an agent proposes the section's
-new text; it lands only when you approve it.
+`--kb <name>` at `open`. Without it, a new room takes the base of the latest
+room opened in the same folder, in a folder above it, or in another worktree of
+the same repository (never from a folder next to it, nor from your home
+folder); with none, the lead asks you which base to use. When a task teaches
+something lasting, an agent proposes the section's new text; it lands only when
+you approve it. Each time the lead updates the room's summary, ai-room reminds
+it to propose what the milestone settled.
 
 | In the console | Does |
 |---|---|

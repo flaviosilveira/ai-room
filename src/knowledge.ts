@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { knowledgePath } from "./db/index.js";
@@ -250,6 +251,30 @@ export function writeRoomSummary(cwd: string | null | undefined, room: string, s
   } catch {
     /* agents still read it from the room */
   }
+}
+
+function gitCommonDir(dir: string): string | null {
+  const found = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: dir, encoding: "utf8" });
+  return found.status === 0 && found.stdout.trim() ? found.stdout.trim() : null;
+}
+
+const within = (inner: string, outer: string) => inner === outer || inner.startsWith(outer.endsWith(path.sep) ? outer : outer + path.sep);
+
+/**
+ * The base the latest room in this project used: the same folder, a folder
+ * inside one a room used, or another worktree of the same repository. Never
+ * from inside the new folder or from the home folder, so rooms opened from ~
+ * or ~/dev do not pull every client into one base.
+ */
+export function knowledgeForCwd(db: Database.Database, cwd: string): string | null {
+  const repo = gitCommonDir(cwd);
+  for (const { name } of roomList(db, { limit: -1 })) {
+    const charter = roomCharter(db, name);
+    if (!charter?.knowledge || !charter.cwd) continue;
+    if (cwd === charter.cwd || (charter.cwd !== os.homedir() && within(cwd, charter.cwd))) return charter.knowledge;
+    if (repo && fs.existsSync(charter.cwd) && gitCommonDir(charter.cwd) === repo) return charter.knowledge;
+  }
+  return null;
 }
 
 /** Keeps the reports out of git without touching a file the project versions. */

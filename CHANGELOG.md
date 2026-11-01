@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The knowledge base stopped growing because rooms were left unbound and
+  nothing reminded the lead. A new room now takes the base of earlier rooms
+  in the same project (same folder, a folder above, or another worktree of
+  the repository), and every `room_summary` reminds the lead to propose what
+  the milestone settled, or to ask which base to use.
 - The files tab uses the real NERDTree when it is installed, even if the
   vimrc does not load it, with hidden files shown and `:Kb` to browse the
   knowledge vault. Netrw remains the fallback.

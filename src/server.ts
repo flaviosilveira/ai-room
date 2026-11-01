@@ -523,8 +523,13 @@ export function createAiRoomServer(
     async ({ room, agent, summary }) => {
       try {
         const result = roomSetSummary(db, { room, agent, summary });
-        writeRoomSummary(roomCharter(db, room)?.cwd, room, result.text);
-        return { content: [{ type: "text", text: JSON.stringify({ ok: true, throughMessageId: result.throughMessageId }) }] };
+        const charter = roomCharter(db, room);
+        writeRoomSummary(charter?.cwd, room, result.text);
+        // The moment a milestone is written down is when the agent still knows what it settled.
+        const nextAction = charter?.knowledge
+          ? `If this settled something durable (a business rule, a decision and why, how the deploy or the stack works), propose it now with room_knowledge_propose, after reading that section of "${charter.knowledge}". Not the task itself.`
+          : "This room has no knowledge base yet: ask the human in one [FOR YOU #n] which base to keep its durable decisions in (room_knowledge lists them), then bind it with room_knowledge.";
+        return { content: [{ type: "text", text: JSON.stringify({ ok: true, throughMessageId: result.throughMessageId, nextAction }) }] };
       } catch (error) {
         return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) }], isError: true };
       }

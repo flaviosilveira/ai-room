@@ -335,13 +335,18 @@ async function open(room: string, argv: string[]): Promise<void> {
   // creating a folder in a project that never gets a report.
   if ((flags.convention ?? "").split(",").includes("lead")) (await import("./knowledge.js")).ignoreReportsInGit(process.cwd());
 
+  let inherited = false;
+  if (!existed && !flags.knowledge) {
+    const knowledge = (await import("./knowledge.js")).knowledgeForCwd(db, process.cwd());
+    if (knowledge) [flags, inherited] = [{ ...flags, knowledge }, true];
+  }
   const charter = roomSetCharter(db, { ...charterPatch(room, flags), cwd: process.cwd() });
 
   console.log(`room: ${room}`);
   console.log(`brief: ${charter.brief ?? "(none)"}`);
   console.log(`convention: ${charter.conventionPreset ?? "(none)"}`);
   console.log(`tools: ${charter.tools.map((t) => t.name).join(", ") || "(none)"}`);
-  console.log(`knowledge: ${charter.knowledge ?? "(none yet; the lead asks, or --kb <name>)"}`);
+  console.log(`knowledge: ${charter.knowledge ? `${charter.knowledge}${inherited ? " (as earlier rooms in this project; --kb <name> to change)" : ""}` : "(none yet; the lead asks, or --kb <name>)"}`);
   console.log(`roster: ${charter.roster.map((r) => r.role ? `${r.agent} (${r.role})` : r.agent).join(", ") || "(none)"}`);
 
   for (const tool of missingTools(charter.tools.map((t) => t.name))) {
