@@ -304,6 +304,9 @@ export function vimCopyArgs(clipboard: string | null = clipboardCommand()): stri
   // the terminal's clipboard over OSC 52, as it does for its own copy.
   clipboard ??= "tmux load-buffer -w -";
   return [
+    // Under tmux, Vim picks a mouse protocol that never reports the release, so the drag never copied.
+    "-c",
+    "if exists('&ttymouse') | set ttymouse=sgr | endif",
     "-c",
     `let g:airoom_clip = '${clipboard.replace(/'/g, "''")}'`,
     "-c",

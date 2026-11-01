@@ -181,6 +181,7 @@ describe("workspace planning", () => {
     expect(vimCopyArgs("iconv -f utf-8 -t utf-16le | clip.exe")).toContain("let g:airoom_clip = 'iconv -f utf-8 -t utf-16le | clip.exe'");
     expect(vimCopyArgs("it's")).toContain("let g:airoom_clip = 'it''s'");
     expect(vimCopyArgs(null)).toContain("let g:airoom_clip = 'tmux load-buffer -w -'");
+    expect(vimCopyArgs("pbcopy")).toContain("if exists('&ttymouse') | set ttymouse=sgr | endif");
     expect(vimCopyArgs("pbcopy").join(" ")).toMatch(/xnoremap <silent> <LeftRelease> <LeftRelease>y:call system\(g:airoom_clip, @"\)<CR>/);
   });
 
