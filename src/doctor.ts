@@ -155,12 +155,15 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
   }
 
   const browser = filesCommand();
+  const netrw = Boolean(browser?.includes("Lexplore"));
   add({
     section: "workspace",
     name: "files tab",
-    level: browser ? "ok" : "warn",
-    detail: !browser ? "no file browser" : browser.includes("NERDTree") ? `${browser[0]} with NERDTree` : browser.includes("Lexplore") ? `${browser[0]} with netrw (NERDTree is used when installed)` : browser[0],
-    fix: browser ? undefined : process.platform === "darwin" ? "brew install yazi" : "install yazi (https://yazi-rs.github.io) or nnn",
+    level: browser && !netrw ? "ok" : "warn",
+    detail: !browser ? "no file browser" : browser.includes("NERDTree") ? `${browser[0]} with NERDTree` : netrw ? `${browser[0]} with netrw` : browser[0],
+    fix: netrw
+      ? "for a NERDTree tree: git clone --depth 1 https://github.com/preservim/nerdtree.git ~/.vim/pack/vendor/start/nerdtree"
+      : browser ? undefined : process.platform === "darwin" ? "brew install yazi" : "install yazi (https://yazi-rs.github.io) or nnn",
   });
   const copyTo = clipboardCommand();
   add({
