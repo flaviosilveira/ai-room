@@ -29,6 +29,27 @@ describe("questions for the human", () => {
     db.close();
   });
 
+  it("closes every #n in one answer, on the lead's [CLOSED #n], and after a day", () => {
+    const db = openDb(":memory:");
+    roomJoin(db, { room: "r", agent: "human" });
+    roomJoin(db, { room: "r", agent: "claude", role: "lead" });
+    const ask = (message: string) => roomSend(db, { room: "r", agent: "claude", message, to: ["human"] });
+    const answer = (message: string) => roomSend(db, { room: "r", agent: "human", message, origin: "human" });
+
+    ask("[FOR YOU #18] Who takes agy's part?");
+    ask("[FOR YOU #20] Write to Azure?");
+    ask("[FOR YOU #21] Smoke in dev?");
+    answer("Approved #824: az pipelines list");
+    expect(openQuestions(db, "r")).toHaveLength(3);
+    answer("#18 agy is out, use another one #20 ok");
+    expect(openQuestions(db, "r").map((q) => q.n)).toEqual([21]);
+    ask("[FOR YOU #22] Bump Node?");
+    ask("codex found it in the pipeline. [CLOSED #21]");
+    expect(openQuestions(db, "r").map((q) => q.n)).toEqual([22]);
+    expect(openQuestions(db, "r", Date.now() + 25 * 3_600_000)).toEqual([]);
+    db.close();
+  });
+
   it("binds prefix a to the questions modal, leaving C-a alone", () => {
     const config = tmuxConfig("ai-room", null, "x");
     expect(config).toContain(`bind-key a run-shell -b "ai-room _ask-open '#{session_name}' '#{client_name}'"`);

@@ -87,7 +87,10 @@ addresses you. The others pass what they need from you through it.
   answer it, and a new one opens a questions modal over whatever you are
   looking at: answer there, and the next one follows; Enter on an empty line
   leaves it for later. `prefix a` opens it again. A plain message answers the
-  question when only one is open; with more, start with `#n`.
+  question when only one is open; with more, write `#n` (several in one
+  message work). Only questions asked after the console opened pop up. The
+  lead takes a question off your list with `[CLOSED #n]` when the answer came
+  another way, and one left unanswered for a day drops off.
 - Messages to the team and short updates come in the message itself. A report,
   a summary to keep or share, or anything long arrives as a file in
   `.ai-room/for-human/<room>/` (git-ignored), with one line saying what it is.

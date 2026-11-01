@@ -717,7 +717,8 @@ export async function runConsole(
     // and a new one opens the questions modal over whatever is on screen.
     let questionRow = "";
     let knowledgeShown: string | null | undefined;
-    const popped = new Set<number>();
+    // Questions already open when the console starts stay in the row; only new ones pop up.
+    let popped: Set<number> | null = null;
     const refreshQuestions = async () => {
       try {
         const response = await fetch(`${options.baseUrl}/questions?room=${encodeURIComponent(room)}`);
@@ -737,9 +738,10 @@ export async function runConsole(
           questionRow = row;
           showQuestionRow(driver!, workspace, row || null);
         }
-        const fresh = questions.filter((q) => !popped.has(q.messageId));
+        if (!popped) popped = new Set(questions.map((q) => q.messageId));
+        const fresh = questions.filter((q) => !popped!.has(q.messageId));
         // Only once it is on screen: a question that came while nobody was attached pops up on return.
-        if (fresh.length && openAskPopup(driver!, workspace)) fresh.forEach((q) => popped.add(q.messageId));
+        if (fresh.length && openAskPopup(driver!, workspace)) fresh.forEach((q) => popped!.add(q.messageId));
       } catch {
         /* the server may be restarting */
       }

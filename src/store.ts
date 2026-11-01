@@ -936,40 +936,47 @@ export interface OpenQuestion {
   text: string;
 }
 
-const QUESTION = /\[FOR YOU #(\d+)\]/;
+const QUESTION = /\[FOR YOU #(\d+)\]/g;
+const CLOSED = /\[CLOSED #(\d+)\]/g;
+/** A question nobody answered in a day is stale; if it still matters, the lead asks again. */
+const QUESTION_TTL_MS = 24 * 3_600_000;
+
+const numbers = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].map((match) => Number(match[1]));
 
 /**
- * The lead's [FOR YOU #n] questions the human has not answered yet. "#n …"
- * answers n; a plain message answers the question when it is the only one
- * open, which is how people reply to a single question anyway.
+ * The lead's [FOR YOU #n] questions the human has not answered yet. Every "#n"
+ * in a human message answers n; a plain message answers the question when it
+ * is the only one open. The lead takes one off with [CLOSED #n] when the answer
+ * came another way.
  */
-export function openQuestions(db: Database.Database, room: string): OpenQuestion[] {
+export function openQuestions(db: Database.Database, room: string, now = Date.now()): OpenQuestion[] {
   const asked = db
     .prepare(
       `SELECT id, agent, content FROM messages
-        WHERE room = ? AND agent != 'human' AND content LIKE '%[FOR YOU #%'
-        ORDER BY id DESC LIMIT 50`
+        WHERE room = ? AND agent != 'human' AND created_at > ? AND (content LIKE '%[FOR YOU #%' OR content LIKE '%[CLOSED #%')
+        ORDER BY id`
     )
-    .all(room) as { id: number; agent: string; content: string }[];
+    .all(room, now - QUESTION_TTL_MS) as { id: number; agent: string; content: string }[];
   if (!asked.length) return [];
-  const since = asked[asked.length - 1].id;
   const replies = db
     .prepare(`SELECT id, content FROM messages WHERE room = ? AND agent = 'human' AND id > ? ORDER BY id`)
-    .all(room, since) as { id: number; content: string }[];
+    .all(room, asked[0].id) as { id: number; content: string }[];
   const events = [
     ...asked.map((m) => ({ id: m.id, ask: m })),
-    ...replies.map((m) => ({ id: m.id, reply: m.content })),
+    ...replies.map((m) => ({ id: m.id, reply: m.content.trim() })),
   ].sort((a, b) => a.id - b.id);
   const open = new Map<number, OpenQuestion>();
   for (const event of events) {
     if ("ask" in event && event.ask) {
-      const n = Number(QUESTION.exec(event.ask.content)![1]);
-      open.set(n, { n, messageId: event.ask.id, agent: event.ask.agent, text: event.ask.content.trim() });
+      for (const n of numbers(event.ask.content, CLOSED)) open.delete(n);
+      for (const n of numbers(event.ask.content, QUESTION)) {
+        open.set(n, { n, messageId: event.ask.id, agent: event.ask.agent, text: event.ask.content.trim() });
+      }
     } else if ("reply" in event && event.reply !== undefined) {
-      const reply = event.reply.trim();
-      if (reply.startsWith("/")) continue;
-      const answered = /^#(\d+)\b/.exec(reply);
-      if (answered) open.delete(Number(answered[1]));
+      // Commands and the console's own approval notices are not answers.
+      if (event.reply.startsWith("/") || /^(Approved|Denied) #\d+/.test(event.reply)) continue;
+      const answered = numbers(event.reply, /(?:^|[\s,;(])#(\d+)\b/g);
+      if (answered.length) answered.forEach((n) => open.delete(n));
       else if (open.size === 1) open.clear();
     }
   }

@@ -15,6 +15,10 @@
   the system clipboard (pbcopy, clip.exe under WSL, wl-copy/xclip, or tmux's
   OSC 52 over SSH). With the mouse on, Vim took the drag and nothing was
   copied.
+- Open questions are read more carefully: every `#n` in one answer counts,
+  the console's approval notices do not, the lead closes a question with
+  `[CLOSED #n]` when the answer came another way, a question drops off after
+  a day, and only questions asked after the console opened pop up.
 - Questions no longer get lost: an open `[FOR YOU #n]` shows in a row above
   the agents' status line until answered, and a new one opens a modal to
   answer it in place, one question after another. `prefix a` reopens it.
