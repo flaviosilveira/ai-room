@@ -200,12 +200,19 @@ too (`Ctrl-b Ctrl-t` = `Ctrl-b t`). On a Mac it is Ctrl, never Cmd.
 | `Ctrl-b x` or `Ctrl-b X` | Closes the room (asks first) |
 
 The files tab is a separate tab (window 1): one Vim, the tree on the left and
-the file on the right. In the tree, Enter opens the file beside it, `-` or
-`../` goes up, `p` previews; `:w` saves, `Ctrl-w w` moves between the two, and
-`:q` on the file leaves the tree, with an empty window beside it for the next
-file; `:Lexplore` brings the tree back if you closed it, `:qa` quits. In the tree: `%` new file, `d` new folder,
-`R` renames, `D` deletes. `AI_ROOM_FILES=yazi` brings back yazi, with a Vim pane
-beside it; `AI_ROOM_EDITOR` picks another editor.
+the file on the right. With NERDTree installed (any of `~/.vim/bundle`,
+`~/.vim/plugged`, `~/.vim/pack/*`, or Neovim's lazy/plugged/packer folders),
+the tree is NERDTree, even when your vimrc does not load it: Enter or `o` opens
+a file, `I` toggles hidden files (shown by default, so `.ai-room/for-human/`
+is there), `m` creates, renames or deletes, and `:Kb` shows the knowledge
+vault, `:Project` the project again. Without it the tree is Vim's netrw: Enter
+opens, `-` goes up, `%` new file, `d` new folder, `R` renames, `D` deletes,
+`:Lexplore` brings the tree back. Either way `:w` saves, `Ctrl-w w` moves
+between the two and `:qa` quits. `AI_ROOM_FILES=yazi` brings back yazi, with a
+Vim pane beside it; `AI_ROOM_EDITOR` picks another editor.
+Copying from a file there: select with the mouse (releasing copies) or `v`/`V`
+and `y`; it reaches the system clipboard on macOS, Linux and WSL, and over
+SSH through tmux and the terminal.
 Copying text out of a pane: drag inside it, and releasing copies to the
 clipboard. Without the mouse: `Ctrl-b [`, move to the start, `Space`, move to
 the end, `Enter`. For the terminal's own selection across panes, turn the mouse

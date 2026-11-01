@@ -34,6 +34,7 @@ import {
   agentCommand,
   closeRoom,
   filesCommand,
+  vimCopyArgs,
   joinPrompt,
   planWorkspace,
   roomSessions,
@@ -176,6 +177,13 @@ describe("workspace planning", () => {
     expect(plan.panes[0].env?.AI_ROOM_WORKSPACE).toBe(workspaceName("r"));
   });
 
+  it("copies vim's yanks and mouse drags to the system clipboard", () => {
+    expect(vimCopyArgs("iconv -f utf-8 -t utf-16le | clip.exe")).toContain("let g:airoom_clip = 'iconv -f utf-8 -t utf-16le | clip.exe'");
+    expect(vimCopyArgs("it's")).toContain("let g:airoom_clip = 'it''s'");
+    expect(vimCopyArgs(null)).toContain("let g:airoom_clip = 'tmux load-buffer -w -'");
+    expect(vimCopyArgs("pbcopy").join(" ")).toMatch(/xnoremap <silent> <LeftRelease> <LeftRelease>y:call system\(g:airoom_clip, @"\)<CR>/);
+  });
+
   it("gives a vim-based browser no second editor", () => {
     const plan = planWorkspace("r", [], { monitor: false, filesCommand: ["vim", "-c", "Lexplore"], editorCommand: ["vim"] });
     expect(plan.panes.map((p) => p.title)).toEqual(["files"]);
@@ -191,6 +199,11 @@ describe("workspace planning", () => {
     expect(filesCommand({}, (bin) => bin === "vim")?.slice(0, 1)).toEqual(["vim"]);
     expect(filesCommand({}, () => false)).toBeNull();
     expect(filesCommand({ AI_ROOM_FILES: "tree -C | less" }, () => false)).toEqual(["sh", "-c", "tree -C | less"]);
+    const tree = filesCommand({}, (bin) => bin === "vim", "/home/me/.vim/bundle/nerd tree")!;
+    expect(tree[0]).toBe("vim");
+    expect(tree.join(" ")).toContain("rtp+=/home/me/.vim/bundle/nerd\\ tree | runtime plugin/NERD_tree.vim");
+    expect(tree).toContain("NERDTree");
+    expect(filesCommand({}, (bin) => bin === "vim", null)).toContain("Lexplore");
   });
 
   it("reports harnesses that are not installed instead of failing", () => {

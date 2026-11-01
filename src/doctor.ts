@@ -159,7 +159,7 @@ export async function runChecks(port: number, home = os.homedir()): Promise<Chec
     section: "workspace",
     name: "files tab",
     level: browser ? "ok" : "warn",
-    detail: browser ? browser[0] : "no file browser",
+    detail: !browser ? "no file browser" : browser.includes("NERDTree") ? `${browser[0]} with NERDTree` : browser.includes("Lexplore") ? `${browser[0]} with netrw (NERDTree is used when installed)` : browser[0],
     fix: browser ? undefined : process.platform === "darwin" ? "brew install yazi" : "install yazi (https://yazi-rs.github.io) or nnn",
   });
   const copyTo = clipboardCommand();

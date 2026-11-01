@@ -14,6 +14,7 @@ import {
   sessionName,
   startSession,
   selfCommand,
+  clipboardCommand,
   workspaceName,
 } from "./session.js";
 import type { MultiplexerDriver, PaneSpec, WorkspaceResult } from "./session.js";
@@ -272,13 +273,73 @@ const FILE_BROWSERS: { bin: string; args: string[] }[] = [
   { bin: "nnn", args: [] },
 ];
 
+/** Where plugin managers put NERDTree; a vimrc that does not load it still has it on disk. */
+export function nerdtreeDir(home = os.homedir()): string | null {
+  const packs = path.join(home, ".vim", "pack");
+  let packed: string[] = [];
+  try {
+    packed = fs.readdirSync(packs).flatMap((pack) => ["start", "opt"].map((kind) => path.join(packs, pack, kind, "nerdtree")));
+  } catch {
+    /* no packages */
+  }
+  const nvim = path.join(home, ".local", "share", "nvim");
+  return [
+    path.join(home, ".vim", "bundle", "nerdtree"),
+    path.join(home, ".vim", "plugged", "nerdtree"),
+    ...packed,
+    path.join(nvim, "lazy", "nerdtree"),
+    path.join(nvim, "plugged", "nerdtree"),
+    path.join(nvim, "site", "pack", "packer", "start", "nerdtree"),
+  ]
+    .find((dir) => fs.existsSync(path.join(dir, "plugin", "NERD_tree.vim"))) ?? null;
+}
+
+/**
+ * Yanks in the workspace's vim go to the system clipboard, and so does a mouse
+ * drag, as it does everywhere else in the workspace: with the mouse on, vim
+ * takes the drag, so tmux's own copy never sees it.
+ */
+export function vimCopyArgs(clipboard: string | null = clipboardCommand()): string[] {
+  // No clipboard tool (an SSH session, a bare server): tmux hands the text to
+  // the terminal's clipboard over OSC 52, as it does for its own copy.
+  clipboard ??= "tmux load-buffer -w -";
+  return [
+    "-c",
+    `let g:airoom_clip = '${clipboard.replace(/'/g, "''")}'`,
+    "-c",
+    `xnoremap <silent> y y:call system(g:airoom_clip, @")<CR>`,
+    "-c",
+    `xnoremap <silent> <LeftRelease> <LeftRelease>y:call system(g:airoom_clip, @")<CR>`,
+  ];
+}
+
+/** The real NERDTree when it is installed: hidden files shown, so .ai-room is too; :Kb opens the knowledge vault. */
+function nerdtreeArgs(dir: string): string[] {
+  return [
+    "-c",
+    `set hidden mouse=a rtp+=${dir.replace(/[ \\,]/g, "\\$&")} | runtime plugin/NERD_tree.vim`,
+    "-c",
+    "let g:NERDTreeShowHidden = 1 | let g:NERDTreeMinimalUI = 1 | let g:NERDTreeWinSize = 35",
+    "-c",
+    `command! Kb NERDTree ${path.join(os.homedir(), ".ai-room", "kb").replace(/ /g, "\\ ")}`,
+    "-c",
+    "let g:airoom_root = getcwd() | command! Project execute 'NERDTree' fnameescape(g:airoom_root)",
+    "-c",
+    "NERDTree",
+  ];
+}
+
 export function filesCommand(
   env: NodeJS.ProcessEnv = process.env,
-  has: (bin: string) => boolean = onPath
+  has: (bin: string) => boolean = onPath,
+  nerdtree: string | null = nerdtreeDir()
 ): string[] | null {
   if (env.AI_ROOM_FILES) return ["sh", "-c", env.AI_ROOM_FILES];
+  const vim = ["vim", "nvim"].find(has);
+  if (vim && nerdtree) return [vim, ...nerdtreeArgs(nerdtree), ...vimCopyArgs()];
   const browser = FILE_BROWSERS.find((candidate) => has(candidate.bin));
-  return browser ? [browser.bin, ...browser.args] : null;
+  if (!browser) return null;
+  return [browser.bin, ...browser.args, ...(browser.bin === "vim" || browser.bin === "nvim" ? vimCopyArgs() : [])];
 }
 
 /**
@@ -292,7 +353,7 @@ export function editorCommand(
 ): string[] | null {
   if (env.AI_ROOM_EDITOR) return ["sh", "-c", env.AI_ROOM_EDITOR];
   const bin = ["vim", "nvim"].find(has);
-  return bin ? [bin, "-c", "set hidden", "-c", "autocmd VimEnter * silent! NERDTreeClose"] : null;
+  return bin ? [bin, "-c", "set hidden", "-c", "autocmd VimEnter * silent! NERDTreeClose", ...vimCopyArgs()] : null;
 }
 
 /**

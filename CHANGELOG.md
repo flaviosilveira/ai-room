@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The files tab uses the real NERDTree when it is installed, even if the
+  vimrc does not load it, with hidden files shown and `:Kb` to browse the
+  knowledge vault. Netrw remains the fallback.
+- Copying in the files tab's Vim works: a mouse selection or a `y` reaches
+  the system clipboard (pbcopy, clip.exe under WSL, wl-copy/xclip, or tmux's
+  OSC 52 over SSH). With the mouse on, Vim took the drag and nothing was
+  copied.
 - Questions no longer get lost: an open `[FOR YOU #n]` shows in a row above
   the agents' status line until answered, and a new one opens a modal to
   answer it in place, one question after another. `prefix a` reopens it.
