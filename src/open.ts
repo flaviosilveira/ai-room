@@ -253,7 +253,9 @@ export interface CharterPatch {
  */
 export function charterPatch(room: string, flags: OpenFlags): CharterPatch {
   const patch: CharterPatch = { room };
-  if (flags.brief !== undefined) patch.brief = flags.brief;
+  if (flags.brief !== undefined) {
+    patch.brief = flags.plan || !flags.brief ? flags.brief : `${flags.brief}\n\nGo straight to the work: no plan to bring to the human first.`;
+  }
   if (flags.convention !== undefined) patch.conventionPreset = flags.convention;
   if (flags.tools.length) patch.tools = flags.tools;
   if (flags.knowledge) patch.knowledge = flags.knowledge;
@@ -278,17 +280,6 @@ export function agentsToLaunch(flags: OpenFlags, roster: RosterEntry[]): string[
   const held = new Set(roster.filter((entry) => entry.held).map((entry) => entry.agent));
   const agents = flags.invite.length ? flags.invite : roster.map((entry) => entry.agent).filter((agent) => agent !== "human");
   return agents.filter((agent) => !held.has(agent));
-}
-
-/**
- * A new team opens with its lead alone: the lead sizes the task first and
- * proposes who works on it at which level, so nobody spends tokens on a brief
- * before the plan exists. One agent, no lead or `--no-plan` launch everyone.
- */
-export function holdForPlan(roster: RosterEntry[], flags: OpenFlags, roomIsNew: boolean): RosterEntry[] {
-  const lead = roster.find((entry) => isLead(entry.role));
-  if (!roomIsNew || !flags.plan || !flags.brief || !lead || roster.length < 2) return roster;
-  return roster.map((entry) => (entry === lead ? entry : { ...entry, held: true }));
 }
 
 export type ReuseVerdict =

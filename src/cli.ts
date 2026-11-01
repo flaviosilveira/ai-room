@@ -43,7 +43,6 @@ import {
   agentsToLaunch,
   nearRoom,
   roomNameSlip,
-  holdForPlan,
   charterPatch,
   assignLead,
   classifyJoins,
@@ -278,6 +277,11 @@ async function open(room: string, argv: string[]): Promise<void> {
   }
   const existed = roomExists(db, room);
   let flags = withDefaults(parseOpenFlags(argv), defaults, !existed);
+  if (!existed && !flags.invite.length) {
+    console.error(`a new room needs its team: ai-room open ${room} --invite claude,codex --brief "..."`);
+    console.error("(or set the agents you usually invite once with ai-room setup)");
+    process.exit(2);
+  }
   // An explicit cast for a room that already has one is a replacement: the
   // agents kept keep their roles, and the new cast gets a lead.
   const replacing = existed && flags.invite.length > 0;
@@ -329,9 +333,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   // creating a folder in a project that never gets a report.
   if ((flags.convention ?? "").split(",").includes("lead")) (await import("./knowledge.js")).ignoreReportsInGit(process.cwd());
 
-  let charter = roomSetCharter(db, { ...charterPatch(room, flags), cwd: process.cwd() });
-  const held = holdForPlan(charter.roster, flags, verdict.kind === "new");
-  if (held !== charter.roster) charter = roomSetCharter(db, { room, roster: held });
+  const charter = roomSetCharter(db, { ...charterPatch(room, flags), cwd: process.cwd() });
 
   console.log(`room: ${room}`);
   console.log(`brief: ${charter.brief ?? "(none)"}`);
@@ -348,7 +350,7 @@ async function open(room: string, argv: string[]): Promise<void> {
   const profiles = Object.fromEntries(charter.roster.map((entry) => [entry.agent, launchProfile(entry)]));
   const waiting = charter.roster.filter((entry) => entry.held).map((entry) => entry.agent);
   if (waiting.length) {
-    console.log(`waiting for the lead's plan: ${waiting.join(", ")} (approve it with /approve in the console)`);
+    console.log(`waiting to be launched: ${waiting.join(", ")} (/approve in the console)`);
   }
 
   console.log("");

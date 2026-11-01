@@ -15,7 +15,7 @@ import {
   roomSetCharter,
 } from "../src/store.js";
 import { approvePlan, checkProposal, proposePlan } from "../src/cast.js";
-import { agentsToLaunch, holdForPlan, parseOpenFlags } from "../src/open.js";
+import { agentsToLaunch, charterPatch, parseOpenFlags } from "../src/open.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,18 +69,16 @@ describe("the lead's plan", () => {
   beforeEach(() => {
     db = openDb(":memory:");
     roomJoin(db, { room: "r", agent: "human", role: "host" });
-    const flags = { ...parseOpenFlags(["--brief", "Fix it", "--invite", "claude,codex"]) };
-    const roster = holdForPlan([{ agent: "claude", role: "lead" }, { agent: "codex" }], flags, true);
-    roomSetCharter(db, { room: "r", brief: "Fix it", roster });
+    roomSetCharter(db, { room: "r", brief: "Fix it", roster: [{ agent: "claude", role: "lead" }, { agent: "codex", held: true }] });
     roomJoin(db, { room: "r", agent: "claude" });
   });
   afterEach(() => db.close());
 
-  it("opens a new team with the lead alone", () => {
-    const roster = roomCharter(db, "r")!.roster;
-    expect(roster.find((entry) => entry.agent === "codex")?.held).toBe(true);
-    expect(agentsToLaunch(parseOpenFlags([]), roster)).toEqual(["claude"]);
-    expect(holdForPlan(roster, parseOpenFlags(["--brief", "x", "--no-plan"]), true)).toBe(roster);
+  it("launches the whole invited team, and lets the brief skip the plan", () => {
+    const flags = parseOpenFlags(["--brief", "Fix it", "--invite", "claude,codex"]);
+    expect(agentsToLaunch(flags, charterPatch("r", flags).roster!)).toEqual(["claude", "codex"]);
+    expect(charterPatch("r", flags).brief).toBe("Fix it");
+    expect(charterPatch("r", parseOpenFlags(["--brief", "Fix it", "--no-plan"])).brief).toMatch(/^Fix it\n\nGo straight to the work/);
   });
 
   it("refuses a plan from anyone but the lead, a lone agent, or a team all on light settings", () => {

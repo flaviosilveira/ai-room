@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A room's whole team starts at once. Before any change the lead explores,
+  the team checks its findings and plan, and the lead brings them to the
+  human as one `[FOR YOU]`; the answer is the go. No more waiting on
+  `/approve` to launch the team, and every invited agent gets a part.
+  `/approve` now only applies a change the lead proposes to the team.
+- A new room needs `--invite` (or default agents from `ai-room setup`)
+  instead of opening with nobody in it.
 - After `/allow`, Claude no longer asks a second time when an "ask" rule in
   its own settings matches the command: the gate also answers Claude's
   permission prompt, once, for that exact request, within two minutes. Run

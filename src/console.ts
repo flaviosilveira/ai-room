@@ -189,7 +189,7 @@ ${C.bold}Commands${C.reset}
   ${C.bold}/show <pane>${C.reset}       show a hidden pane again
   ${C.bold}/remove <agent>${C.reset}    take an agent out (e.g. it hit its limit); the rest keep working
   ${C.bold}/add <agent> [role]${C.reset} bring an agent in, new or back
-  ${C.bold}/approve${C.reset}           approve the lead's plan and launch the team (with no plan: launch who is waiting)
+  ${C.bold}/approve${C.reset}           apply the lead's proposed change to the team and launch who joins
   ${C.bold}/allow [n…|all]${C.reset}    list what agents were stopped from doing; allow those requests once
   ${C.bold}/deny <n…|all>${C.reset}     refuse them
   ${C.bold}/skills [filter]${C.reset}    project, user and plugin skills (Tab completes after /)

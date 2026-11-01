@@ -59,7 +59,7 @@ ai-room open <room> --brief "..." --invite claude,codex,agy
 | `--model codex=gpt-5.5` | One instance's model, in its CLI's own names (`agy models` lists agy's) |
 | `--effort codex=medium,agy=low` | One instance's reasoning effort: `low`, `medium`, `high`, `max` |
 | `--kb acme` | The knowledge base this room reads and adds to (see below) |
-| `--no-plan` | Launches the whole team at once, without waiting for the lead's plan |
+| `--no-plan` | The team goes straight to the work, without bringing you a plan first |
 | `--no-defaults` | Ignores the defaults in `~/.ai-room/config.json` |
 | `--new` | Creates the room even when its name looks like a typo of an existing one (`refund-review,`, `Refund_Review`) |
 | `--no-files` | No files tab |
@@ -92,23 +92,25 @@ addresses you. The others pass what they need from you through it.
 - If the lead leaves (`ai-room remove`), the next agent by preference takes over
   and the room is told.
 
-### The lead sizes the task first
+### The team checks the plan before anything changes
 
-A new room with a brief and two or more agents opens with **the lead alone**.
-The lead takes a quick look, sizes the task by its touch points ("4 small
-changes in 2 files"), and proposes the team with `room_propose`: each agent's
-role, model and effort. The plan arrives in your console; `/approve` launches
-the team at those levels. `/approve` with no plan launches whoever is waiting
-at their default level, and `--no-plan` skips the step.
+A new room needs its team: `--invite` (or the agents set as defaults in
+`ai-room setup`), and everyone starts at once. Before any change, the lead
+explores the task and sends the team what it found and a first plan; the
+others check it against the code, add what they found or disagree, and the
+lead brings you the findings, the plan and who does what in one
+`[FOR YOU #n]`. Your answer is the go. Every invited agent gets a part, at
+least a review, and only you take someone off the team. `--no-plan` tells the
+team to go straight to the work.
 
 Ask the lead to grill you first ("grill me before the plan") and it
-interviews you one `[FOR YOU #n]` question at a time, the grill-me way; the
-plan it proposes then lists the decisions, and the agents that join read them
-in the approval message. Otherwise it proposes directly.
+interviews you one `[FOR YOU #n]` question at a time, the grill-me way, before
+bringing the plan.
 
-A plan has at least two agents, and never everyone on a light setting (a low
-effort or a haiku/mini/lite/-low model). One agent is still possible: invite
-only one.
+When the task needs more people or another model or effort, the lead proposes
+it with `room_propose` while the team keeps working; `/approve` applies it. A
+team has at least two agents, and never everyone on a light setting (a low
+effort or a haiku/mini/lite/-low model).
 
 Who is woken: a message with `to` wakes only its recipients, one without `to`
 wakes the whole room. Everyone reads everything once awake; this only stops a

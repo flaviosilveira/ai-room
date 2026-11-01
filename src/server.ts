@@ -375,8 +375,8 @@ export function createAiRoomServer(
     "room_propose",
     {
       description:
-        "Lead only. After sizing the task, propose the team that works on it: each agent's role, model and reasoning effort. " +
-        "The teammates are not launched until the human approves the plan with /approve. At least two agents, and never all on a light model or effort.",
+        "Lead only. Propose a change to the team: more agents, or another role, model or reasoning effort for one. " +
+        "Nobody waits on it: the team keeps working, and the human applies it with /approve. At least two agents, and never all on a light model or effort.",
       inputSchema: {
         room: z.string(),
         agent: z.string().describe("Your own identifier: the lead's."),
