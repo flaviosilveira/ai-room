@@ -31,6 +31,8 @@ PORT = os.environ.get("AI_ROOM_PORT", "49375")
 BASE_URL = f"http://127.0.0.1:{PORT}"
 POLICY_PATH = os.path.expanduser(os.environ.get("AI_ROOM_POLICY", "~/.ai-room/policy.json"))
 LOG_PATH = os.path.expanduser("~/.ai-room/logs/gate.log")
+GRANTS_PATH = os.path.expanduser(os.environ.get("AI_ROOM_GATE_GRANTS", "~/.ai-room/gate-grants.json"))
+GRANT_SECONDS = 120
 HOME = os.path.expanduser("~")
 CLAUDE_DIR = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
 CODEX_DIR = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
@@ -170,6 +172,51 @@ def ask_human(room, agent, action, reason, tier):
     return False, answer
 
 
+def load_grants():
+    try:
+        with open(GRANTS_PATH) as handle:
+            grants = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    return [g for g in grants if isinstance(g, dict) and time.time() - g.get("at", 0) < GRANT_SECONDS]
+
+
+def save_grants(grants):
+    os.makedirs(os.path.dirname(GRANTS_PATH), exist_ok=True)
+    temp = f"{GRANTS_PATH}.{os.getpid()}"
+    with open(temp, "w") as handle:
+        json.dump(grants, handle)
+    os.replace(temp, GRANTS_PATH)
+
+
+def remember_grant(room, agent, subject):
+    """An "ask" rule in Claude's settings still prompts after the gate allowed; this lets that prompt pass."""
+    save_grants(load_grants() + [{"room": room, "agent": agent, "subject": subject, "at": time.time()}])
+
+
+def take_grant(room, agent, subject):
+    grants = load_grants()
+    for grant in grants:
+        if (grant.get("room"), grant.get("agent"), grant.get("subject")) == (room, agent, subject):
+            grants.remove(grant)
+            save_grants(grants)
+            return True
+    return False
+
+
+def subject_of(harness, payload):
+    tool, args, command, _, _ = event(harness, payload)
+    return command if command is not None else f"{tool} {json.dumps(args, sort_keys=True)}"
+
+
+def permission_request(payload, room, agent):
+    """Claude's own prompt for a call the gate already let through after /allow: answer it once."""
+    if not (room and agent) or not take_grant(room, agent, subject_of("claude", payload)):
+        return
+    log(f"claude {room} {agent} allow: prompt answered for an approved request | {subject_of('claude', payload)[:160]}")
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}))
+
+
 def blocked_message(answer, reason, tier):
     if answer.get("status") == "denied":
         return f"This was denied (request #{answer.get('id')}). Do not retry it; find another way or ask in the room."
@@ -235,6 +282,8 @@ def decide(harness, payload, room, agent):
 
     allowed, answer = ask_human(room, agent, subject[:500], reason, tier)
     if allowed:
+        if harness == "claude":
+            remember_grant(room, agent, subject)
         return "allow", f"allowed (request #{answer})"
     return "deny", blocked_message(answer, reason, tier)
 
@@ -264,6 +313,12 @@ def main():
     payload = {}
     try:
         payload = json.load(sys.stdin)
+        if harness == "claude" and payload.get("hook_event_name") == "PermissionRequest":
+            try:
+                permission_request(payload, room, agent)
+            except Exception as error:
+                log(f"claude {room or '-'} {agent or '-'} permission request failed: {error}")
+            return
         decision, reason = decide(harness, payload, room, agent)
     except Exception as error:
         # agy skips its own prompts in a room, so there a failure must block.

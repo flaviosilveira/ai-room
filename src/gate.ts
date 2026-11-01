@@ -20,6 +20,8 @@ interface Target {
   read: (config: Record<string, unknown>) => HookGroup[];
   write: (config: Record<string, unknown>, groups: HookGroup[]) => void;
   matcher: string;
+  /** Further events the same command answers, in the same file. */
+  also?: Pick<Target, "read" | "write">[];
 }
 
 interface HookGroup {
@@ -44,6 +46,14 @@ function targets(home: string): Target[] {
       matcher: "*",
       read: (config) => nested(config).PreToolUse ?? [],
       write: (config, groups) => void (nested(config).PreToolUse = groups),
+      // An "ask" rule in the human's settings prompts even after the gate said
+      // allow; this hook answers that prompt for a request the human approved.
+      also: [
+        {
+          read: (config) => nested(config).PermissionRequest ?? [],
+          write: (config, groups) => void (nested(config).PermissionRequest = groups),
+        },
+      ],
     },
     {
       harness: "codex",
@@ -120,12 +130,13 @@ export function installGate(home = os.homedir(), only?: GateHarness[]): string[]
   for (const target of targets(home)) {
     if (only && !only.includes(target.harness)) continue;
     const config = load(target.file);
-    const groups = target.read(config);
-    if (hasGate(groups)) {
+    const missing = [target, ...(target.also ?? [])].filter((event) => !hasGate(event.read(config)));
+    if (!missing.length) {
       done.push(`${target.harness}: already installed`);
       continue;
     }
-    target.write(config, [...groups, { matcher: target.matcher, hooks: [{ type: "command", command: target.command, ...(target.harness === "agy" ? { timeout: 60 } : {}) }] }]);
+    const hook = { type: "command", command: target.command, ...(target.harness === "agy" ? { timeout: 60 } : {}) };
+    for (const event of missing) event.write(config, [...event.read(config), { matcher: target.matcher, hooks: [hook] }]);
     save(target.file, config);
     done.push(`${target.harness}: installed in ${target.file}`);
     if (target.harness === "codex" && enableCodexHooks(home)) done.push("codex: turned on hooks in ~/.codex/config.toml");
@@ -137,12 +148,15 @@ export function uninstallGate(home = os.homedir()): string[] {
   const done: string[] = [];
   for (const target of targets(home)) {
     const config = load(target.file);
-    const groups = target.read(config);
-    if (!hasGate(groups)) continue;
-    const kept = groups
-      .map((group) => ({ ...group, hooks: group.hooks?.filter((hook) => !hook.command?.includes(MARK)) }))
-      .filter((group) => group.hooks?.length);
-    target.write(config, kept);
+    const events = [target, ...(target.also ?? [])].filter((event) => hasGate(event.read(config)));
+    if (!events.length) continue;
+    for (const event of events) {
+      const kept = event
+        .read(config)
+        .map((group) => ({ ...group, hooks: group.hooks?.filter((hook) => !hook.command?.includes(MARK)) }))
+        .filter((group) => group.hooks?.length);
+      event.write(config, kept);
+    }
     save(target.file, config);
     done.push(`${target.harness}: removed from ${target.file}`);
   }

@@ -51,6 +51,7 @@ describe.skipIf(!hasPython)("ai-room gate", { timeout: 30_000 }, () => {
       AI_ROOM_POLICY: path.join(dir, "policy.json"),
       AI_ROOM_ROOM: "r",
       AI_ROOM_SKIP_PROMPTS: "1",
+      AI_ROOM_GATE_GRANTS: path.join(dir, "grants.json"),
     };
   }, 20_000);
 
@@ -93,6 +94,22 @@ describe.skipIf(!hasPython)("ai-room gate", { timeout: 30_000 }, () => {
     db.close();
     expect(agy("git push origin main")).toBe("allow");
     expect(agy("git push origin main")).toBe("deny");
+  });
+
+  it("answers Claude's own prompt once for a request the human allowed", () => {
+    const prompt = (agent: string, command: string) =>
+      run("claude", agent, { hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command } })?.hookSpecificOutput?.decision?.behavior ?? "none";
+    expect(claude("git push origin feature", {})).toBe("deny");
+    expect(prompt("claude", "git push origin feature")).toBe("none");
+    const db = openDb(dbPath);
+    const pending = pendingApprovals(db, "r").find((a) => a.action === "git push origin feature")!;
+    decideApproval(db, "r", pending.id, true);
+    db.close();
+    expect(claude("git push origin feature", {})).toBe("allow");
+    expect(prompt("agy", "git push origin feature")).toBe("none");
+    expect(prompt("claude", "git push origin other")).toBe("none");
+    expect(prompt("claude", "git push origin feature")).toBe("allow");
+    expect(prompt("claude", "git push origin feature")).toBe("none");
   });
 
   it("never answers allow to Codex, which rejects it", () => {

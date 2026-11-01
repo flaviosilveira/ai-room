@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- After `/allow`, Claude no longer asks a second time when an "ask" rule in
+  its own settings matches the command: the gate also answers Claude's
+  permission prompt, once, for that exact request, within two minutes. Run
+  `ai-room gate install` again to add the hook.
+- The gate no longer answers "allow" to Codex, which since 0.159 rejects it
+  with "unsupported permissionDecision"; Codex's own reviewer decides.
+
 ## 0.9.0
 
 - `room_knowledge` answers the base's index — each section's name, a one-line

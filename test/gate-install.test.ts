@@ -32,6 +32,18 @@ describe("ai-room gate install", () => {
     expect(installGate(home)).toContain("claude: already installed");
     expect(JSON.parse(fs.readFileSync(policyPath(home), "utf8")).ask).toEqual(["mine"]);
     expect(read(".claude/settings.json").hooks.PreToolUse).toHaveLength(2);
+    expect(read(".claude/settings.json").hooks.PermissionRequest).toHaveLength(1);
+  });
+
+  it("adds the prompt answer to a Claude that already had the gate", () => {
+    installGate(home);
+    const settings = read(".claude/settings.json");
+    delete settings.hooks.PermissionRequest;
+    fs.writeFileSync(path.join(home, ".claude", "settings.json"), JSON.stringify(settings));
+    expect(installGate(home)).toContain(`claude: installed in ${path.join(home, ".claude", "settings.json")}`);
+    const after = read(".claude/settings.json").hooks;
+    expect(after.PreToolUse).toHaveLength(2);
+    expect(after.PermissionRequest[0].hooks[0].command).toMatch(/ai-room-gate\.sh --harness claude/);
   });
 
   it("is what makes ai-room skip a harness's prompts, and comes off cleanly", () => {
@@ -46,6 +58,7 @@ describe("ai-room gate install", () => {
       expect(gateInstalled("claude")).toBe(false);
       expect(gateInstalled("agy")).toBe(false);
       expect(read(".claude/settings.json").hooks.PreToolUse).toEqual([{ matcher: "Bash", hooks: [{ type: "command", command: "rtk hook claude" }] }]);
+      expect(read(".claude/settings.json").hooks.PermissionRequest).toEqual([]);
     } finally {
       process.env.AI_ROOM_HOOKS_HOME = previous;
     }
