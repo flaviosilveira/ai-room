@@ -77,12 +77,16 @@
   .chip.off { opacity: .6; }
   .section-title { margin: 18px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
-  .room { display: flex; flex-direction: column; height: 100%; }
+  .room { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  .room > .bar, .room > .tabs, .room > .livebar, .room > .composer { flex: none; }
+  .livebar { background: var(--bg); border-bottom: 1px solid var(--line); }
+  .livebar-inner { max-width: 760px; margin: 0 auto; padding: 8px 16px; display: grid; gap: 8px; }
+  .livebar-inner:has(#agents:empty):has(#screen[hidden]):has(#start-row[hidden]) { display: none; }
   .tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--bg); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
   .tabs button { background: none; border: 0; padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--muted); }
   .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); font-weight: 600; }
   .tabs .count { margin-left: 4px; font-size: 12px; padding: 0 6px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
-  .pane { flex: 1; overflow-y: auto; }
+  .pane { flex: 1; min-height: 0; overflow-y: auto; }
   .pane-inner { max-width: 760px; margin: 0 auto; padding: 12px 16px 16px; display: grid; gap: 10px; }
   .agents { display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -118,6 +122,48 @@
   .doc pre { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; }
   .doc table { border-collapse: collapse; display: block; overflow-x: auto; }
   .doc th, .doc td { border: 1px solid var(--line); padding: 4px 8px; }
+  .new-room { display: grid; gap: 10px; margin-top: 14px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .new-room h2 { margin: 0; font-size: 16px; }
+  .new-room label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .new-room input, .new-room textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  .new-room textarea { resize: vertical; min-height: 70px; }
+  .new-room .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .new-room .error { color: var(--danger); font-size: 13px; white-space: pre-wrap; }
+  .new-room .error pre { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; color: var(--ink); }
+  .agent-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .agent-picks label { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); font-size: 13px; cursor: pointer; }
+  .agent-picks input { margin: 0; }
+
+  .composer.drag { outline: 2px dashed var(--accent); outline-offset: -4px; }
+  .attach-btn { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; font-size: 16px; line-height: 1; }
+  .pending { max-width: 760px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pending:empty { display: none; }
+  .thumb { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--muted); max-width: 220px; }
+  .thumb img { width: 56px; height: 56px; object-fit: cover; border-radius: 5px; display: block; }
+  .thumb .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 18px; }
+  .thumb.uploading { opacity: .55; }
+  .thumb button { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font-size: 12px; line-height: 20px; padding: 0; }
+  .msg .files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .msg .files img { max-width: min(100%, 320px); max-height: 240px; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .msg .files a.file { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--code); color: var(--ink); text-decoration: none; }
+  .live { display: flex; flex-wrap: wrap; gap: 6px; }
+  .agent { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; background: var(--code); color: var(--muted); }
+  .agent .what { font-variant-numeric: tabular-nums; opacity: .85; }
+  .agent.working { background: var(--accent-soft); color: var(--accent); }
+  .agent.working .dot { animation: pulse 1.2s ease-in-out infinite; }
+  .agent.asking { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+  .agent.stuck { background: var(--danger-soft); color: var(--danger); }
+  .agent.off { opacity: .55; }
+  .agent[aria-pressed="true"] { border-color: currentColor; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .start-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .start-row .primary { padding: 6px 12px; }
+  .start-row pre { flex-basis: 100%; margin: 0; background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; color: var(--danger); }
+  .screen { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #0d110f; }
+  .screen .head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 13px; }
+  .screen .head b { flex: 1; font-weight: 600; }
+  .screen .head button { background: none; border: 0; color: var(--muted); padding: 2px 6px; }
+  .screen pre { margin: 0; padding: 10px 12px; color: #d9e2dc; max-height: 35vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
   .toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 10; }
 </style>
 </head>
@@ -134,8 +180,25 @@
 </div>
 
 <div id="rooms-view" hidden>
-  <div class="bar"><h1>ai-room</h1><button type="button" id="refresh" aria-label="Atualizar">↻</button></div>
-  <main><div id="rooms" class="rooms"></div></main>
+  <div class="bar"><h1>ai-room</h1><button type="button" id="new-room-open">＋ Nova sala</button><button type="button" id="refresh" aria-label="Atualizar">↻</button></div>
+  <main>
+    <form id="new-room" class="new-room" hidden autocomplete="off">
+      <h2>Nova sala</h2>
+      <label>Nome<input id="nr-name" required maxlength="64" placeholder="ex.: refactor-auth"></label>
+      <label>Objetivo (opcional)<textarea id="nr-brief" maxlength="4000" placeholder="O que a equipe deve fazer; dá para mandar depois no chat"></textarea></label>
+      <label>Pasta do projeto (opcional)<input id="nr-cwd" list="nr-folders" placeholder="vazio = a pasta da última sala"></label>
+      <datalist id="nr-folders"></datalist>
+      <div><div class="section-title" style="margin:0 0 6px">Agentes (vazio = os do ai-room setup)</div><div class="agent-picks" id="nr-agents"></div></div>
+      <label>Outros agentes (opcional, separados por vírgula)<input id="nr-extra" placeholder="ex.: claude2, codex"></label>
+      <label>Base de conhecimento (opcional)<input id="nr-kb" maxlength="64" placeholder="usa a da pasta, se houver"></label>
+      <div class="error" id="nr-error"></div>
+      <div class="row">
+        <button type="button" class="ghost" id="nr-cancel">Cancelar</button>
+        <button type="submit" class="primary" id="nr-submit">Criar sala</button>
+      </div>
+    </form>
+    <div id="rooms" class="rooms"></div>
+  </main>
 </div>
 
 <div id="room-view" class="room" hidden>
@@ -146,8 +209,18 @@
     <button type="button" role="tab" data-tab="reports" aria-selected="false">Relatórios</button>
     <button type="button" role="tab" data-tab="kb" aria-selected="false">Base<span class="count" id="kb-count" hidden></span></button>
   </div>
+  <div class="livebar"><div class="livebar-inner">
+    <div class="live" id="agents"></div>
+    <div class="start-row" id="start-row" hidden>
+      <span id="start-why"></span>
+      <button type="button" class="primary" id="start">▶ Iniciar agentes</button>
+    </div>
+    <div class="screen" id="screen" hidden>
+      <div class="head"><b id="screen-title"></b><span class="when" id="screen-when"></span><button type="button" id="screen-close" aria-label="Fechar">✕</button></div>
+      <pre id="screen-text"></pre>
+    </div>
+  </div></div>
   <div class="pane" id="pane-chat"><div class="pane-inner">
-    <div class="agents" id="agents"></div>
     <button type="button" class="toggle" id="show-all">Mostrar todas as mensagens</button>
     <div id="feed" style="display:grid;gap:8px"></div>
   </div></div>
@@ -155,11 +228,14 @@
   <div class="pane" id="pane-reports" hidden><div class="pane-inner" id="reports"></div></div>
   <div class="pane" id="pane-kb" hidden><div class="pane-inner" id="kb"></div></div>
   <div class="composer" id="composer">
+    <div class="pending" id="pending"></div>
     <form id="say">
+      <button type="button" class="attach-btn" id="attach" aria-label="Anexar arquivo" title="Anexar (ou cole/arraste uma imagem)">📎</button>
+      <input type="file" id="file" multiple accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.json,.log,.csv,.yaml,.yml,.ts,.js,.py" hidden>
       <textarea id="message" rows="1" placeholder="Mensagem para a sala" aria-label="Mensagem"></textarea>
-      <button class="primary" type="submit">Enviar</button>
+      <button class="primary" type="submit" id="send">Enviar</button>
     </form>
-    <div class="hint">Vai para o lead. <code>@codex …</code> fala com um agent, <code>@all …</code> com todos.</div>
+    <div class="hint">Vai para o lead. <code>@codex …</code> fala com um agent, <code>@all …</code> com todos. Cole (Ctrl+V) ou arraste imagens para anexar.</div>
   </div>
 </div>
 
@@ -217,9 +293,11 @@
         <div class="top"><b>${esc(r.room)}</b><span class="when">${ago(r.lastAt)}</span></div>
         ${r.brief ? `<div class="brief">${esc(r.brief)}</div>` : ""}
         <div class="chips">
+          ${(r.asking || []).map((a) => `<span class="chip badge">⏸ ${esc(a)} pedindo permissão</span>`).join("")}
+          ${(r.working || []).map((a) => `<span class="chip working">✻ ${esc(a)} trabalhando</span>`).join("")}
           ${r.pending ? `<span class="chip badge">${r.pending} pedido(s)</span>` : ""}
           ${r.plan ? `<span class="chip badge">plano para aprovar</span>` : ""}
-          ${r.agents.map((a) => `<span class="chip ${esc(a.status)}">${esc(a.agent)} · ${esc(a.status)}</span>`).join("")}
+          ${r.agents.filter((a) => !(r.working || []).includes(a.agent) && !(r.asking || []).includes(a.agent)).map((a) => `<span class="chip">${esc(a.agent)} · ${esc(a.status)}</span>`).join("")}
         </div>
       </button>`;
     const live = rooms.filter((r) => r.live);
@@ -242,6 +320,10 @@
   let messages = [];
   let state = { participants: [], approvals: [], proposal: null };
   let showAll = false;
+  let liveAgents = null; // null: no tmux workspace, only declared status
+  let screenAgent = null;
+  let screenTimer = null;
+  let starting = false;
 
   const leads = () =>
     new Set(state.participants.filter((p) => p.active && String(p.role || "").split(/,\s*/).includes("lead")).map((p) => p.agent));
@@ -255,6 +337,18 @@
     return lead.has(m.agent) && (!m.to || m.to.includes("human"));
   }
 
+  const fileUrl = (id) => `/api/rooms/${encodeURIComponent(current)}/attachments/${encodeURIComponent(id)}`;
+  function files(m) {
+    if (!m.attachments?.length) return "";
+    return `<div class="files">${m.attachments
+      .map((a) => {
+        if (!a.path) return `<span class="file chip">${esc(a.name)} (removido)</span>`;
+        if (/^image\//.test(a.mime)) return `<a href="${fileUrl(a.id)}" target="_blank" rel="noopener"><img src="${fileUrl(a.id)}" alt="${esc(a.name)}" loading="lazy"></a>`;
+        return `<a class="file" href="${fileUrl(a.id)}" target="_blank" rel="noopener">📄 ${esc(a.name)}</a>`;
+      })
+      .join("")}</div>`;
+  }
+
   function renderFeed() {
     const pane = $("pane-chat");
     const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
@@ -263,16 +357,136 @@
       ? shown.map((m) => `
         <div class="msg ${m.origin === "human" ? "human" : m.origin === "system" ? "system" : ""}">
           <div class="who"><b>${esc(m.agent)}</b>${m.to ? `<span class="to">→ ${esc(m.to.join(", "))}</span>` : ""}<span class="when">${clock(m.createdAt)}</span></div>
-          <div class="body">${md(m.content)}</div>
+          ${m.content ? `<div class="body">${md(m.content)}</div>` : ""}
+          ${files(m)}
         </div>`).join("")
       : `<div class="empty">Nada por aqui ainda.</div>`;
     if (atBottom) pane.scrollTop = pane.scrollHeight;
   }
 
-  function renderState() {
-    $("agents").innerHTML = state.participants
-      .map((p) => `<span class="chip ${p.active ? esc(p.status) : "off"}">${esc(p.agent)}${p.role ? ` (${esc(p.role)})` : ""} · ${esc(p.status)}</span>`)
+  const span = (ms) => {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.round(s / 60)}m`;
+    return `${Math.round(s / 3600)}h`;
+  };
+  const STATUS_PT = { idle: "idle", waiting: "esperando", working: "trabalhando", blocked: "bloqueado", approval_required: "esperando aprovação", done: "concluído" };
+
+  // The pane is the ground truth; the declared status fills in when there is no pane.
+  function renderAgents() {
+    const byAgent = new Map((liveAgents || []).map((a) => [a.agent, a]));
+    const roster = state.roster || [];
+    const names = [...new Set([...state.participants.filter((p) => p.active).map((p) => p.agent), ...byAgent.keys(), ...roster])];
+    // Who of the roster has no terminal: those are what "Iniciar agentes" brings up.
+    const missing = roster.filter((a) => !byAgent.has(a));
+    $("start-row").hidden = !missing.length || starting;
+    $("start-why").textContent = liveAgents === null ? "Os agentes desta sala não estão rodando." : `Sem terminal: ${missing.join(", ")}.`;
+    $("agents").innerHTML = names
+      .map((name) => {
+        const p = state.participants.find((x) => x.agent === name);
+        const r = byAgent.get(name);
+        const role = p?.role ? ` (${esc(p.role)})` : "";
+        let cls = "";
+        let icon = "·";
+        // With a terminal, the agent's chip says what its terminal says.
+        let what = r ? r.line || "" : roster.includes(name) ? (liveAgents === null ? "parado" : "sem terminal") : STATUS_PT[p?.status] || p?.status || "";
+        if (r?.state === "working") {
+          cls = "working";
+          icon = "✻";
+          if (!what) what = [r.label, r.elapsed].filter(Boolean).join(" ");
+        } else if (r?.state === "asking") {
+          cls = "asking";
+          icon = "⏸";
+          if (!what) what = "pedindo permissão no terminal";
+        } else if (r && p?.status === "working" && r.stillForMs > 5 * 60_000) {
+          cls = "stuck";
+          icon = "⚠";
+          what = `${what ? `${what} · ` : ""}tela parada há ${span(r.stillForMs)}`;
+        }
+        // The terminal's own line already starts with its spinner glyph.
+        if (r?.line && /^[✻✶✳✢✽·*●•⏺]/.test(r.line)) icon = "";
+        if (p && !p.active) cls += " off";
+        const clickable = Boolean(r);
+        return `<button type="button" class="agent ${cls}" ${clickable ? `data-screen="${esc(name)}" title="Ver a tela de ${esc(name)}"` : "disabled"} aria-pressed="${screenAgent === name}">
+          ${icon ? `<span class="dot">${icon}</span>` : ""}<b>${esc(name)}</b>${role}${what ? `<span class="what">${esc(what)}</span>` : ""}</button>`;
+      })
       .join("");
+  }
+
+  // ---- an agent's screen -----------------------------------------------------
+  async function refreshScreen() {
+    if (!screenAgent) return;
+    const agent = screenAgent;
+    try {
+      const { text } = await api(`/api/rooms/${encodeURIComponent(current)}/screen/${encodeURIComponent(agent)}?lines=80`);
+      if (agent !== screenAgent) return;
+      const pre = $("screen-text");
+      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+      if (pre.textContent !== text) pre.textContent = text || "(tela vazia)";
+      if (atBottom) pre.scrollTop = pre.scrollHeight;
+      $("screen-when").textContent = `atualizado ${clock(Date.now())}`;
+    } catch (error) {
+      $("screen-text").textContent = error.message;
+    }
+  }
+  function openScreen(agent) {
+    if (screenAgent === agent) return closeScreen();
+    screenAgent = agent;
+    $("screen").hidden = false;
+    $("screen-title").textContent = `Tela de ${agent} (só leitura)`;
+    $("screen-text").textContent = "carregando…";
+    clearInterval(screenTimer);
+    refreshScreen().then(() => ($("screen-text").scrollTop = $("screen-text").scrollHeight));
+    screenTimer = setInterval(refreshScreen, 2000);
+    renderAgents();
+  }
+  function closeScreen() {
+    screenAgent = null;
+    clearInterval(screenTimer);
+    screenTimer = null;
+    $("screen").hidden = true;
+    renderAgents();
+  }
+  $("agents").addEventListener("click", (event) => {
+    const agent = event.target.closest("[data-screen]")?.dataset.screen;
+    if (agent) openScreen(agent);
+  });
+  $("screen-close").addEventListener("click", closeScreen);
+
+  $("start").addEventListener("click", async () => {
+    const room = current;
+    starting = true;
+    $("start").disabled = true;
+    $("start").textContent = "Iniciando…";
+    try {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(room)}/start`, { method: "POST", headers: { "X-AI-Room": "1" } });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        starting = false;
+        $("start-row").hidden = false;
+        $("start-why").innerHTML = `${esc(body.error || response.statusText)}${body.log ? `<pre>${esc(body.log)}</pre>` : ""}`;
+        return;
+      }
+      toast("Iniciando os agentes; eles entram em alguns segundos");
+      $("start-row").hidden = true;
+      // Give the panes time to appear before offering the button again.
+      setTimeout(() => {
+        if (current === room) {
+          starting = false;
+          renderAgents();
+        }
+      }, 45000);
+    } catch (error) {
+      starting = false;
+      toast(error.message);
+    } finally {
+      $("start").disabled = false;
+      $("start").textContent = "▶ Iniciar agentes";
+    }
+  });
+
+  function renderState() {
+    renderAgents();
     const count = state.approvals.length + (state.proposal ? 1 : 0);
     $("ask-count").hidden = !count;
     $("ask-count").textContent = count;
@@ -406,8 +620,13 @@
   function openRoom(room) {
     current = room;
     messages = [];
+    clearPending();
     state = { participants: [], approvals: [], proposal: null };
+    liveAgents = null;
+    starting = false;
+    closeScreen();
     $("room-name").textContent = room;
+    document.title = `ai-room - ${room}`;
     show("room");
     selectTab("chat");
     loadKnowledge().catch(() => undefined);
@@ -416,6 +635,10 @@
     source.addEventListener("message", (event) => {
       messages.push(JSON.parse(event.data));
       renderFeed();
+    });
+    source.addEventListener("live", (event) => {
+      liveAgents = JSON.parse(event.data).agents;
+      renderAgents();
     });
     source.addEventListener("state", (event) => {
       state = JSON.parse(event.data);
@@ -440,16 +663,183 @@
       $("say").requestSubmit();
     }
   });
+  // ---- attachments -----------------------------------------------------------
+  const MAX_FILES = 5;
+  const MAX_BYTES = 10 * 1024 * 1024;
+  let pending = []; // { key, name, preview, id?, uploading }
+
+  function renderPending() {
+    $("pending").innerHTML = pending
+      .map((p) => `
+        <span class="thumb ${p.uploading ? "uploading" : ""}" title="${esc(p.name)}">
+          ${p.preview ? `<img src="${p.preview}" alt="">` : ""}<span class="name">${p.preview ? "" : "📄 "}${esc(p.name)}</span>
+          <button type="button" data-remove="${p.key}" aria-label="Remover">×</button>
+        </span>`)
+      .join("");
+  }
+  function clearPending() {
+    for (const p of pending) if (p.preview) URL.revokeObjectURL(p.preview);
+    pending = [];
+    renderPending();
+  }
+  $("pending").addEventListener("click", (event) => {
+    const key = event.target.closest("[data-remove]")?.dataset.remove;
+    if (!key) return;
+    const gone = pending.find((p) => p.key === key);
+    if (gone?.preview) URL.revokeObjectURL(gone.preview);
+    pending = pending.filter((p) => p.key !== key);
+    renderPending();
+  });
+
+  async function addFiles(list) {
+    for (const file of list) {
+      if (pending.length >= MAX_FILES) {
+        toast(`No máximo ${MAX_FILES} anexos por mensagem`);
+        break;
+      }
+      if (file.size > MAX_BYTES) {
+        toast(`${file.name || "arquivo"} passa de 10MB`);
+        continue;
+      }
+      const image = /^image\//.test(file.type);
+      const ext = (file.type.split("/")[1] || "bin").replace("jpeg", "jpg");
+      const name = file.name && file.name !== "image.png" ? file.name : `colado-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}.${image ? ext : "txt"}`;
+      const item = { key: Math.random().toString(36).slice(2), name, preview: image ? URL.createObjectURL(file) : null, uploading: true };
+      const room = current;
+      pending.push(item);
+      renderPending();
+      try {
+        const response = await fetch(`/api/rooms/${encodeURIComponent(room)}/attachments?name=${encodeURIComponent(name)}`, {
+          method: "POST",
+          headers: { "X-AI-Room": "1", "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (response.status === 401) {
+          show("login");
+          throw new Error("token required");
+        }
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || response.statusText);
+        if (room !== current) return;
+        item.id = body.attachment.id;
+        item.uploading = false;
+      } catch (error) {
+        pending = pending.filter((p) => p !== item);
+        if (item.preview) URL.revokeObjectURL(item.preview);
+        toast(`Falha ao anexar: ${error.message}`);
+      }
+      renderPending();
+    }
+  }
+
+  $("attach").addEventListener("click", () => $("file").click());
+  $("file").addEventListener("change", () => {
+    addFiles([...$("file").files]);
+    $("file").value = "";
+  });
+  textarea.addEventListener("paste", (event) => {
+    const list = [...(event.clipboardData?.items || [])].filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter(Boolean);
+    if (!list.length) return;
+    event.preventDefault();
+    addFiles(list);
+  });
+  const composer = $("composer");
+  composer.addEventListener("dragover", (event) => {
+    if (![...(event.dataTransfer?.types || [])].includes("Files")) return;
+    event.preventDefault();
+    composer.classList.add("drag");
+  });
+  composer.addEventListener("dragleave", (event) => {
+    if (!composer.contains(event.relatedTarget)) composer.classList.remove("drag");
+  });
+  composer.addEventListener("drop", (event) => {
+    composer.classList.remove("drag");
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    addFiles([...event.dataTransfer.files]);
+  });
+
   $("say").addEventListener("submit", async (event) => {
     event.preventDefault();
     const message = textarea.value.trim();
-    if (!message) return;
+    if (pending.some((p) => p.uploading)) {
+      toast("Espere o anexo terminar de subir");
+      return;
+    }
+    const attachmentIds = pending.map((p) => p.id).filter(Boolean);
+    if (!message && !attachmentIds.length) return;
+    $("send").disabled = true;
     try {
-      await api(`/api/rooms/${encodeURIComponent(current)}/say`, { method: "POST", body: JSON.stringify({ message }) });
+      await api(`/api/rooms/${encodeURIComponent(current)}/say`, { method: "POST", body: JSON.stringify({ message, attachmentIds }) });
       textarea.value = "";
       textarea.style.height = "auto";
+      clearPending();
     } catch (error) {
       toast(error.message);
+    } finally {
+      $("send").disabled = false;
+    }
+  });
+
+  // ---- new room --------------------------------------------------------------
+  const KNOWN_AGENTS = ["claude", "codex", "agy"];
+  async function openNewRoom() {
+    const form = $("new-room");
+    form.hidden = false;
+    $("nr-error").textContent = "";
+    $("nr-name").focus();
+    try {
+      const { invite, folders } = await api("/api/new-room");
+      const agents = [...new Set([...KNOWN_AGENTS, ...invite])];
+      const picked = new Set(invite);
+      $("nr-agents").innerHTML = agents
+        .map((a) => `<label><input type="checkbox" value="${esc(a)}" ${picked.has(a) ? "checked" : ""}> ${esc(a)}</label>`)
+        .join("");
+      $("nr-folders").innerHTML = folders.map((f) => `<option value="${esc(f)}"></option>`).join("");
+    } catch (error) {
+      $("nr-error").textContent = error.message;
+    }
+  }
+  function closeNewRoom() {
+    $("new-room").hidden = true;
+    $("new-room").reset();
+    $("nr-error").textContent = "";
+  }
+  $("new-room-open").addEventListener("click", () => ($("new-room").hidden ? openNewRoom() : closeNewRoom()));
+  $("nr-cancel").addEventListener("click", closeNewRoom);
+  $("new-room").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const invite = [
+      ...[...$("nr-agents").querySelectorAll("input:checked")].map((i) => i.value),
+      ...$("nr-extra").value.split(/[\s,]+/).filter(Boolean),
+    ];
+    const room = $("nr-name").value.trim();
+    $("nr-error").textContent = "";
+    $("nr-submit").disabled = true;
+    $("nr-submit").textContent = "Criando…";
+    try {
+      const response = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "X-AI-Room": "1", "Content-Type": "application/json" },
+        body: JSON.stringify({ room, brief: $("nr-brief").value, cwd: $("nr-cwd").value, invite, knowledge: $("nr-kb").value }),
+      });
+      if (response.status === 401) {
+        show("login");
+        return;
+      }
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        $("nr-error").innerHTML = esc(body.error || response.statusText) + (body.log ? `<pre>${esc(body.log)}</pre>` : "");
+        return;
+      }
+      closeNewRoom();
+      toast("Sala criada; os agentes entram em alguns segundos");
+      location.hash = `#/room/${encodeURIComponent(body.room)}`;
+    } catch (error) {
+      $("nr-error").textContent = error.message;
+    } finally {
+      $("nr-submit").disabled = false;
+      $("nr-submit").textContent = "Criar sala";
     }
   });
 
@@ -459,7 +849,9 @@
     if (room) return openRoom(decodeURIComponent(room));
     source?.close();
     source = null;
+    if (screenAgent) closeScreen();
     current = null;
+    document.title = "ai-room";
     try {
       await loadRooms();
       show("rooms");
@@ -472,7 +864,7 @@
   else route();
   setInterval(() => {
     if (!$("rooms-view").hidden) loadRooms().catch(() => undefined);
-  }, 15000);
+  }, 5000);
 })();
 </script>
 </body>
