@@ -3,13 +3,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { spawn } from "node:child_process";
 import express from "express";
 import type { Express, NextFunction, Request, Response } from "express";
 import { decideApproval, pendingApprovals } from "./approvals.js";
 import { approvePlan } from "./cast.js";
 import { decideKnowledge, knowledgeProposal, knowledgeSections, pendingKnowledge, readKnowledge, roomReportsDir } from "./knowledge.js";
-import { detectMultiplexer, sessionExists, workspaceName } from "./session.js";
-import { mentionedAgents, roomCharter, roomExists, roomHistory, roomSend, roomWho } from "./store.js";
+import { detectMultiplexer, mux, paneStates, sessionExists, workspaceName } from "./session.js";
+import { LiveTracker } from "./live.js";
+import type { LiveReading } from "./live.js";
+import { createAttachment, getAttachment, mentionedAgents, roomCharter, roomExists, roomHistory, roomSend, roomWho } from "./store.js";
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE, readStoredFile } from "./attachments.js";
+import { loadOpenDefaults } from "./open.js";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -23,6 +28,42 @@ export const WEB_PORT = Number(process.env.AI_ROOM_WEB_PORT || 49376);
 const PAGE = fileURLToPath(new URL("../web/index.html", import.meta.url));
 const page = (loginError = "") => fs.readFileSync(PAGE, "utf8").replace("__LOGIN_ERROR__", loginError);
 const COOKIE = "airoom_web";
+const CLI = fileURLToPath(new URL("../bin/ai-room.js", import.meta.url));
+
+/** How the web view starts `ai-room open`; tests swap it for a fake. */
+export type RoomLauncher = (argv: string[], cwd: string, log: string) => { exited: Promise<number | null> };
+
+/**
+ * A new room from the web is exactly `ai-room open … --new`, run detached in
+ * the project folder: the same charter, the same tmux workspace, the same
+ * agents. With no terminal it never attaches, so it just reports and exits.
+ */
+const launchCli: RoomLauncher = (argv, cwd, log) => {
+  fs.mkdirSync(path.dirname(log), { recursive: true });
+  const out = fs.openSync(log, "w");
+  const env = { ...process.env };
+  // The server itself may run inside a tmux pane; the new workspace is its own.
+  delete env.TMUX;
+  delete env.TMUX_PANE;
+  const child = spawn(process.execPath, [CLI, ...argv], { cwd, env, detached: true, stdio: ["ignore", out, out] });
+  fs.closeSync(out);
+  const exited = new Promise<number | null>((resolve) => {
+    child.once("exit", (code) => resolve(code));
+    child.once("error", () => resolve(-1));
+  });
+  child.unref();
+  return { exited };
+};
+
+/** A Windows path typed in the browser, as WSL sees it. */
+export function hostPath(input: string, platform = process.platform): string {
+  const drive = /^([a-zA-Z]):[\\/](.*)$/.exec(input.trim());
+  if (!drive || platform === "win32") return input.trim();
+  return `/mnt/${drive[1].toLowerCase()}/${drive[2].replace(/\\/g, "/")}`.replace(/\/+$/, "") || "/";
+}
+
+const ROOM_NAME = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u;
+const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 
 export function webTokenPath(): string {
   return path.join(process.env.AI_ROOM_HOME || path.join(os.homedir(), ".ai-room"), "web-token");
@@ -59,7 +100,78 @@ function presented(req: Request): string {
 
 const pendingCount = (db: Database.Database, room: string) => pendingApprovals(db, room).length;
 
-function roomSummaries(db: Database.Database) {
+/** What one agent's pane shows right now, as the console's status bar reads it. */
+export type LiveAgent = LiveReading & { agent: string; stillForMs: number; line?: string };
+
+// The harness's own status line, as the terminal shows it: Claude Code's
+// "✻ Cogitating… (25s · esc to interrupt)" or "✻ Worked for 25s · done 8:10 AM",
+// Codex's "• Working (12s • esc to interrupt)".
+const STATUS_LINE = /^\s*[✻✶✳✢✽·*●•⏺]\s+[A-ZÀ-Ý][\p{L}]+(?:…|\s+for\s)/u;
+const BUSY_LINE = /esc to (interrupt|cancel)/i;
+const ASK_LINE = /Do you want to|Would you like to|Run this command\?|Allow access to this file\?|Requesting permission|needs your approval/i;
+
+export function statusLine(text: string): string | undefined {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean).slice(-25);
+  const ask = [...lines].reverse().find((line) => ASK_LINE.test(line));
+  if (ask) return ask.slice(0, 160);
+  const found = [...lines].reverse().find((line) => STATUS_LINE.test(line) || BUSY_LINE.test(line));
+  return found?.slice(0, 160);
+}
+/** Reads the agents' panes of a room; null when the room has no tmux workspace. */
+export type LiveReader = (room: string) => LiveAgent[] | null;
+/** The last lines of one agent's pane, as plain text; null when there is no such pane. */
+export type ScreenReader = (room: string, agent: string, lines: number) => string | null;
+
+const NOT_AGENTS = new Set(["monitor", "files", "editor"]);
+
+/**
+ * Pane reads cost a tmux call each, and every open tab polls them, so one read
+ * per room is shared for a moment. The tracker per room is what turns two reads
+ * of an unchanged pane into "still for 3m".
+ */
+function tmuxLive(): { live: LiveReader; screen: ScreenReader } {
+  const trackers = new Map<string, LiveTracker>();
+  const cache = new Map<string, { at: number; agents: LiveAgent[] | null }>();
+  const panes = (room: string) => {
+    const tmux = detectMultiplexer("tmux");
+    const session = workspaceName(room);
+    if (!tmux || !sessionExists(tmux, session)) return null;
+    return { tmux, panes: paneStates(tmux, session).filter((p) => !NOT_AGENTS.has(p.agent)) };
+  };
+  const capture = (tmux: NonNullable<ReturnType<typeof detectMultiplexer>>, paneId: string, lines: number) =>
+    mux(tmux, ["capture-pane", "-p", "-J", "-t", paneId, "-S", `-${lines}`]).out;
+  return {
+    live(room) {
+      const cached = cache.get(room);
+      if (cached && Date.now() - cached.at < 1500) return cached.agents;
+      let agents: LiveAgent[] | null = null;
+      try {
+        const found = panes(room);
+        if (found) {
+          const tracker = trackers.get(room) ?? new LiveTracker();
+          trackers.set(room, tracker);
+          agents = found.panes.map((p) => {
+            const text = capture(found.tmux, p.paneId, 25);
+            return { agent: p.agent, ...tracker.observe(p.paneId, text), line: statusLine(text) };
+          });
+        }
+      } catch {
+        agents = null;
+      }
+      cache.set(room, { at: Date.now(), agents });
+      return agents;
+    },
+    screen(room, agent, lines) {
+      const found = panes(room);
+      const pane = found?.panes.find((p) => p.agent === agent);
+      if (!found || !pane) return null;
+      // Trailing blank rows are the unused bottom of the pane, not output.
+      return capture(found.tmux, pane.paneId, lines).replace(/\s+$/, "");
+    },
+  };
+}
+
+function roomSummaries(db: Database.Database, live: LiveReader) {
   const rows = db
     .prepare(
       `SELECT r.name AS room, MAX(m.created_at) AS lastAt
@@ -70,10 +182,14 @@ function roomSummaries(db: Database.Database) {
   const tmux = detectMultiplexer("tmux");
   return rows.map(({ room, lastAt }) => {
     const charter = roomCharter(db, room);
+    const open = Boolean(tmux && sessionExists(tmux, workspaceName(room)));
+    const readings = open ? live(room) ?? [] : [];
     return {
       room,
       lastAt,
-      live: Boolean(tmux && sessionExists(tmux, workspaceName(room))),
+      live: open,
+      working: readings.filter((r) => r.state === "working").map((r) => r.agent),
+      asking: readings.filter((r) => r.state === "asking").map((r) => r.agent),
       brief: charter?.brief?.slice(0, 160) ?? null,
       agents: roomWho(db, { room })
         .filter((p) => p.active && p.agent !== "human")
@@ -89,8 +205,38 @@ function reportsDir(db: Database.Database, room: string): string | null {
   return cwd ? roomReportsDir(cwd, room) : null;
 }
 
-export function createWebApp(db: Database.Database, options: { token?: string; serverPort?: number } = {}): Express {
+/** Project folders earlier rooms ran in, most recent first. */
+function recentFolders(db: Database.Database): string[] {
+  const rows = db
+    .prepare(
+      `SELECT p.cwd AS cwd, MAX(COALESCE(m.created_at, r.created_at)) AS lastAt
+       FROM room_profiles p JOIN rooms r ON r.name = p.room LEFT JOIN messages m ON m.room = p.room
+       WHERE p.cwd IS NOT NULL AND p.cwd != ''
+       GROUP BY p.cwd ORDER BY lastAt DESC LIMIT 12`
+    )
+    .all() as { cwd: string }[];
+  return rows.map((row) => row.cwd);
+}
+
+export function createWebApp(
+  db: Database.Database,
+  options: {
+    token?: string;
+    serverPort?: number;
+    launch?: RoomLauncher;
+    logDir?: string;
+    createWaitMs?: number;
+    live?: LiveReader;
+    screen?: ScreenReader;
+  } = {}
+): Express {
+  const tmuxReaders = options.live && options.screen ? null : tmuxLive();
+  const live = options.live ?? tmuxReaders!.live;
+  const screen = options.screen ?? tmuxReaders!.screen;
   const token = options.token ?? webToken();
+  const launch = options.launch ?? launchCli;
+  const logDir = options.logDir ?? path.join(path.dirname(webTokenPath()), "logs");
+  const createWaitMs = options.createWaitMs ?? 20_000;
   const serverPort = options.serverPort ?? Number(process.env.AI_ROOM_PORT || 49375);
   const app = express();
   app.disable("x-powered-by");
@@ -137,7 +283,75 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
 
   app.get("/", (_req, res) => res.type("html").send(page()));
 
-  app.get("/api/rooms", (_req, res) => res.json({ ok: true, rooms: roomSummaries(db) }));
+  app.get("/api/rooms", (_req, res) => res.json({ ok: true, rooms: roomSummaries(db, live) }));
+
+  // What the "new room" form starts from: the machine's defaults and the
+  // folders earlier rooms worked in.
+  app.get("/api/new-room", (_req, res) => {
+    const defaults = loadOpenDefaults();
+    res.json({ ok: true, invite: defaults.invite ?? [], folders: recentFolders(db) });
+  });
+
+  app.post("/api/rooms", express.json(), async (req, res) => {
+    const fail = (status: number, error: string, log?: string) => res.status(status).json({ ok: false, error, ...(log ? { log } : {}) });
+    const room = typeof req.body?.room === "string" ? req.body.room.trim() : "";
+    const brief = typeof req.body?.brief === "string" ? req.body.brief.trim() : "";
+    const knowledge = typeof req.body?.knowledge === "string" ? req.body.knowledge.trim() : "";
+    const rawInvite: unknown[] = Array.isArray(req.body?.invite)
+      ? req.body.invite
+      : typeof req.body?.invite === "string"
+        ? req.body.invite.split(/[\s,]+/)
+        : [];
+    const invite = [...new Set(rawInvite.filter((a): a is string => typeof a === "string").map((a) => a.trim().toLowerCase()).filter(Boolean))];
+    // Like `ai-room open` in a terminal, only the name is needed. With no
+    // folder given, the room works where the last room did (or in home).
+    const given = typeof req.body?.cwd === "string" ? hostPath(req.body.cwd) : "";
+    const cwd = given || recentFolders(db).find((dir) => fs.existsSync(dir)) || os.homedir();
+
+    if (!ROOM_NAME.test(room)) return fail(400, "nome inválido: letras, números, . _ - (até 64), começando por letra ou número");
+    if (roomExists(db, room)) return fail(409, `a sala "${room}" já existe`);
+    if (brief.length > 4000) return fail(400, "o objetivo passa de 4000 caracteres");
+    const badAgent = invite.find((agent) => !AGENT_NAME.test(agent));
+    if (badAgent) return fail(400, `agente inválido: "${badAgent}"`);
+    if (knowledge && !/^[\p{L}\p{N}._-]{1,64}$/u.test(knowledge)) return fail(400, "nome de base inválido");
+    if (!cwd || !path.isAbsolute(cwd)) return fail(400, "a pasta do projeto precisa ser um caminho absoluto");
+    try {
+      if (!fs.statSync(cwd).isDirectory()) return fail(400, `não é uma pasta: ${cwd}`);
+    } catch {
+      return fail(400, `pasta não encontrada: ${cwd}`);
+    }
+
+    const argv = ["open", room, "--new"];
+    if (brief) argv.push("--brief", brief);
+    if (invite.length) argv.push("--invite", invite.join(","));
+    if (knowledge) argv.push("--kb", knowledge);
+    const log = path.join(logDir, `web-open-${room}.log`);
+    let exitCode: number | null | undefined;
+    const { exited } = launch(argv, cwd, log);
+    void exited.then((code) => (exitCode = code));
+    const tail = () => {
+      try {
+        return fs.readFileSync(log, "utf8").split("\n").slice(-15).join("\n").trim();
+      } catch {
+        return "";
+      }
+    };
+    // The charter lands within a second or two; the agents take longer and the
+    // room shows each one arrive, so there is no reason to wait for them here.
+    for (const deadline = Date.now() + createWaitMs; Date.now() < deadline; ) {
+      if (roomExists(db, room) && roomCharter(db, room)) {
+        res.json({ ok: true, room, log });
+        return;
+      }
+      if (exitCode !== undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (roomExists(db, room)) {
+      res.json({ ok: true, room, log });
+      return;
+    }
+    fail(500, exitCode === undefined ? "a sala ainda não apareceu; veja o log" : `ai-room open falhou (código ${exitCode})`, tail());
+  });
 
   const known = (req: Request, res: Response): string | null => {
     const room = String(req.params.room);
@@ -158,14 +372,18 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
     const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     let lastId = 0;
     let lastState = "";
+    let ticks = 0;
     const tick = () => {
       try {
+        // What the panes show, every other second: the spinner and its clock.
+        if (ticks++ % 2 === 0) send("live", { agents: live(room) });
         const charter = roomCharter(db, room);
         const state = {
           participants: roomWho(db, { room }).filter((p) => p.agent !== "human"),
           approvals: pendingApprovals(db, room),
           proposal: charter?.proposal ?? null,
           brief: charter?.brief ?? null,
+          roster: (charter?.roster ?? []).filter((r) => r.agent !== "human" && !r.held).map((r) => r.agent),
         };
         const fingerprint = JSON.stringify(state);
         if (fingerprint !== lastState) {
@@ -195,13 +413,90 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
     const room = known(req, res);
     if (!room) return;
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
-    if (!message) {
+    const attachmentIds = Array.isArray(req.body?.attachmentIds)
+      ? (req.body.attachmentIds as unknown[]).filter((id): id is string => typeof id === "string")
+      : [];
+    if (!message && !attachmentIds.length) {
       res.status(400).json({ ok: false, error: "message is required" });
       return;
     }
-    const sent = roomSend(db, { room, agent: "human", origin: "human", message, to: mentionedAgents(db, room, message) });
-    wake(room);
-    res.json({ ok: true, message: sent });
+    try {
+      const sent = roomSend(db, { room, agent: "human", origin: "human", message, attachmentIds, to: mentionedAgents(db, room, message) });
+      wake(room);
+      res.json({ ok: true, message: sent });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  // A pasted or picked file, stored the way the console stores one: by its
+  // bytes, typed from them, and only part of a message once /say names it.
+  app.post(
+    "/api/rooms/:room/attachments",
+    express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
+    (req, res) => {
+      const room = known(req, res);
+      if (!room) return;
+      if (!Buffer.isBuffer(req.body) || !req.body.length) {
+        res.status(400).json({ ok: false, error: "a binary body is required" });
+        return;
+      }
+      const name = typeof req.query.name === "string" ? req.query.name : undefined;
+      try {
+        res.json({ ok: true, attachment: createAttachment(db, { room, bytes: req.body, name }), max: MAX_ATTACHMENTS_PER_MESSAGE });
+      } catch (error) {
+        res.status(400).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  );
+
+  app.get("/api/rooms/:room/attachments/:id", (req, res) => {
+    const room = known(req, res);
+    if (!room) return;
+    const attachment = getAttachment(db, room, String(req.params.id));
+    if (!attachment?.path) {
+      res.status(404).json({ ok: false, error: "no such attachment" });
+      return;
+    }
+    try {
+      const bytes = readStoredFile(attachment.path);
+      const image = /^image\/(png|jpeg|gif|webp)$/.test(attachment.mime);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "private, max-age=86400");
+      if (attachment.mime !== "application/pdf") res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+      if (!image && attachment.mime !== "application/pdf") {
+        res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);
+      }
+      res.type(image || attachment.mime === "application/pdf" ? attachment.mime : "text/plain; charset=utf-8").send(bytes);
+    } catch {
+      res.status(404).json({ ok: false, error: "no such attachment" });
+    }
+  });
+
+  // Brings the room's agents up the way reopening it in a terminal does:
+  // `ai-room open <room>`, in the room's own folder, launching whoever of the
+  // roster is not running and leaving the rest alone.
+  app.post("/api/rooms/:room/start", async (req, res) => {
+    const room = known(req, res);
+    if (!room) return;
+    const cwd = roomCharter(db, room)?.cwd;
+    const folder = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
+    const log = path.join(logDir, `web-open-${room}.log`);
+    const { exited } = launch(["open", room], folder, log);
+    // A quick failure (no roster, no tmux) is worth reporting; a launch that
+    // keeps running is the agents booting, which the live bar shows.
+    const code = await Promise.race([exited, new Promise<"running">((resolve) => setTimeout(() => resolve("running"), 3000))]);
+    if (code !== "running" && code !== 0) {
+      let tail = "";
+      try {
+        tail = fs.readFileSync(log, "utf8").split("\n").slice(-15).join("\n").trim();
+      } catch {
+        /* no log */
+      }
+      res.status(500).json({ ok: false, error: `ai-room open falhou (código ${code})`, log: tail });
+      return;
+    }
+    res.json({ ok: true, log });
   });
 
   app.post("/api/rooms/:room/approvals/:id", express.json(), (req, res) => {
@@ -237,6 +532,19 @@ export function createWebApp(db: Database.Database, options: { token?: string; s
     }
     if (room) wake(room);
     res.json({ ok: true, proposal: decided });
+  });
+
+  // The agent's own screen, read-only: what the terminal would show.
+  app.get("/api/rooms/:room/screen/:agent", (req, res) => {
+    const room = known(req, res);
+    if (!room) return;
+    const lines = Math.min(200, Math.max(10, Number(req.query.lines) || 60));
+    const text = screen(room, String(req.params.agent), lines);
+    if (text === null) {
+      res.status(404).json({ ok: false, error: "esse agente não tem uma tela aberta (a sala precisa do workspace tmux)" });
+      return;
+    }
+    res.json({ ok: true, text });
   });
 
   app.get("/api/rooms/:room/reports", (req, res) => {

@@ -325,6 +325,14 @@ the room is deleted. `rooms` cannot be a base's name.
 the lead's feed, sending as the human, requests to allow or deny, the plan to
 approve and the reports. It asks for the token `ai-room web` prints.
 
+In a room, paste a screenshot (Ctrl+V), drag a file onto the message box or
+use 📎: it goes with the next message as an attachment (up to 5, 10MB each;
+png, jpeg, gif, webp, pdf or text). **＋ Nova sala** on the room list creates a
+room — name, brief, project folder (a `C:\…` path is read as `/mnt/c/…` under
+WSL), agents and an optional knowledge base — by running
+`ai-room open <room> --new …` in that folder; the log lands in
+`~/.ai-room/logs/web-open-<room>.log`.
+
 | Command | Does |
 |---|---|
 | `ai-room web` | Shows the address, the token, and the tunnel's address if one runs |
